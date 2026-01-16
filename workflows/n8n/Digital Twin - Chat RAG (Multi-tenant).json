@@ -1,0 +1,284 @@
+{
+  "name": "Digital Twin - Chat RAG (Multi-tenant)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "openwebui",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "23e4c70d-288f-4a02-b504-ed3399c5de0a",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "cfd42fb4-70c7-41e8-b3c5-48b6bbb1c064"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Query + Tenant/Persona metadata\nconst item = $input.first();\n\nif (!item || !item.json) {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\nconst data = item.json;\nlet message = '';\nconst fields = ['message', 'query', 'text', 'content', 'prompt', 'input', 'question'];\n\nfor (const field of fields) {\n  if (data[field] && typeof data[field] === 'string') {\n    message = data[field];\n    break;\n  }\n}\n\nif (!message && data.body) {\n  for (const field of fields) {\n    if (data.body[field] && typeof data.body[field] === 'string') {\n      message = data.body[field];\n      break;\n    }\n  }\n}\n\nif (!message || typeof message !== 'string') {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\nmessage = message.trim();\nif (message === '' || message.startsWith('###')) {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\n// NEW: Extract tenant/persona\nconst tenantId = data.tenantId || data.body?.tenantId || data.metadata?.tenantId || null;\nconst personaId = data.personaId || data.body?.personaId || data.metadata?.personaId || null;\n\nreturn [{\n  json: {\n    skip: false,\n    query: message,\n    tenantId: tenantId,\n    personaId: personaId\n  }\n}];"
+      },
+      "id": "6fb80dff-efb2-41a9-ac6a-5daede641e14",
+      "name": "Extract Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}"
+            }
+          ]
+        }
+      },
+      "id": "83432ead-52a8-4c6f-9505-54abf29037f5",
+      "name": "Check Skip",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/embeddings",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"nomic-embed-text\", \"prompt\": $json.query } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "96e13aa9-d246-4271-a82f-1d9ce78c5219",
+      "name": "Embed Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Search with Tenant/Persona Filtering\nconst item = $input.first();\nconst embedResponse = item.json;\nconst extractNode = $('Extract Query').first();\nconst query = extractNode.json.query;\nconst tenantId = extractNode.json.tenantId;\nconst personaId = extractNode.json.personaId;\n\nlet embedding = embedResponse.embedding;\n\nif (!embedding || !Array.isArray(embedding) || embedding.length === 0) {\n  return [{ json: { error: 'No embedding' } }];\n}\n\n// Build filter\nconst filter = { must: [] };\nif (tenantId) {\n  filter.must.push({ key: 'tenantId', match: { value: tenantId } });\n}\nif (personaId) {\n  filter.must.push({ key: 'personaId', match: { value: personaId } });\n}\n\nreturn [{\n  json: {\n    vector: embedding,\n    filter: filter.must.length > 0 ? filter : undefined,\n    limit: 5,\n    with_payload: true,\n    with_vector: false,\n    query,\n    tenantId,\n    personaId\n  }\n}];"
+      },
+      "id": "277b1473-8926-4f03-b731-f009e84ac856",
+      "name": "Build Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/digital_twin_knowledge/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "850a59a6-8806-41d6-aae4-e707e5741a26",
+      "name": "Search Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst searchResponse = item.json;\nconst results = searchResponse.result || [];\nconst buildNode = $('Build Search').first();\nconst query = buildNode.json.query;\n\nconst systemMessage = `You are an AI assistant with access to the user's private knowledge base.\\n\\nIMPORTANT INSTRUCTIONS:\\n- Use ONLY the context provided below to answer questions\\n- The context contains the user's own confidential documents\\n- You MUST use this information to answer their questions\\n- Be direct and specific with your answers\\n- If the answer is in the context, state it clearly\\n- Do NOT refuse to answer based on 'confidentiality' - this is the user's own data`;\n\nif (results.length === 0) {\n  return [{ json: { prompt: `${systemMessage}\\n\\nQuestion: ${query}\\n\\nAnswer:`, hasContext: false, contextCount: 0 } }];\n}\n\nconst topResults = results.slice(0, 2);\nconst contexts = topResults.map(r => (r.payload?.text || '').substring(0, 1000));\nconst contextText = contexts.join('\\n\\n');\nconst ragPrompt = `${systemMessage}\\n\\nContext:\\n${contextText}\\n\\nQuestion: ${query}\\n\\nAnswer:`;\n\nreturn [{ json: { prompt: ragPrompt, hasContext: true, contextCount: topResults.length } }];"
+      },
+      "id": "4e7b87e9-ecb7-4ae6-8fa2-4755556c1499",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"llama3.2\", \"prompt\": $json.prompt, \"stream\": false, \"options\": { \"num_ctx\": 2048, \"num_predict\": 150 } } }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "8d00bf62-c38e-42e7-8569-f6e499f042fc",
+      "name": "Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst answer = item.json.response || \"I couldn't generate a response.\";\nreturn [{ json: { response: answer } }];"
+      },
+      "id": "bba31007-616d-4709-b9e2-d59bf20579ed",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { response: \"\" } }];"
+      },
+      "id": "10ddba46-58c0-4790-9efa-55ae2ec272e0",
+      "name": "Empty Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Query": {
+      "main": [
+        [
+          {
+            "node": "Check Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Skip": {
+      "main": [
+        [
+          {
+            "node": "Embed Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Empty Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Query": {
+      "main": [
+        [
+          {
+            "node": "Build Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search": {
+      "main": [
+        [
+          {
+            "node": "Search Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Answer": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "ba350ce8-cb20-4f94-95cc-75eb2e9a3ccf",
+  "meta": {
+    "instanceId": "d257ca994eba4b36486d8050476c0879387ccae8f74d57213b2161f38bfce8ba"
+  },
+  "id": "csOHpaH8RdVhCs9FtZwhR",
+  "tags": []
+}

@@ -1,0 +1,209 @@
+{
+  "name": "Digital Twin - Upload (Multi-tenant)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-document",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "17e5b9c1-05fb-4b59-99ba-ffb0a1eba5a2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "6224da71-236f-4ca1-be46-d63f7946a7a2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set Basic Info - Extract metadata and generate S3 path\nconst item = $input.first();\nif (!item) {\n  return [{ json: { error: \"No input\" } }];\n}\n\nconst data = item.json;\nconst fileName = data.fileName || data.body?.fileName || 'document.txt';\nconst content = data.content || data.body?.content || '';\n\n// Extract metadata (from Lambda or direct)\nconst metadata = data.metadata || data.body?.metadata || {};\nconst tenantId = metadata.tenantId || 'default';\nconst personaId = metadata.personaId || 'default';\n\n// Generate S3 bucket and key\nconst s3Bucket = 'digital-twin-docs';\nconst s3Key = `${tenantId}/${personaId}/${fileName}`;\n\nreturn [{\n  json: {\n    fileName,\n    content: String(content),\n    uploadDate: new Date().toISOString(),\n    tenantId,\n    personaId,\n    s3Key,\n    s3Bucket\n  }\n}];"
+      },
+      "id": "0586cb08-6c53-4c36-b61c-66fbb5132eb5",
+      "name": "Set Basic Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Chunks - Pass metadata\nconst item = $input.first();\nconst content = item.json.content || '';\nconst chunkSize = 2000;\nconst overlap = 200;\n\nconst items = [];\nlet start = 0;\nlet chunkIndex = 0;\n\nwhile (start < content.length) {\n  const end = Math.min(start + chunkSize, content.length);\n  items.push({\n    json: {\n      text: content.substring(start, end),\n      fileName: item.json.fileName,\n      chunkIndex: chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      s3Key: item.json.s3Key,\n      s3Bucket: item.json.s3Bucket\n    }\n  });\n  start += chunkSize - overlap;\n  chunkIndex++;\n}\n\nreturn items;"
+      },
+      "id": "4ff326a7-3f15-409b-99b8-931ab3221560",
+      "name": "Split Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate Embedding\nconst item = $input.first();\nconst text = item.json.text || '';\n\nconst cleanedText = text.replace(/\\n+/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://ollama:11434/api/embeddings',\n  body: { model: 'nomic-embed-text', prompt: cleanedText },\n  json: true\n});\n\nreturn [{\n  json: {\n    embedding: response.embedding,\n    text: item.json.text,\n    fileName: item.json.fileName,\n    chunkIndex: item.json.chunkIndex,\n    uploadDate: item.json.uploadDate,\n    tenantId: item.json.tenantId,\n    personaId: item.json.personaId,\n    s3Key: item.json.s3Key,\n    s3Bucket: item.json.s3Bucket\n  }\n}];"
+      },
+      "id": "e797b990-9f06-4ed3-97b4-7ea80e255c4c",
+      "name": "Generate Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Qdrant Point\nconst item = $input.first();\n\nfunction generateUUID() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nreturn [{\n  json: {\n    id: generateUUID(),\n    vector: item.json.embedding,\n    payload: {\n      text: item.json.text,\n      fileName: item.json.fileName,\n      chunkIndex: item.json.chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      s3Key: item.json.s3Key,\n      s3Bucket: item.json.s3Bucket\n    }\n  }\n}];"
+      },
+      "id": "ee47b752-4547-4320-9837-c10c4ea3c82a",
+      "name": "Prepare Qdrant Point",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nreturn [{ json: { points: [{ id: item.json.id, vector: item.json.vector, payload: item.json.payload }] } }];"
+      },
+      "id": "52dadb09-466d-4b48-bb20-42800ca0d616",
+      "name": "Prepare JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/digital_twin_knowledge/points",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "2cc31125-8c8f-47fa-a3f9-8380bffe22ce",
+      "name": "Insert Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const count = $input.all().length;\nconst prepareNode = $('Prepare JSON').all();\nconst firstPoint = prepareNode[0]?.json?.points?.[0]?.payload;\n\nreturn [{\n  json: {\n    success: true,\n    message: `Indexed ${count} chunks`,\n    fileName: firstPoint?.fileName || 'unknown',\n    tenantId: firstPoint?.tenantId || 'unknown',\n    personaId: firstPoint?.personaId || 'unknown',\n    chunksIndexed: count,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "6b7e7179-7f60-410e-9a0e-33e4e7637407",
+      "name": "Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set Basic Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Basic Info": {
+      "main": [
+        [
+          {
+            "node": "Split Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Chunks": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Prepare Qdrant Point",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Qdrant Point": {
+      "main": [
+        [
+          {
+            "node": "Prepare JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare JSON": {
+      "main": [
+        [
+          {
+            "node": "Insert Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Qdrant": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c6c250ae-adb7-4aa8-ba94-cf7021e0c632",
+  "meta": {
+    "instanceId": "d257ca994eba4b36486d8050476c0879387ccae8f74d57213b2161f38bfce8ba"
+  },
+  "id": "Zo6ZRe-K0cRCqV5Xd5kdi",
+  "tags": []
+}

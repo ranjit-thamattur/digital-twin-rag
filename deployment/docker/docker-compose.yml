@@ -1,0 +1,283 @@
+services:   
+  openwebui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openwebui
+    ports:
+      - "3000:8080"
+    environment:
+      ENABLE_PIPELINE_MODE: "true"
+      WEBUI_NAME: "Self² AI"
+      DISABLE_OLLAMA: "false"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      WEBUI_AUTH: "true"
+      GLOBAL_LOG_LEVEL: DEBUG
+      BYPASS_MODEL_ACCESS_CONTROL: "true"
+      WEBUI_AUTH_TRUSTED_EMAIL_HEADER: ""
+      WEBUI_URL: ${WEBUI_URL:-http://localhost:3000}
+      # Keycloak OIDC Authentication
+      ENABLE_OAUTH_SIGNUP: "true"
+      OAUTH_PROVIDER_NAME: "Keycloak"
+      OAUTH_CLIENT_ID: "openwebui"
+      OAUTH_CLIENT_SECRET: "lCDCCcFLJa74rCqrm4zSAKvg30hLU4Cg"
+      OPENID_PROVIDER_URL: "http://keycloak-dt:8080/realms/self2ai/.well-known/openid-configuration"
+      OAUTH_SCOPES: "openid profile email roles"
+      ENABLE_OAUTH_ROLE_MANAGEMENT: "true"
+      OAUTH_MERGE_ACCOUNTS_BY_EMAIL: "true"
+      ENABLE_SIGNUP: "true"
+      DEFAULT_USER_ROLE: "user"
+      OAUTH_ROLES_CLAIM: "roles"
+      OAUTH_EMAIL_CLAIM: "email"
+      OAUTH_USERNAME_CLAIM: "preferred_username"
+      # Model Access Control
+      MODEL_FILTER_ENABLED: "false"
+      DEFAULT_MODELS: "self2ai_rag"
+      ENABLE_MODEL_FILTER: "false"
+    volumes:
+      - openwebui_dt_data:/app/backend/data
+      - ./pipelines:/app/backend/pipelines
+    networks:
+      - ai_net
+    depends_on:
+      - n8n
+      - ollama
+      - keycloak
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-dt
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - N8N_HOST=n8n-dt
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - WEBHOOK_URL=http://n8n-dt:5678/
+    volumes:
+      - n8n_dt_data:/home/node/.n8n
+    networks:
+      - ai_net
+    depends_on:
+      - qdrant
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_dt_data:/qdrant/storage
+    networks:
+      - ai_net
+
+  # LocalStack - FIXED (Volume Conflict Resolved)
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,lambda,events,logs
+      - DEBUG=1
+      - PERSISTENCE=1
+      # FIX: Use different directory to avoid conflict
+      - DATA_DIR=/var/lib/localstack
+      - LAMBDA_EXECUTOR=local
+      - HOSTNAME_EXTERNAL=localstack
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      # FIX: Map to different internal path
+      - ./localstack_data:/var/lib/localstack
+      - ./lambda:/opt/code/localstack/lambda
+    networks:
+      - ai_net
+    depends_on:
+      - n8n
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # PostgreSQL - Shared database for Keycloak and Tenant Management
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-dt
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    volumes:
+      - postgres_dt_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - ai_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Keycloak - Identity and Access Management
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: keycloak-dt
+    command: start-dev
+    ports:
+      - "8080:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_PROXY: edge
+      KC_LOG_LEVEL: info
+      KC_METRICS_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      PROXY_ADDRESS_FORWARDING: true
+      # ADD THESE LINES to disable SSL requirement in dev
+      KC_HTTPS_CERTIFICATE_FILE: ""
+      KC_HTTPS_CERTIFICATE_KEY_FILE: ""
+    # Disable SSL requirement for realm
+      KC_SPI_TRUSTSTORE_FILE_FILE: ""
+      KC_SPI_TRUSTSTORE_FILE_PASSWORD: ""
+    volumes:
+      - keycloak_dt_data:/opt/keycloak/data
+    networks:
+      - ai_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/8080' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Redis - Session management and caching
+  redis:
+    image: redis:7-alpine
+    container_name: redis-dt
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_dt_data:/data
+    networks:
+      - ai_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Tenant Service - Multi-tenant management API
+  tenant-service:
+    build:
+      context: ../../services
+      dockerfile: Dockerfile.tenant
+    container_name: tenant-service-dt
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://keycloak:keycloak_password@postgres:5432/tenant_management
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: self2ai
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ../../services:/app
+    networks:
+      - ai_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # File Sync Service - Syncs OpenWebUI uploads to S3
+  file-sync:
+    build:
+      context: ../../services/file-sync
+      dockerfile: Dockerfile
+    container_name: file-sync-dt
+    environment:
+      S3_ENDPOINT: http://localstack:4566
+      S3_BUCKET: digital-twin-docs
+    volumes:
+      - openwebui_dt_data:/app/backend/data
+    networks:
+      - ai_net
+    depends_on:
+      - localstack
+      - openwebui
+    restart: unless-stopped
+
+  # ngrok Tunnel for public demo access (free tier, no credit card)
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok-tunnel
+    command: 
+      - "http"
+      - "openwebui:8080"
+      - "--log=stdout"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"  # ngrok web UI for viewing tunnel URL
+    networks:
+      - ai_net
+    depends_on:
+      - openwebui
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  openwebui_dt_data:
+  n8n_dt_data:
+  qdrant_dt_data:
+  postgres_dt_data:
+  keycloak_dt_data:
+  redis_dt_data:
+
+networks:
+  ai_net:
+    driver: bridge

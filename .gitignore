@@ -1,0 +1,119 @@
+# Environment files with secrets
+.env
+*.env
+deployment/docker/.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker volumes and data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+synced_files.json
+
+# LocalStack cache and data
+deployment/docker/localstack_data/
+localstack_data/
+
+# Lambda compiled packages
+lambda/**/function.zip
+*.zip
+
+# Logs
+*.log
+logs/
+*.out
+
+# Node modules (if any)
+node_modules/
+
+# Test files
+*.test.py
+test_*.py
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ngrok/Cloudflare tokens (sensitive)
+cloudflared/
+.cloudflared/
+
+# Local development files
+*.local
+.secrets
+
+# Backup files
+*.bak
+*.backup
+*_backup
+
+# User-specific test data
+Desktop/
+desktop_test_files/
+
+# Git
+.git/
+
+# Old documentation (keep only essential ones)
+*_OLD.md
+GMAIL_MULTITENANT_SETUP.md
+KEYCLOAK_HTTPS_FIX.md
+OPENWEBUI_KEYCLOAK_INTEGRATION.md
+PHASE1_VALIDATION.md
+PIPELINE_UPLOAD_TROUBLESHOOTING.md
+README_STARTUP.md
+REBRANDING_SUMMARY.md
+SETUP_PIPELINE_WORKFLOWS.md
+CHANGELOG.md
+
+# Python cache
+*.pyc
+.pytest_cache/
+

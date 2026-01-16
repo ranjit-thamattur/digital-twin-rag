@@ -1,0 +1,11 @@
+# Extend official OpenWebUI image
+FROM ghcr.io/open-webui/open-webui:main
+
+# Install Python dependencies for Pipe
+RUN pip install --no-cache-dir requests pydantic
+
+# Create pipelines folder
+RUN mkdir -p /app/backend/pipelines
+
+
+
