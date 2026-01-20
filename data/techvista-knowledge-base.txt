@@ -1,0 +1,519 @@
+TECHVISTA SOLUTIONS - COMPANY KNOWLEDGE BASE
+Last Updated: January 20, 2026
+Document Version: 1.0
+
+================================================================================
+SECTION 1: COMPANY OVERVIEW
+================================================================================
+
+Company Name: TechVista Solutions Pvt Ltd
+Founded: 2018
+Location: Bangalore, Karnataka, India
+Office Address: Block C, Tech Park Plaza, Whitefield, Bangalore - 560066
+Employees: 150+ professionals
+Industry: IT Services & Software Development
+
+Services Offered:
+- Custom Software Development
+- Mobile App Development (iOS & Android)
+- Cloud Solutions & DevOps
+- AI/ML Integration
+- API Development & Integration
+- Technical Consulting
+- Dedicated Development Teams
+
+Tech Stack:
+- Backend: Node.js, Python (Django/Flask), Java (Spring Boot), .NET Core
+- Frontend: React, Vue.js, Angular, Next.js
+- Mobile: React Native, Flutter, Swift, Kotlin
+- Databases: PostgreSQL, MongoDB, MySQL, Redis
+- Cloud: AWS (primary), Azure, Google Cloud Platform
+- DevOps: Docker, Kubernetes, Jenkins, GitHub Actions, GitLab CI
+- Monitoring: Datadog, PagerDuty, Grafana, Prometheus, ELK Stack
+
+================================================================================
+SECTION 2: ACTIVE PROJECTS
+================================================================================
+
+PROJECT 1: FinanceHub Mobile App
+--------------------------------
+Client: FinanceHub Inc.
+Project ID: PROJ-2024-001
+Status: 87% Complete (On Track)
+Start Date: August 15, 2024
+Expected Completion: February 15, 2026
+Budget: ₹45,00,000 (₹39,15,000 spent)
+
+Team:
+- Project Manager: Rajesh Kumar
+- Tech Lead: Priya Sharma
+- Backend Developers: 3 (Amit, Sanjay, Neha)
+- Frontend Developers: 2 (Kiran, Ravi)
+- QA Engineer: Meera Patel
+- DevOps: Shared resource (Vikram)
+
+Tech Stack:
+- Backend: Node.js (Express.js), PostgreSQL
+- Frontend: React Native
+- Cloud: AWS (EC2, RDS, S3, Lambda)
+- APIs: Plaid (banking), Stripe (payments)
+
+Current Sprint: Sprint 18 (Jan 15 - Jan 28, 2026)
+Completed Features:
+- User authentication & KYC
+- Bank account linking
+- Transaction history
+- Budget tracking
+- Investment portfolio view
+- Push notifications
+
+In Progress:
+- AI-powered expense categorization (Developer: Amit, Due: Jan 22)
+- Bill payment integration (Developer: Sanjay, Due: Jan 25)
+- Mutual fund investment feature (Developer: Neha, Due: Jan 28)
+
+Blockers:
+- Mutual fund API vendor approval pending (raised: Jan 10, escalated: Jan 18)
+- iOS App Store review delayed
+
+Next Milestone: Beta Release - February 1, 2026
+
+Recent Updates:
+- Jan 19: Backend API for expense categorization completed
+- Jan 18: User acceptance testing completed for budget tracking
+- Jan 15: Sprint 17 successfully completed, 92% velocity
+
+---
+
+PROJECT 2: HealthCare Portal - MediConnect
+-------------------------------------------
+Client: Apollo Hospitals
+Project ID: PROJ-2025-003
+Status: 45% Complete (At Risk - 2 weeks behind)
+Start Date: October 1, 2025
+Expected Completion: April 30, 2026
+Budget: ₹65,00,000 (₹28,80,000 spent)
+
+Team:
+- Project Manager: Anita Desai
+- Tech Lead: Suresh Reddy
+- Backend Developers: 4 (Deepak, Manish, Pooja, Arun)
+- Frontend Developers: 3 (Sneha, Vishal, Lakshmi)
+- QA Engineers: 2 (Ramesh, Divya)
+- DevOps: Vikram (shared)
+- UI/UX Designer: Kavita Singh
+
+Tech Stack:
+- Backend: Python Django, PostgreSQL, Redis
+- Frontend: React.js, Material-UI
+- Mobile: Flutter
+- Cloud: Azure (App Service, SQL Database, Blob Storage)
+- Integration: HL7 FHIR standards
+
+Current Sprint: Sprint 11 (Jan 13 - Jan 26, 2026)
+
+Completed Features:
+- Doctor registration & profiles
+- Patient registration & medical history
+- Appointment scheduling
+- Video consultation (Twilio integration)
+- Prescription management
+
+In Progress:
+- Lab test booking system (Developer: Deepak, Due: Jan 24)
+- Pharmacy integration (Developer: Manish, Due: Jan 26)
+- Insurance claim processing (Developer: Pooja, Due: Jan 30)
+
+Blockers:
+- Hospital legacy system integration delayed (3rd party vendor issue)
+- HIPAA compliance review pending (legal team)
+- Performance issues with video calls (under investigation)
+
+Risk Mitigation:
+- Weekly client meetings scheduled
+- Additional developer (Arun) added to team Jan 15
+- Performance optimization sprint planned for Feb 3-14
+
+Next Milestone: Alpha Release with core features - February 15, 2026
+
+Recent Issues:
+- TICKET-5432: Video call drops after 15 minutes (Priority: High, Assigned: Suresh, Status: In Progress)
+- TICKET-5445: Lab test API timeout issues (Priority: Medium, Assigned: Deepak, Status: Testing)
+
+---
+
+PROJECT 3: E-Commerce Platform - ShopEase
+------------------------------------------
+Client: ShopEase Retail Pvt Ltd
+Project ID: PROJ-2025-008
+Status: Completed (Maintenance Mode)
+Completion Date: December 20, 2025
+Monthly Maintenance Fee: ₹2,50,000
+
+Team (Maintenance):
+- Support Engineer: Rahul Verma
+- Developer On-Call: Rotational (Weekly)
+
+Tech Stack:
+- Backend: Node.js (NestJS), MongoDB
+- Frontend: Next.js, Tailwind CSS
+- Cloud: AWS (ECS, DocumentDB, CloudFront, S3)
+- Payment: Razorpay, PayU
+- Search: Elasticsearch
+
+Features Delivered:
+- Multi-vendor marketplace
+- Product catalog (50,000+ products)
+- Shopping cart & wishlist
+- Order management
+- Payment gateway integration
+- Seller dashboard
+- Admin panel
+- Email & SMS notifications
+- Analytics & reporting
+
+Monthly Metrics (December 2025):
+- Uptime: 99.97%
+- Average Response Time: 245ms
+- Peak Concurrent Users: 15,000
+- Total Orders: 45,230
+- Revenue Processed: ₹1.2 Crore
+
+Recent Maintenance Tickets:
+- SUPPORT-1234: Add new payment gateway (Status: In Review, Due: Jan 25)
+- SUPPORT-1240: Bulk upload feature for sellers (Status: Completed, Jan 18)
+
+================================================================================
+SECTION 3: CLIENT INFORMATION
+================================================================================
+
+CLIENT 1: FinanceHub Inc.
+-------------------------
+Contact Person: Sarah Johnson (CTO)
+Email: sarah.johnson@financehub.com
+Phone: +1 (650) 555-0123
+Contract Start: August 15, 2024
+Contract End: February 15, 2026
+Contract Value: ₹45,00,000
+Payment Terms: Monthly milestone-based
+Outstanding Invoices: ₹0 (All paid)
+SLA: 99.5% uptime, 4-hour response time
+Current Projects: 1 (FinanceHub Mobile App)
+Next Review Meeting: January 25, 2026 at 3:00 PM IST
+
+Relationship Status: Excellent
+- Regular communication
+- Timely payments
+- Exploring expansion for web platform (potential ₹30L project)
+
+---
+
+CLIENT 2: Apollo Hospitals
+---------------------------
+Contact Person: Dr. Ramesh Kumar (VP - Digital Transformation)
+Email: ramesh.kumar@apollohospitals.com  
+Phone: +91 80 4567 8900
+Contract Start: October 1, 2025
+Contract End: October 1, 2026 (with maintenance)
+Contract Value: ₹65,00,000 + ₹5,00,000/year maintenance
+Payment Terms: Quarterly milestone-based
+Outstanding Invoices: ₹15,00,000 (Q4 2025 invoice, Due: Feb 10, 2026)
+SLA: 99.9% uptime, 2-hour response time (critical), 4-hour (normal)
+Current Projects: 1 (MediConnect Portal)
+Next Review Meeting: January 28, 2026 at 11:00 AM IST
+
+Relationship Status: Good (At Risk due to delays)
+- Weekly status meetings scheduled
+- Escalation: Project delays causing concern
+- Action: Additional resources allocated, daily standups initiated
+
+---
+
+CLIENT 3: ShopEase Retail Pvt Ltd
+----------------------------------
+Contact Person: Vikram Malhotra (Founder & CEO)
+Email: vikram@shopease.in
+Phone: +91 98765 43210
+Contract Start: March 1, 2025
+Contract End: Ongoing (Maintenance)
+Project Value: ₹38,00,000 (completed)
+Monthly Maintenance: ₹2,50,000
+Payment Terms: Monthly in advance
+Outstanding Invoices: ₹0 (Auto-debit setup)
+SLA: 99.5% uptime, 6-hour response time
+Current Status: Maintenance & Support
+Next Review Meeting: February 5, 2026 at 2:00 PM IST
+
+Relationship Status: Excellent
+- Very satisfied with delivered product
+- Regular feature enhancement requests
+- Potential mobile app project discussed (est. ₹25L)
+
+================================================================================
+SECTION 4: INFRASTRUCTURE & RESOURCES
+================================================================================
+
+AWS Resources (Production):
+----------------------------
+- EC2 Instances: 25 (t3.medium to c5.2xlarge)
+- RDS Databases: 12 (PostgreSQL, MySQL)
+- S3 Buckets: 45 (Total: 2.3 TB)
+- Lambda Functions: 120+
+- CloudFront Distributions: 15
+- Load Balancers: 8 (ALB)
+- VPCs: 5 (per client/project)
+
+Monthly AWS Cost: ₹3,25,000 (Dec 2025)
+Cost Optimization Savings: ₹45,000/month (Reserved Instances, S3 lifecycle)
+
+Azure Resources:
+----------------
+- App Services: 10
+- SQL Databases: 4
+- Storage Accounts: 8 (850 GB)
+- Virtual Machines: 6
+
+Monthly Azure Cost: ₹1,15,000
+
+Software Licenses:
+------------------
+- JetBrains IntelliJ IDEA Ultimate: 50 licenses (₹15,000/month)
+- Visual Studio Professional: 30 licenses (₹8,500/month)
+- Datadog Pro: 100 hosts (₹65,000/month)
+- GitHub Enterprise: Company-wide (₹18,000/month)
+- Jira & Confluence: 150 users (₹25,000/month)
+- Figma Professional: 10 licenses (₹12,000/month)
+- Postman Enterprise: 50 users (₹8,000/month)
+
+Total Monthly License Cost: ₹1,51,500
+
+Upcoming Renewals:
+- JetBrains licenses: February 15, 2026
+- Datadog subscription: March 1, 2026
+- GitHub Enterprise: April 10, 2026
+
+Hardware Inventory:
+-------------------
+- MacBook Pro (M2): 25 units
+- MacBook Air (M1): 40 units
+- Dell XPS 15: 35 units
+- Lenovo ThinkPad: 20 units
+- iMac 27": 5 units (design team)
+- Dell Monitors 27": 120 units
+- Conference Room Equipment: 5 rooms fully equipped
+
+IT Asset Tracking System: ServiceNow
+
+================================================================================
+SECTION 5: TEAM & RESOURCES
+================================================================================
+
+Department Breakdown:
+---------------------
+- Engineering: 95 (Backend: 45, Frontend: 30, Mobile: 12, DevOps: 8)
+- QA/Testing: 18
+- Project Management: 8
+- UI/UX Design: 6
+- Sales & Marketing: 10
+- HR & Admin: 8
+- Finance: 5
+
+Key Personnel:
+--------------
+CEO: Aditya Sharma (aditya.sharma@techvista.com)
+CTO: Ramesh Iyer (ramesh.iyer@techvista.com)
+VP Engineering: Lakshmi Narayan (lakshmi.n@techvista.com)
+VP Sales: Karthik Menon (karthik.menon@techvista.com)
+HR Head: Anjali Kapoor (anjali.kapoor@techvista.com)
+
+Engineering Team Availability (As of Jan 20, 2026):
+---------------------------------------------------
+- Available for new projects: 12 developers
+- Allocated to active projects: 75 developers
+- On leave/training: 8 developers
+
+Skills Inventory:
+-----------------
+Backend Development:
+- Node.js: 35 developers (Expert: 15, Intermediate: 20)
+- Python: 28 developers (Expert: 12, Intermediate: 16)
+- Java: 18 developers (Expert: 8, Intermediate: 10)
+- .NET: 8 developers (Expert: 3, Intermediate: 5)
+
+Frontend Development:
+- React: 40 developers (Expert: 18, Intermediate: 22)
+- Vue.js: 15 developers (Expert: 6, Intermediate: 9)
+- Angular: 12 developers (Expert: 5, Intermediate: 7)
+
+Mobile Development:
+- React Native: 15 developers (Expert: 6, Intermediate: 9)
+- Flutter: 10 developers (Expert: 4, Intermediate: 6)
+- Native iOS: 5 developers (Expert: 2, Intermediate: 3)
+- Native Android: 5 developers (Expert: 2, Intermediate: 3)
+
+DevOps & Cloud:
+- AWS: 12 engineers (Certified: 8)
+- Azure: 6 engineers (Certified: 3)
+- Kubernetes: 10 engineers (Expert: 4, Intermediate: 6)
+- Docker: 15 engineers
+
+================================================================================
+SECTION 6: SUPPORT TICKETS & ISSUES
+================================================================================
+
+Open Critical Tickets (As of Jan 20, 2026):
+-------------------------------------------
+TICKET-5432: FinanceHub - Video call quality degradation
+Priority: High
+Reported: January 18, 2026
+Assigned: Suresh Reddy (Tech Lead)
+Status: Root cause identified - WebRTC server scaling issue
+ETA: January 22, 2026
+Resolution Plan: Upgrade to Redis Cluster for session management
+
+TICKET-5445: MediConnect - Lab test API intermittent timeouts
+Priority: Medium
+Reported: January 19, 2026
+Assigned: Deepak Sharma (Backend Developer)
+Status: Testing connection pooling fix
+ETA: January 23, 2026
+
+TICKET-5450: ShopEase - Bulk product upload failing for CSV >5000 rows
+Priority: Medium
+Reported: January 20, 2026
+Assigned: Rahul Verma (Support Engineer)
+Status: Investigating memory limits
+ETA: January 24, 2026
+
+Recent Resolved Tickets:
+------------------------
+TICKET-5420: FinanceHub - Push notifications not working on iOS (Resolved: Jan 17)
+TICKET-5401: MediConnect - Password reset emails delayed (Resolved: Jan 15)
+TICKET-5388: ShopEase - Invoice PDF generation error (Resolved: Jan 14)
+
+================================================================================
+SECTION 7: DOCUMENTATION & RUNBOOKS
+================================================================================
+
+Internal Documentation:
+-----------------------
+- Architecture Diagrams: Confluence - "TechVista Architecture Hub"
+- API Documentation: Swagger/OpenAPI specs hosted on docs.techvista.internal
+- Code Standards: GitHub Wiki - "Coding Guidelines"
+- Security Policies: Confluence - "InfoSec Policies"
+- Deployment Procedures: Confluence - "DevOps Runbooks"
+
+Important Runbooks:
+-------------------
+1. "Production Deployment Checklist" - Confluence Page ID: 12345
+2. "Database Migration Procedure" - Confluence Page ID: 12367
+3. "Security Incident Response" - Confluence Page ID: 12389
+4. "AWS Cost Optimization" - Confluence Page ID: 12401
+5. "Client Onboarding Process" - Confluence Page ID: 12423
+
+Git Repositories:
+-----------------
+- GitHub Organization: github.com/techvista-solutions
+- Private Repos: 145
+- Active Repos (last 30 days): 35
+- Code Review Policy: Minimum 2 approvals for production merges
+
+CI/CD Pipelines:
+----------------
+- Jenkins Jobs: 85 active
+- GitHub Actions Workflows: 120+
+- Average Build Time: 8 minutes
+- Deployment Frequency: 3-5 times per week per project
+- Rollback Time: < 10 minutes
+
+================================================================================
+SECTION 8: FINANCIAL INFORMATION
+================================================================================
+
+Revenue (FY 2025-26 till Jan 2026):
+------------------------------------
+Q3 2025 (Oct-Dec): ₹2.8 Crore
+Q4 2025 Projection (Jan-Mar 2026): ₹3.2 Crore
+Total FY Revenue Target: ₹12 Crore
+
+Project Pipeline (Potential):
+------------------------------
+- FinanceHub Web Platform: ₹30,00,000 (70% probability, Mar 2026)
+- ShopEase Mobile App: ₹25,00,000 (60% probability, Apr 2026)
+- New E-Learning Client: ₹45,00,000 (40% probability, Feb 2026)
+- Government Portal Project: ₹85,00,000 (30% probability, May 2026)
+
+Operating Costs (Monthly Average):
+-----------------------------------
+- Salaries: ₹75,00,000
+- Cloud Infrastructure: ₹4,40,000
+- Software Licenses: ₹1,51,500
+- Office Rent: ₹5,50,000
+- Utilities & Misc: ₹3,00,000
+Total: ₹89,41,500/month
+
+Profit Margin: 22-25% (industry average: 18-20%)
+
+================================================================================
+SECTION 9: COMPANY POLICIES
+================================================================================
+
+Working Hours:
+- Standard: 9:30 AM - 6:30 PM IST
+- Flexible timing allowed (core hours: 11 AM - 4 PM)
+- Hybrid model: 3 days office, 2 days remote
+
+Leave Policy:
+- Casual Leave: 12 days/year
+- Sick Leave: 8 days/year
+- Paid Time Off: 18 days/year
+- Public Holidays: 10 days/year
+
+Security Policies:
+- 2FA mandatory for all systems
+- VPN required for remote access
+- Code review mandatory before production merge
+- Security audit: Quarterly
+- Penetration testing: Bi-annually
+
+Data Backup:
+- Database backups: Daily (retained 30 days)
+- Full system snapshots: Weekly
+- Disaster Recovery RTO: 4 hours
+- Disaster Recovery RPO: 1 hour
+
+================================================================================
+SECTION 10: FREQUENTLY ASKED QUESTIONS
+================================================================================
+
+Q: What is our primary tech stack?
+A: Backend: Node.js & Python, Frontend: React, Mobile: React Native & Flutter, Cloud: AWS primarily
+
+Q: What are our office hours?
+A: 9:30 AM - 6:30 PM IST, with flexible timing (core hours 11 AM - 4 PM)
+
+Q: How many active projects do we have?
+A: 2 active development projects (FinanceHub Mobile App, MediConnect Portal) and 1 in maintenance mode (ShopEase E-Commerce)
+
+Q: What is our AWS monthly spend?
+A: Approximately ₹3,25,000 per month across all projects
+
+Q: Who is our largest client?
+A: Apollo Hospitals (MediConnect project worth ₹65L + ₹5L/year maintenance)
+
+Q: What is our employee count?
+A: 150+ professionals across all departments
+
+Q: What is our deployment frequency?
+A: 3-5 times per week per active project
+
+Q: What monitoring tools do we use?
+A: Datadog (primary), Grafana, Prometheus, PagerDuty for alerting
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+For more information, contact: info@techvista.com
+Document maintained by: Knowledge Management Team
+Next review date: February 20, 2026

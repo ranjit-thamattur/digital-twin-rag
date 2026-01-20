@@ -1,79 +1,15 @@
-"""
-Tenant Management Service
-Handles CRUD operations for tenants and tenant provisioning
-"""
-
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from datetime import datetime
-import uuid
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Optional, List
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import os
-import httpx
-from sqlalchemy import create_engine, Column, String, DateTime, JSON
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.dialects.postgresql import UUID
+import requests
+from datetime import datetime
 
-# Database setup
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://keycloak:keycloak_password@postgres:5432/tenant_management"
-)
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Models
-class TenantDB(Base):
-    __tablename__ = "tenants"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255), nullable=False)
-    slug = Column(String(100), unique=True, nullable=False)
-    domain = Column(String(255))
-    settings = Column(JSON, default={})
-    subscription_plan = Column(String(50), default="free")
-    status = Column(String(20), default="active")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# Pydantic models
-class TenantCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    slug: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9-]+$")
-    domain: Optional[str] = None
-    subscription_plan: str = "free"
-
-class TenantUpdate(BaseModel):
-    name: Optional[str] = None
-    domain: Optional[str] = None
-    settings: Optional[dict] = None
-    subscription_plan: Optional[str] = None
-    status: Optional[str] = None
-
-class TenantResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    slug: str
-    domain: Optional[str]
-    settings: dict
-    subscription_plan: str
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-# FastAPI app
-app = FastAPI(
-    title="Self² AI - Tenant Management",
-    description="Multi-tenant SaaS tenant management API",
-    version="1.0.0"
-)
+app = FastAPI(title="Digital Twin Tenant Management API")
 
 # CORS
 app.add_middleware(
@@ -84,163 +20,416 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dependency
+# Database connection
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://keycloak:keycloak_password@postgres:5432/postgres")
+
 def get_db():
-    db = SessionLocal()
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     try:
-        yield db
+        yield conn
     finally:
-        db.close()
+        conn.close()
 
 # Keycloak configuration
 KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
-KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "digital-twin")
-QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333")
+KEYCLOAK_ADMIN_USER = os.getenv("KEYCLOAK_ADMIN_USER", "admin")
+KEYCLOAK_ADMIN_PASSWORD = os.getenv("KEYCLOAK_ADMIN_PASSWORD", "admin")
+KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "self2ai")
 
-async def provision_tenant_resources(tenant_slug: str):
-    """
-    Provision resources for a new tenant:
-    1. Create Qdrant collection
-    2. Create Keycloak group (optional)
-    """
-    collection_name = f"{tenant_slug}_knowledge"
-    
-    # Create Qdrant collection
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.put(
-                f"{QDRANT_URL}/collections/{collection_name}",
-                json={
-                    "vectors": {
-                        "size": 768,
-                        "distance": "Cosine"
-                    }
-                },
-                timeout=30.0
-            )
-            if response.status_code not in [200, 201, 409]:  # 409 = already exists
-                print(f"Warning: Qdrant collection creation returned {response.status_code}")
-        except Exception as e:
-            print(f"Error creating Qdrant collection: {e}")
-    
-    # Create indexes
-    indexes = ["tenantId", "personaId", "fileName", "s3Key"]
-    async with httpx.AsyncClient() as client:
-        for field in indexes:
-            try:
-                await client.put(
-                    f"{QDRANT_URL}/collections/{collection_name}/index",
-                    json={
-                        "field_name": field,
-                        "field_schema": "keyword"
-                    },
-                    timeout=30.0
-                )
-            except Exception as e:
-                print(f"Error creating index {field}: {e}")
+# Pydantic Models
+class TenantCreate(BaseModel):
+    tenant_name: str
+    company_name: str
+    industry: str
+    tone: str = "professional"
+    special_instructions: str = ""
+    admin_email: str
+    admin_password: str
 
-# Routes
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "tenant-service"}
+class TenantUpdate(BaseModel):
+    company_name: Optional[str] = None
+    industry: Optional[str] = None
+    tone: Optional[str] = None
+    special_instructions: Optional[str] = None
+    is_active: Optional[bool] = None
 
-@app.post("/tenants", response_model=TenantResponse, status_code=201)
-async def create_tenant(tenant: TenantCreate, db: Session = Depends(get_db)):
-    """Create a new tenant and provision resources"""
+class PersonaCreate(BaseModel):
+    persona_name: str
+    focus: str
+    style: str
+    additional_context: str = ""
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    persona: str
+
+# Keycloak Helper Functions
+def get_keycloak_token():
+    """Get Keycloak admin token"""
+    response = requests.post(
+        f"{KEYCLOAK_URL}/realms/master/protocol/openid-connect/token",
+        data={
+            "username": KEYCLOAK_ADMIN_USER,
+            "password": KEYCLOAK_ADMIN_PASSWORD,
+            "grant_type": "password",
+            "client_id": "admin-cli"
+        }
+    )
+    return response.json()["access_token"]
+
+def create_keycloak_user(tenant_id: str, email: str, password: str, first_name: str, last_name: str):
+    """Create user in Keycloak"""
+    token = get_keycloak_token()
     
-    # Check if slug already exists
-    existing = db.query(TenantDB).filter(TenantDB.slug == tenant.slug).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Tenant slug already exists")
+    # Create user
+    user_data = {
+        "username": email.split('@')[0] + f".{tenant_id}",
+        "email": email,
+        "firstName": first_name,
+        "lastName": last_name,
+        "enabled": True,
+        "emailVerified": True,
+        "credentials": [{
+            "type": "password",
+            "value": password,
+            "temporary": False
+        }]
+    }
     
-    # Create tenant
-    db_tenant = TenantDB(
-        name=tenant.name,
-        slug=tenant.slug,
-        domain=tenant.domain,
-        subscription_plan=tenant.subscription_plan
+    response = requests.post(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json=user_data
     )
     
-    db.add(db_tenant)
-    db.commit()
-    db.refresh(db_tenant)
+    return response.status_code == 201
+
+# Database initialization
+@app.on_event("startup")
+async def startup():
+    """Initialize database tables"""
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
     
-    # Provision resources asynchronously
+    # Tenants table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tenants (
+            id SERIAL PRIMARY KEY,
+            tenant_id VARCHAR(100) UNIQUE NOT NULL,
+            tenant_name VARCHAR(255) NOT NULL,
+            company_name VARCHAR(255) NOT NULL,
+            industry VARCHAR(100),
+            tone VARCHAR(100) DEFAULT 'professional',
+            special_instructions TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Personas table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS personas (
+            id SERIAL PRIMARY KEY,
+            tenant_id VARCHAR(100) REFERENCES tenants(tenant_id),
+            persona_name VARCHAR(50) NOT NULL,
+            focus TEXT,
+            style VARCHAR(100),
+            additional_context TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, persona_name)
+        )
+    """)
+    
+    # Users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tenant_users (
+            id SERIAL PRIMARY KEY,
+            tenant_id VARCHAR(100) REFERENCES tenants(tenant_id),
+            email VARCHAR(255) UNIQUE NOT NULL,
+            persona VARCHAR(50),
+            keycloak_user_id VARCHAR(255),
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Prompt templates table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_templates (
+            id SERIAL PRIMARY KEY,
+            tenant_id VARCHAR(100) REFERENCES tenants(tenant_id),
+            template_type VARCHAR(50) DEFAULT 'system',
+            template_content TEXT NOT NULL,
+            version INTEGER DEFAULT 1,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+# API Endpoints
+
+@app.get("/")
+async def root():
+    return {"message": "Digital Twin Tenant Management API", "version": "1.0"}
+
+@app.get("/admin")
+async def admin_portal():
+    """Serve admin portal HTML"""
+    return FileResponse("/app/admin-portal.html")
+
+# Tenants
+@app.post("/api/tenants")
+async def create_tenant(tenant: TenantCreate, db = Depends(get_db)):
+    """Create new tenant with admin user in Keycloak"""
+    cursor = db.cursor()
+    
+    # Generate tenant_id
+    tenant_id = f"tenant-{tenant.tenant_name.lower().replace(' ', '')}"
+    
     try:
-        await provision_tenant_resources(tenant.slug)
+        # Insert tenant
+        cursor.execute("""
+            INSERT INTO tenants (tenant_id, tenant_name, company_name, industry, tone, special_instructions)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (tenant_id, tenant.tenant_name, tenant.company_name, tenant.industry, tenant.tone, tenant.special_instructions))
+        
+        tenant_db_id = cursor.fetchone()['id']
+        
+        # Create admin user in Keycloak
+        keycloak_success = create_keycloak_user(
+            tenant_id,
+            tenant.admin_email,
+            tenant.admin_password,
+            "Admin",
+            tenant.tenant_name
+        )
+        
+        if not keycloak_success:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to create Keycloak user")
+        
+        # Add admin user to database
+        cursor.execute("""
+            INSERT INTO tenant_users (tenant_id, email, persona)
+            VALUES (%s, %s, %s)
+        """, (tenant_id, tenant.admin_email, "CEO"))
+        
+        # Create default personas
+        default_personas = [
+            ("CEO", "strategic decisions", "executive summary", "Emphasize business impact"),
+            ("manager", "operational metrics", "detailed and actionable", "Focus on execution"),
+            ("analyst", "data analysis", "technical and precise", "Provide detailed analytics")
+        ]
+        
+        for persona_name, focus, style, context in default_personas:
+            cursor.execute("""
+                INSERT INTO personas (tenant_id, persona_name, focus, style, additional_context)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (tenant_id, persona_name, focus, style, context))
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "tenant_id": tenant_id,
+            "message": f"Tenant '{tenant.tenant_name}' created successfully",
+            "admin_user": tenant.admin_email,
+            "login_url": "http://localhost:3000"
+        }
+        
     except Exception as e:
-        print(f"Error provisioning resources: {e}")
-        # Don't fail the request if provisioning fails
-    
-    return db_tenant
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        cursor.close()
 
-@app.get("/tenants", response_model=List[TenantResponse])
-async def list_tenants(
-    skip: int = 0,
-    limit: int = 100,
-    status: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
+@app.get("/api/tenants")
+async def list_tenants(db = Depends(get_db)):
     """List all tenants"""
-    query = db.query(TenantDB)
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM tenants ORDER BY created_at DESC")
+    tenants = cursor.fetchall()
+    cursor.close()
+    return {"tenants": tenants}
+
+@app.get("/api/tenants/{tenant_id}")
+async def get_tenant(tenant_id: str, db = Depends(get_db)):
+    """Get tenant details with personas and users"""
+    cursor = db.cursor()
     
-    if status:
-        query = query.filter(TenantDB.status == status)
+    # Get tenant
+    cursor.execute("SELECT * FROM tenants WHERE tenant_id = %s", (tenant_id,))
+    tenant = cursor.fetchone()
     
-    tenants = query.offset(skip).limit(limit).all()
-    return tenants
-
-@app.get("/tenants/{tenant_id}", response_model=TenantResponse)
-async def get_tenant(tenant_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Get tenant by ID"""
-    tenant = db.query(TenantDB).filter(TenantDB.id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
-
-@app.get("/tenants/slug/{slug}", response_model=TenantResponse)
-async def get_tenant_by_slug(slug: str, db: Session = Depends(get_db)):
-    """Get tenant by slug"""
-    tenant = db.query(TenantDB).filter(TenantDB.slug == slug).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
-
-@app.patch("/tenants/{tenant_id}", response_model=TenantResponse)
-async def update_tenant(
-    tenant_id: uuid.UUID,
-    tenant_update: TenantUpdate,
-    db: Session = Depends(get_db)
-):
-    """Update tenant"""
-    tenant = db.query(TenantDB).filter(TenantDB.id == tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     
-    update_data = tenant_update.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(tenant, field, value)
+    # Get personas
+    cursor.execute("SELECT * FROM personas WHERE tenant_id = %s", (tenant_id,))
+    personas = cursor.fetchall()
     
-    tenant.updated_at = datetime.utcnow()
+    # Get users
+    cursor.execute("SELECT email, persona, is_active, created_at FROM tenant_users WHERE tenant_id = %s", (tenant_id,))
+    users = cursor.fetchall()
+    
+    cursor.close()
+    
+    return {
+        "tenant": tenant,
+        "personas": personas,
+        "users": users
+    }
+
+@app.put("/api/tenants/{tenant_id}")
+async def update_tenant(tenant_id: str, tenant: TenantUpdate, db = Depends(get_db)):
+    """Update tenant configuration"""
+    cursor = db.cursor()
+    
+    updates = []
+    params = []
+    
+    if tenant.company_name:
+        updates.append("company_name = %s")
+        params.append(tenant.company_name)
+    if tenant.industry:
+        updates.append("industry = %s")
+        params.append(tenant.industry)
+    if tenant.tone:
+        updates.append("tone = %s")
+        params.append(tenant.tone)
+    if tenant.special_instructions is not None:
+        updates.append("special_instructions = %s")
+        params.append(tenant.special_instructions)
+    if tenant.is_active is not None:
+        updates.append("is_active = %s")
+        params.append(tenant.is_active)
+    
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    updates.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(tenant_id)
+    
+    query = f"UPDATE tenants SET {', '.join(updates)} WHERE tenant_id = %s"
+    cursor.execute(query, params)
     db.commit()
-    db.refresh(tenant)
+    cursor.close()
     
-    return tenant
+    return {"success": True, "message": "Tenant updated"}
 
-@app.delete("/tenants/{tenant_id}")
-async def delete_tenant(tenant_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Delete (deactivate) tenant"""
-    tenant = db.query(TenantDB).filter(TenantDB.id == tenant_id).first()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    
-    # Soft delete - set status to inactive
-    tenant.status = "inactive"
-    tenant.updated_at = datetime.utcnow()
+@app.delete("/api/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: str, db = Depends(get_db)):
+    """Soft delete tenant (set inactive)"""
+    cursor = db.cursor()
+    cursor.execute("UPDATE tenants SET is_active = FALSE WHERE tenant_id = %s", (tenant_id,))
     db.commit()
+    cursor.close()
+    return {"success": True, "message": "Tenant deactivated"}
+
+# Users
+@app.post("/api/tenants/{tenant_id}/users")
+async def create_user(tenant_id: str, user: UserCreate, db = Depends(get_db)):
+    """Create user for tenant"""
+    cursor = db.cursor()
     
-    return {"message": "Tenant deactivated successfully"}
+    try:
+        # Create in Keycloak
+        keycloak_success = create_keycloak_user(
+            tenant_id,
+            user.email,
+            user.password,
+            user.first_name,
+            user.last_name
+        )
+        
+        if not keycloak_success:
+            raise HTTPException(status_code=500, detail="Failed to create Keycloak user")
+        
+        # Add to database
+        cursor.execute("""
+            INSERT INTO tenant_users (tenant_id, email, persona)
+            VALUES (%s, %s, %s)
+        """, (tenant_id, user.email, user.persona))
+        
+        db.commit()
+        
+        return {"success": True, "email": user.email}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        cursor.close()
+
+# Prompt Configuration
+@app.get("/api/prompts/{tenant_id}")
+async def get_tenant_prompt_config(tenant_id: str, db = Depends(get_db)):
+    """Get prompt configuration for N8N workflow"""
+    cursor = db.cursor()
+    
+    # Get tenant config
+    cursor.execute("SELECT * FROM tenants WHERE tenant_id = %s AND is_active = TRUE", (tenant_id,))
+    tenant = cursor.fetchone()
+    
+    if not tenant:
+        cursor.close()
+        return {"error": "Tenant not found or inactive"}
+    
+    # Get personas
+    cursor.execute("SELECT * FROM personas WHERE tenant_id = %s", (tenant_id,))
+    personas = cursor.fetchall()
+    
+    cursor.close()
+    
+    # Build config for N8N
+    return {
+        "tenantId": tenant_id,
+        "companyName": tenant['company_name'],
+        "industry": tenant['industry'],
+        "tone": tenant['tone'],
+        "specialInstructions": tenant['special_instructions'],
+        "personas": {p['persona_name']: {
+            "focus": p['focus'],
+            "style": p['style'],
+            "additionalContext": p['additional_context']
+        } for p in personas}
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/api/user/lookup")
+async def get_user_by_email(email: str, db = Depends(get_db)):
+    """Get user's tenant and persona by email - for OpenWebUI and file-sync"""
+    cursor = db.cursor()
+    
+    cursor.execute("""
+        SELECT tu.tenant_id, tu.persona, t.company_name
+        FROM tenant_users tu
+        JOIN tenants t ON tu.tenant_id = t.tenant_id
+        WHERE tu.email = %s AND tu.is_active = TRUE AND t.is_active = TRUE
+    """, (email,))
+    
+    user = cursor.fetchone()
+    cursor.close()
+    
+    if not user:
+        return {"found": False, "tenantId": "default", "personaId": "user", "email": email}
+    
+    return {
+        "found": True,
+        "tenantId": user['tenant_id'],
+        "personaId": user['persona'],
+        "companyName": user['company_name'],
+        "email": email
+    }

@@ -1,0 +1,19 @@
+{
+  "queries": [
+    {
+      "message": "What was our Q4 revenue?",
+      "tenantId": "tenant-acme",
+      "personaId": "CEO"
+    },
+    {
+      "message": "How many projects did we complete?",
+      "tenantId": "tenant-globex",
+      "personaId": "Manager"
+    },
+    {
+      "message": "What was our customer satisfaction score?",
+      "tenantId": "tenant-acme",
+      "personaId": "CEO"
+    }
+  ]
+}
