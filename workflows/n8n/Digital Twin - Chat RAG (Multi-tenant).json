@@ -8,7 +8,7 @@
         "responseMode": "lastNode",
         "options": {}
       },
-      "id": "23e4c70d-288f-4a02-b504-ed3399c5de0a",
+      "id": "ea6f5995-83c6-4c38-adfb-a8cf6b86acd1",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -22,7 +22,7 @@
       "parameters": {
         "jsCode": "// Extract Query + Tenant/Persona metadata\nconst item = $input.first();\n\nif (!item || !item.json) {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\nconst data = item.json;\nlet message = '';\nconst fields = ['message', 'query', 'text', 'content', 'prompt', 'input', 'question'];\n\nfor (const field of fields) {\n  if (data[field] && typeof data[field] === 'string') {\n    message = data[field];\n    break;\n  }\n}\n\nif (!message && data.body) {\n  for (const field of fields) {\n    if (data.body[field] && typeof data.body[field] === 'string') {\n      message = data.body[field];\n      break;\n    }\n  }\n}\n\nif (!message || typeof message !== 'string') {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\nmessage = message.trim();\nif (message === '' || message.startsWith('###')) {\n  return [{ json: { skip: true, response: \"\" } }];\n}\n\n// NEW: Extract tenant/persona\nconst tenantId = data.tenantId || data.body?.tenantId || data.metadata?.tenantId || null;\nconst personaId = data.personaId || data.body?.personaId || data.metadata?.personaId || null;\n\nreturn [{\n  json: {\n    skip: false,\n    query: message,\n    tenantId: tenantId,\n    personaId: personaId\n  }\n}];"
       },
-      "id": "6fb80dff-efb2-41a9-ac6a-5daede641e14",
+      "id": "a38eecb5-978a-4b19-a24d-142348d2cc94",
       "name": "Extract Query",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -41,7 +41,7 @@
           ]
         }
       },
-      "id": "83432ead-52a8-4c6f-9505-54abf29037f5",
+      "id": "0b8291bd-0ada-4973-abd1-65b20f372cbb",
       "name": "Check Skip",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
@@ -65,7 +65,7 @@
           }
         }
       },
-      "id": "96e13aa9-d246-4271-a82f-1d9ce78c5219",
+      "id": "9ca1cbf3-94f6-44ec-900c-277db7487ad5",
       "name": "Embed Query",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -76,9 +76,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build Search with Tenant/Persona Filtering\nconst item = $input.first();\nconst embedResponse = item.json;\nconst extractNode = $('Extract Query').first();\nconst query = extractNode.json.query;\nconst tenantId = extractNode.json.tenantId;\nconst personaId = extractNode.json.personaId;\n\nlet embedding = embedResponse.embedding;\n\nif (!embedding || !Array.isArray(embedding) || embedding.length === 0) {\n  return [{ json: { error: 'No embedding' } }];\n}\n\n// Build filter\nconst filter = { must: [] };\nif (tenantId) {\n  filter.must.push({ key: 'tenantId', match: { value: tenantId } });\n}\nif (personaId) {\n  filter.must.push({ key: 'personaId', match: { value: personaId } });\n}\n\nreturn [{\n  json: {\n    vector: embedding,\n    filter: filter.must.length > 0 ? filter : undefined,\n    limit: 5,\n    with_payload: true,\n    with_vector: false,\n    query,\n    tenantId,\n    personaId\n  }\n}];"
+        "jsCode": "// Build Search with Tenant/Persona Filtering\nconst item = $input.first();\nconst embedResponse = item.json;\nconst extractNode = $('Extract Query').first();\nconst query = extractNode.json.query;\nconst tenantId = extractNode.json.tenantId;\nconst personaId = extractNode.json.personaId;\n\nlet embedding = embedResponse.embedding;\n\nif (!embedding || !Array.isArray(embedding) || embedding.length === 0) {\n  return [{ json: { error: 'No embedding' } }];\n}\n\n// Build filter\nconst filter = { must: [] };\nif (tenantId) {\n  filter.must.push({ key: 'tenantId', match: { value: tenantId } });\n}\nif (personaId) {\n  filter.must.push({ key: 'personaId', match: { value: personaId } });\n}\n\n// Build collection name from tenantId\nconst collectionName = tenantId ? `${tenantId}_knowledge` : 'digital_twin_knowledge';\n\nreturn [{\n  json: {\n    vector: embedding,\n    filter: filter.must.length > 0 ? filter : undefined,\n    limit: 5,\n    with_payload: true,\n    with_vector: false,\n    query,\n    tenantId,\n    personaId,\n    collectionName\n  }\n}];"
       },
-      "id": "277b1473-8926-4f03-b731-f009e84ac856",
+      "id": "8f38cb8a-501c-4080-8b3d-8bee347ab760",
       "name": "Build Search",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -90,7 +90,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://qdrant:6333/collections/digital_twin_knowledge/points/search",
+        "url": "=http://qdrant:6333/collections/{{$json.collectionName}}/points/search",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ $json }}",
@@ -103,7 +103,7 @@
           }
         }
       },
-      "id": "850a59a6-8806-41d6-aae4-e707e5741a26",
+      "id": "2d3a97e4-1ec1-4bb0-bba4-be27cf7e4a4c",
       "name": "Search Qdrant",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -114,9 +114,61 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first();\nconst searchResponse = item.json;\nconst results = searchResponse.result || [];\nconst buildNode = $('Build Search').first();\nconst query = buildNode.json.query;\n\nconst systemMessage = `You are an AI assistant with access to the user's private knowledge base.\\n\\nIMPORTANT INSTRUCTIONS:\\n- Use ONLY the context provided below to answer questions\\n- The context contains the user's own confidential documents\\n- You MUST use this information to answer their questions\\n- Be direct and specific with your answers\\n- If the answer is in the context, state it clearly\\n- Do NOT refuse to answer based on 'confidentiality' - this is the user's own data`;\n\nif (results.length === 0) {\n  return [{ json: { prompt: `${systemMessage}\\n\\nQuestion: ${query}\\n\\nAnswer:`, hasContext: false, contextCount: 0 } }];\n}\n\nconst topResults = results.slice(0, 2);\nconst contexts = topResults.map(r => (r.payload?.text || '').substring(0, 1000));\nconst contextText = contexts.join('\\n\\n');\nconst ragPrompt = `${systemMessage}\\n\\nContext:\\n${contextText}\\n\\nQuestion: ${query}\\n\\nAnswer:`;\n\nreturn [{ json: { prompt: ragPrompt, hasContext: true, contextCount: topResults.length } }];"
+        "jsCode": "// MCP Layer: Intelligent Model Selection\nconst item = $input.first();\n\n// Get query from Extract Query node (earlier in workflow)\nconst extractNode = $('Extract Query').first();\nconst query = (extractNode?.json?.query || item.json?.query || '').toLowerCase();\nconst tenantId = extractNode?.json?.tenantId || item.json?.tenantId;\n\n// Model capabilities\nconst models = {\n    'llama3.2:1b': {\n        speed: 'fast',        // 3-5 seconds\n        reasoning: 'basic',\n        memory: 'low',\n        useCase: 'Simple factual queries, inventory lookups'\n    },\n    'llama3.2:latest': {\n        speed: 'medium',      // 20-25 seconds\n        reasoning: 'good',\n        memory: 'medium',\n        useCase: 'Complex comparisons, recommendations'\n    },\n    'phi3:mini': {\n        speed: 'slow',        // 30+ seconds\n        reasoning: 'excellent',\n        memory: 'medium',\n        useCase: 'Deep analysis, mathematical reasoning'\n    }\n};\n\n// Query analysis patterns\nconst queryPatterns = {\n    // Simple - Fast model (llama3.2:1b)\n    simple: {\n        keywords: ['what', 'list', 'show', 'price', 'cost', 'stock', 'available', 'have', 'tell me'],\n        patterns: [\n            /what (is|are) (the )?price/i,\n            /how much (does|do|is|are)/i,\n            /do you have/i,\n            /what .* available/i,\n            /show me/i,\n            /list (all|the)/i\n        ]\n    },\n\n    // Medium - Medium model (llama3.2:latest)\n    medium: {\n        keywords: ['compare', 'difference', 'recommend', 'suggest', 'better', 'best', 'versus', 'vs'],\n        patterns: [\n            /compare .* (and|with|to)/i,\n            /what (is|are) (the )?difference/i,\n            /which (is|are) better/i,\n            /recommend .* for/i,\n            /should i (buy|get|choose)/i\n        ]\n    },\n\n    // Complex - Best model (phi3:mini)\n    complex: {\n        keywords: ['calculate', 'compute', 'analyze', 'optimize', 'why', 'explain how', 'reason'],\n        patterns: [\n            /calculate (total|cost|savings)/i,\n            /how many .* (needed|required)/i,\n            /optimize .* for/i,\n            /explain (why|how)/i,\n            /what if .* (change|increase|decrease)/i\n        ]\n    }\n};\n\n// Scoring function\nfunction analyzeQuery(query) {\n    let scores = { simple: 0, medium: 0, complex: 0 };\n\n    // Check keywords\n    for (const [level, data] of Object.entries(queryPatterns)) {\n        for (const keyword of data.keywords) {\n            if (query.includes(keyword)) {\n                scores[level] += 1;\n            }\n        }\n\n        // Check regex patterns (worth more)\n        for (const pattern of data.patterns) {\n            if (pattern.test(query)) {\n                scores[level] += 2;\n            }\n        }\n    }\n\n    return scores;\n}\n\n// Analyze query\nconst scores = analyzeQuery(query);\nconsole.log('Query analysis scores:', scores);\n\n// Select model based on scores\nlet selectedModel = 'llama3.2:1b'; // default to fastest\nlet reason = 'Default fast model';\n\nif (scores.complex > 0) {\n    selectedModel = 'phi3:mini';\n    reason = 'Complex query detected - using best reasoning model';\n} else if (scores.medium > scores.simple && scores.medium > 0) {\n    selectedModel = 'llama3.2:latest';\n    reason = 'Medium complexity - using balanced model';\n} else {\n    selectedModel = 'llama3.2:1b';\n    reason = 'Simple query - using fast model';\n}\n\n// Query length heuristic\nconst wordCount = query.split(' ').length;\nif (wordCount > 20 && selectedModel === 'llama3.2:1b') {\n    selectedModel = 'llama3.2:latest';\n    reason = 'Long query detected - upgraded to medium model';\n}\n\nconsole.log(`Selected model: ${selectedModel}`);\nconsole.log(`Reason: ${reason}`);\nconsole.log(`Model info:`, models[selectedModel]);\n\nreturn [{\n    json: {\n        ...item.json,\n        selectedModel: selectedModel,\n        modelSelectionReason: reason,\n        modelCapabilities: models[selectedModel],\n        queryScores: scores\n    }\n}];\n"
       },
-      "id": "4e7b87e9-ecb7-4ae6-8fa2-4755556c1499",
+      "id": "8db525a6-1589-4c9c-8733-b2b2ba6207f5",
+      "name": "MCP Model Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MCP Layer: Intelligent Model Selection\nconst item = $input.first();\n\n// Get query from Extract Query node (earlier in workflow)\nconst extractNode = $('Extract Query').first();\nconst query = (extractNode?.json?.query || item.json?.query || '').toLowerCase();\nconst tenantId = extractNode?.json?.tenantId || item.json?.tenantId;\n\n// Model capabilities\nconst models = {\n    'llama3.2:1b': {\n        speed: 'fast',        // 3-5 seconds\n        reasoning: 'basic',\n        memory: 'low',\n        useCase: 'Simple factual queries, inventory lookups'\n    },\n    'llama3.2:latest': {\n        speed: 'medium',      // 20-25 seconds\n        reasoning: 'good',\n        memory: 'medium',\n        useCase: 'Complex comparisons, recommendations'\n    },\n    'phi3:mini': {\n        speed: 'slow',        // 30+ seconds\n        reasoning: 'excellent',\n        memory: 'medium',\n        useCase: 'Deep analysis, mathematical reasoning'\n    }\n};\n\n// Query analysis patterns\nconst queryPatterns = {\n    // Simple - Fast model (llama3.2:1b)\n    simple: {\n        keywords: ['what', 'list', 'show', 'price', 'cost', 'stock', 'available', 'have', 'tell me'],\n        patterns: [\n            /what (is|are) (the )?price/i,\n            /how much (does|do|is|are)/i,\n            /do you have/i,\n            /what .* available/i,\n            /show me/i,\n            /list (all|the)/i\n        ]\n    },\n\n    // Medium - Medium model (llama3.2:latest)\n    medium: {\n        keywords: ['compare', 'difference', 'recommend', 'suggest', 'better', 'best', 'versus', 'vs'],\n        patterns: [\n            /compare .* (and|with|to)/i,\n            /what (is|are) (the )?difference/i,\n            /which (is|are) better/i,\n            /recommend .* for/i,\n            /should i (buy|get|choose)/i\n        ]\n    },\n\n    // Complex - Best model (phi3:mini)\n    complex: {\n        keywords: ['calculate', 'compute', 'analyze', 'optimize', 'why', 'explain how', 'reason'],\n        patterns: [\n            /calculate (total|cost|savings)/i,\n            /how many .* (needed|required)/i,\n            /optimize .* for/i,\n            /explain (why|how)/i,\n            /what if .* (change|increase|decrease)/i\n        ]\n    }\n};\n\n// Scoring function\nfunction analyzeQuery(query) {\n    let scores = { simple: 0, medium: 0, complex: 0 };\n\n    // Check keywords\n    for (const [level, data] of Object.entries(queryPatterns)) {\n        for (const keyword of data.keywords) {\n            if (query.includes(keyword)) {\n                scores[level] += 1;\n            }\n        }\n\n        // Check regex patterns (worth more)\n        for (const pattern of data.patterns) {\n            if (pattern.test(query)) {\n                scores[level] += 2;\n            }\n        }\n    }\n\n    return scores;\n}\n\n// Analyze query (if empty, use default)\nif (!query || query.trim() === '') {\n    console.log('Empty query - using default fast model');\n    selectedModel = 'llama3.2:1b';\n    reason = 'Empty query - using default fast model';\n} else {\n    const scores = analyzeQuery(query);\n    console.log('Query analysis scores:', scores);\n\n    // Select model based on scores\n    selectedModel = 'llama3.2:1b'; // default to fastest\n    reason = 'Default fast model';\n\n    if (scores.complex > 0) {\n        selectedModel = 'phi3:mini';\n        reason = 'Complex query detected - using best reasoning model';\n    } else if (scores.medium > scores.simple && scores.medium > 0) {\n        selectedModel = 'llama3.2:latest';\n        reason = 'Medium complexity - using balanced model';\n    } else {\n        selectedModel = 'llama3.2:1b';\n        reason = 'Simple query - using fast model';\n    }\n\n    // Query length heuristic\n    const wordCount = query.split(' ').length;\n    if (wordCount > 20 && selectedModel === 'llama3.2:1b') {\n        selectedModel = 'llama3.2:latest';\n        reason = 'Long query detected - upgraded to medium model';\n    }\n}\n\nconsole.log(`Selected model: ${selectedModel}`);\nconsole.log(`Reason: ${reason}`);\nconsole.log(`Model info:`, models[selectedModel]);\n\nreturn [{\n    json: {\n        ...item.json,\n        selectedModel: selectedModel,\n        modelSelectionReason: reason,\n        modelCapabilities: models[selectedModel],\n        queryScores: scores\n    }\n}];\n"
+      },
+      "id": "mcp-model-router-node",
+      "name": "MCP Model Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MCP Layer: Intelligent Model Selection\nconst item = $input.first();\n\n// Get query from Extract Query node (earlier in workflow)\nconst extractNode = $('Extract Query').first();\nconst query = (extractNode?.json?.query || item.json?.query || '').toLowerCase();\nconst tenantId = extractNode?.json?.tenantId || item.json?.tenantId;\n\n// Model capabilities\nconst models = {\n    'llama3.2:1b': {\n        speed: 'fast',        // 3-5 seconds\n        reasoning: 'basic',\n        memory: 'low',\n        useCase: 'Simple factual queries, inventory lookups'\n    },\n    'llama3.2:latest': {\n        speed: 'medium',      // 20-25 seconds\n        reasoning: 'good',\n        memory: 'medium',\n        useCase: 'Complex comparisons, recommendations'\n    },\n    'phi3:mini': {\n        speed: 'slow',        // 30+ seconds\n        reasoning: 'excellent',\n        memory: 'medium',\n        useCase: 'Deep analysis, mathematical reasoning'\n    }\n};\n\n// Query analysis patterns\nconst queryPatterns = {\n    // Simple - Fast model (llama3.2:1b)\n    simple: {\n        keywords: ['what', 'list', 'show', 'price', 'cost', 'stock', 'available', 'have', 'tell me'],\n        patterns: [\n            /what (is|are) (the )?price/i,\n            /how much (does|do|is|are)/i,\n            /do you have/i,\n            /what .* available/i,\n            /show me/i,\n            /list (all|the)/i\n        ]\n    },\n\n    // Medium - Medium model (llama3.2:latest)\n    medium: {\n        keywords: ['compare', 'difference', 'recommend', 'suggest', 'better', 'best', 'versus', 'vs'],\n        patterns: [\n            /compare .* (and|with|to)/i,\n            /what (is|are) (the )?difference/i,\n            /which (is|are) better/i,\n            /recommend .* for/i,\n            /should i (buy|get|choose)/i\n        ]\n    },\n\n    // Complex - Best model (phi3:mini)\n    complex: {\n        keywords: ['calculate', 'compute', 'analyze', 'optimize', 'why', 'explain how', 'reason'],\n        patterns: [\n            /calculate (total|cost|savings)/i,\n            /how many .* (needed|required)/i,\n            /optimize .* for/i,\n            /explain (why|how)/i,\n            /what if .* (change|increase|decrease)/i\n        ]\n    }\n};\n\n// Scoring function\nfunction analyzeQuery(query) {\n    let scores = { simple: 0, medium: 0, complex: 0 };\n\n    // Check keywords\n    for (const [level, data] of Object.entries(queryPatterns)) {\n        for (const keyword of data.keywords) {\n            if (query.includes(keyword)) {\n                scores[level] += 1;\n            }\n        }\n\n        // Check regex patterns (worth more)\n        for (const pattern of data.patterns) {\n            if (pattern.test(query)) {\n                scores[level] += 2;\n            }\n        }\n    }\n\n    return scores;\n}\n\n// Declare variables\nlet selectedModel = 'llama3.2:1b';\nlet reason = 'Default fast model';\nlet scores = { simple: 0, medium: 0, complex: 0 };\n\n// Analyze query (if empty, use default)\nif (!query || query.trim() === '') {\n    console.log('Empty query - using default fast model');\n    selectedModel = 'llama3.2:1b';\n    reason = 'Empty query - using default fast model';\n} else {\n    scores = analyzeQuery(query);\n    console.log('Query analysis scores:', scores);\n\n    // Select model based on scores\n    if (scores.complex > 0) {\n        selectedModel = 'phi3:mini';\n        reason = 'Complex query detected - using best reasoning model';\n    } else if (scores.medium > scores.simple && scores.medium > 0) {\n        selectedModel = 'llama3.2:latest';\n        reason = 'Medium complexity - using balanced model';\n    } else {\n        selectedModel = 'llama3.2:1b';\n        reason = 'Simple query - using fast model';\n    }\n\n    // Query length heuristic\n    const wordCount = query.split(' ').length;\n    if (wordCount > 20 && selectedModel === 'llama3.2:1b') {\n        selectedModel = 'llama3.2:latest';\n        reason = 'Long query detected - upgraded to medium model';\n    }\n}\n\nconsole.log(`Selected model: ${selectedModel}`);\nconsole.log(`Reason: ${reason}`);\nconsole.log(`Model info:`, models[selectedModel]);\n\nreturn [{\n    json: {\n        ...item.json,\n        selectedModel: selectedModel,\n        modelSelectionReason: reason,\n        modelCapabilities: models[selectedModel],\n        queryScores: scores\n    }\n}];\n"
+      },
+      "id": "mcp-model-router-node",
+      "name": "MCP Model Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MCP Layer: Intelligent Model Selection\nconst item = $input.first();\n\n// Get query from Extract Query node (earlier in workflow)\nconst extractNode = $('Extract Query').first();\nconst query = (extractNode?.json?.query || item.json?.query || '').toLowerCase();\nconst tenantId = extractNode?.json?.tenantId || item.json?.tenantId;\n\n// Model capabilities\nconst models = {\n    'llama3.2:1b': {\n        speed: 'fast',        // 3-5 seconds\n        reasoning: 'basic',\n        memory: 'low',\n        useCase: 'Simple factual queries, inventory lookups'\n    },\n    'llama3.2:latest': {\n        speed: 'medium',      // 20-25 seconds\n        reasoning: 'good',\n        memory: 'medium',\n        useCase: 'Complex comparisons, recommendations'\n    },\n    'phi3:mini': {\n        speed: 'slow',        // 30+ seconds\n        reasoning: 'excellent',\n        memory: 'medium',\n        useCase: 'Deep analysis, mathematical reasoning'\n    }\n};\n\n// Query analysis patterns\nconst queryPatterns = {\n    // Simple - Fast model (llama3.2:1b)\n    simple: {\n        keywords: ['what', 'list', 'show', 'price', 'cost', 'stock', 'available', 'have', 'tell me'],\n        patterns: [\n            /what (is|are) (the )?price/i,\n            /how much (does|do|is|are)/i,\n            /do you have/i,\n            /what .* available/i,\n            /show me/i,\n            /list (all|the)/i\n        ]\n    },\n\n    // Medium - Medium model (llama3.2:latest)\n    medium: {\n        keywords: ['compare', 'difference', 'recommend', 'suggest', 'better', 'best', 'versus', 'vs'],\n        patterns: [\n            /compare .* (and|with|to)/i,\n            /what (is|are) (the )?difference/i,\n            /which (is|are) better/i,\n            /recommend .* for/i,\n            /should i (buy|get|choose)/i\n        ]\n    },\n\n    // Complex - Best model (phi3:mini)\n    complex: {\n        keywords: ['calculate', 'compute', 'analyze', 'optimize', 'why', 'explain how', 'reason'],\n        patterns: [\n            /calculate (total|cost|savings)/i,\n            /how many .* (needed|required)/i,\n            /optimize .* for/i,\n            /explain (why|how)/i,\n            /what if .* (change|increase|decrease)/i\n        ]\n    }\n};\n\n// Scoring function\nfunction analyzeQuery(query) {\n    let scores = { simple: 0, medium: 0, complex: 0 };\n\n    // Check keywords\n    for (const [level, data] of Object.entries(queryPatterns)) {\n        for (const keyword of data.keywords) {\n            if (query.includes(keyword)) {\n                scores[level] += 1;\n            }\n        }\n\n        // Check regex patterns (worth more)\n        for (const pattern of data.patterns) {\n            if (pattern.test(query)) {\n                scores[level] += 2;\n            }\n        }\n    }\n\n    return scores;\n}\n\n// Declare variables\nlet selectedModel = 'llama3.2:1b';\nlet reason = 'Default fast model';\nlet scores = { simple: 0, medium: 0, complex: 0 };\n\n// Analyze query (if empty, use default)\nif (!query || query.trim() === '') {\n    console.log('Empty query - using default fast model');\n    selectedModel = 'llama3.2:1b';\n    reason = 'Empty query - using default fast model';\n} else {\n    scores = analyzeQuery(query);\n    console.log('Query analysis scores:', scores);\n\n    // Select model based on scores\n    // phi3 only for VERY complex queries (score >= 3)\n    if (scores.complex >= 3) {\n        selectedModel = 'phi3:mini';\n        reason = 'Very complex query detected - using best reasoning model';\n    } else if (scores.complex > 0 || (scores.medium > scores.simple && scores.medium > 0)) {\n        // Use llama3.2:3b for moderately complex queries\n        selectedModel = 'llama3.2:latest';\n        reason = scores.complex > 0 ? 'Complex query - using 3B model' : 'Medium complexity - using balanced model';\n    } else {\n        selectedModel = 'llama3.2:1b';\n        reason = 'Simple query - using fast model';\n    }\n\n    // Query length heuristic\n    const wordCount = query.split(' ').length;\n    if (wordCount > 20 && selectedModel === 'llama3.2:1b') {\n        selectedModel = 'llama3.2:latest';\n        reason = 'Long query detected - upgraded to medium model';\n    }\n}\n\nconsole.log(`Selected model: ${selectedModel}`);\nconsole.log(`Reason: ${reason}`);\nconsole.log(`Model info:`, models[selectedModel]);\n\nreturn [{\n    json: {\n        ...item.json,\n        selectedModel: selectedModel,\n        modelSelectionReason: reason,\n        modelCapabilities: models[selectedModel],\n        queryScores: scores\n    }\n}];\n"
+      },
+      "id": "mcp-model-router-node",
+      "name": "MCP Model Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Updated N8N Build Prompt Node - Dynamic Tenant Prompts from API\nconst item = $input.first();\nconst searchResponse = item.json;\nconst results = searchResponse.result || [];\nconst buildNode = $('Build Search').first();\nconst query = buildNode.json.query;\nconst tenantId = buildNode.json.tenantId || 'default';\nconst personaId = buildNode.json.personaId || 'user';\n\n// Reranking - top 3 results\nconst rerankedResults = results\n    .sort((a, b) => (b.score || 0) - (a.score || 0))\n    .slice(0, 3);\n\n// Load tenant-specific prompts from API\nlet tenantConfig = null;\nlet systemMessage = '';\n\ntry {\n    const configResponse = await this.helpers.request({\n        method: 'GET',\n        url: `http://tenant-service-dt:8000/api/prompts/${tenantId}`,\n        json: true\n    });\n\n    tenantConfig = configResponse;\n\n    // Get persona-specific config\n    const personaConfig = tenantConfig.personas[personaId] || {};\n\n    // Build dynamic system prompt\n    systemMessage = `You are an AI assistant for ${tenantConfig.companyName}, a ${tenantConfig.industry} company.\n\nUse ${tenantConfig.tone} tone in your responses.\n\n${tenantConfig.specialInstructions}\n\nFor ${personaId} persona: ${personaConfig.additionalContext || 'Provide helpful information.'}\n\nIMPORTANT: Use ONLY the context provided below. Be specific with numbers and data.`;\n\n    // Add few-shot examples\n    const fewShotExamples = `\n\nExamples:\nQ: What is our revenue?\nA: ${tenantConfig.companyName}'s total revenue for the latest period was [specific number from context].\n\nQ: How many employees?\nA: ${tenantConfig.companyName} has [specific number from context] employees.\n\nQ: What are our main products?\nA: [Based on context provided]\n`;\n\n    systemMessage += fewShotExamples;\n\n} catch (error) {\n    console.log(`Failed to load tenant config for ${tenantId}, using default`);\n\n    // Fallback to default prompt\n    systemMessage = `You are an AI assistant. Use ONLY the context provided below. Be direct and specific with data.\n\nExamples:\nQ: What is our revenue?\nA: Based on the documents, total revenue was [specific amount].\n`;\n}\n\n// If no context, return early\nif (rerankedResults.length === 0) {\n    return [{\n        json: {\n            prompt: `${systemMessage}\\n\\nQuestion: ${query}\\n\\nAnswer: I don't have relevant information in the knowledge base to answer this question.`,\n            hasContext: false,\n            tenantId: tenantId,\n            personaId: personaId\n        }\n    }];\n}\n\n// Build context from top results (1500 chars each)\nconst contexts = rerankedResults.map((r, idx) => {\n    const text = (r.payload?.text || '').substring(0, 1500);\n    return `[Document ${idx + 1}]\\n${text}`;\n});\n\nconst contextText = contexts.join('\\n\\n');\n\n// Final RAG prompt\nconst ragPrompt = `${systemMessage}\n\nContext from Knowledge Base:\n${contextText}\n\nQuestion: ${query}\n\nAnswer:`;\n\n// Get selectedModel from MCP Router node\nconst mcpNode = $('MCP Model Router').first();\nconst selectedModel = mcpNode?.json?.selectedModel || 'llama3.2:1b';\n\nreturn [{\n    json: {\n        prompt: ragPrompt,\n        hasContext: true,\n        contextCount: rerankedResults.length,\n        tenantId: tenantId,\n        personaId: personaId,\n        usedAPI: tenantConfig ? true : false,\n        selectedModel: selectedModel\n    }\n}];\n"
+      },
+      "id": "b613f82d-31c5-4996-828a-83001a4362de",
       "name": "Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -131,12 +183,12 @@
         "url": "http://ollama:11434/api/generate",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"model\": \"llama3.2\", \"prompt\": $json.prompt, \"stream\": false, \"options\": { \"num_ctx\": 2048, \"num_predict\": 150 } } }}",
+        "jsonBody": "={{ { \"model\": $json.selectedModel, \"prompt\": $json.prompt, \"stream\": false, \"options\": { \"num_ctx\": 4096, \"num_predict\": 300 } } }}",
         "options": {
           "timeout": 180000
         }
       },
-      "id": "8d00bf62-c38e-42e7-8569-f6e499f042fc",
+      "id": "6e8b5f8b-e584-4b6a-8a8a-0b61ad0e5063",
       "name": "Generate Answer",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -149,7 +201,7 @@
       "parameters": {
         "jsCode": "const item = $input.first();\nconst answer = item.json.response || \"I couldn't generate a response.\";\nreturn [{ json: { response: answer } }];"
       },
-      "id": "bba31007-616d-4709-b9e2-d59bf20579ed",
+      "id": "8c9557c8-0fe7-434a-9e87-0f4069b8b2c3",
       "name": "Format Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -162,7 +214,7 @@
       "parameters": {
         "jsCode": "return [{ json: { response: \"\" } }];"
       },
-      "id": "10ddba46-58c0-4790-9efa-55ae2ec272e0",
+      "id": "599c77ab-60ca-4c5e-9e0e-73c8670497bc",
       "name": "Empty Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -240,7 +292,7 @@
       "main": [
         [
           {
-            "node": "Build Prompt",
+            "node": "MCP Model Router",
             "type": "main",
             "index": 0
           }
@@ -268,6 +320,17 @@
           }
         ]
       ]
+    },
+    "MCP Model Router": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -275,10 +338,10 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "ba350ce8-cb20-4f94-95cc-75eb2e9a3ccf",
+  "versionId": "f2cf550f-4872-4af8-a62a-cbd98fd5735e",
   "meta": {
-    "instanceId": "d257ca994eba4b36486d8050476c0879387ccae8f74d57213b2161f38bfce8ba"
+    "instanceId": "98021569524151863a958a43edb78ea0cce967957ce426dd6107c29f5967511b"
   },
-  "id": "csOHpaH8RdVhCs9FtZwhR",
+  "id": "k0Kh52NKFbYMd_5z4LLkz",
   "tags": []
 }

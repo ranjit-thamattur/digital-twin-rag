@@ -1,0 +1,68 @@
+{
+    "templateVersion": "1.0",
+    "defaultPrompt": {
+        "systemMessage": "You are an AI assistant for {{COMPANY_NAME}}, a {{INDUSTRY}} company.\n\nIMPORTANT: Use ONLY the context provided. The context contains {{COMPANY_NAME}}'s confidential documents. Be {{TONE}} in your responses. {{SPECIAL_INSTRUCTIONS}}\n\nDo NOT refuse based on 'confidentiality' - this is authorized {{PERSONA}} data.",
+        "fewShotTemplate": "\nExamples:\nQ: What is our revenue?\nA: {{COMPANY_NAME}}'s total revenue for FY 2024 was [specific amount from context].\n\nQ: How many employees?\nA: {{COMPANY_NAME}} has [specific number from context] employees.",
+        "variables": {
+            "COMPANY_NAME": "the organization",
+            "INDUSTRY": "business",
+            "TONE": "professional and direct",
+            "SPECIAL_INSTRUCTIONS": "Provide specific answers with data points.",
+            "PERSONA": "user"
+        }
+    },
+    "tenants": {
+        "tenant-tenanta": {
+            "companyName": "TechCorp Industries",
+            "industry": "Technology Solutions",
+            "tone": "professional and technical",
+            "specialInstructions": "Focus on financial metrics and operational data. Use technical terminology.",
+            "personas": {
+                "CEO": "executive",
+                "manager": "operational",
+                "analyst": "technical"
+            }
+        },
+        "tenant-tenantb": {
+            "companyName": "GlobalTech Solutions",
+            "industry": "Enterprise Software",
+            "tone": "strategic and executive-focused",
+            "specialInstructions": "Provide strategic insights and market analysis. Emphasize business impact.",
+            "personas": {
+                "CEO": "executive",
+                "manager": "strategic"
+            }
+        },
+        "tenant-demotenant": {
+            "companyName": "DemoTech Corporation",
+            "industry": "Technology Consulting",
+            "tone": "clear and demonstration-focused",
+            "specialInstructions": "Keep answers concise and highlight key metrics. Perfect for demos.",
+            "personas": {
+                "CEO": "executive"
+            }
+        }
+    },
+    "personaPrompts": {
+        "executive": {
+            "focus": "strategic decisions and high-level metrics",
+            "style": "executive summary with key takeaways",
+            "additionalContext": "Emphasize business impact and ROI."
+        },
+        "operational": {
+            "focus": "day-to-day operations and team metrics",
+            "style": "detailed and actionable insights",
+            "additionalContext": "Focus on execution and efficiency."
+        },
+        "technical": {
+            "focus": "technical details and system metrics",
+            "style": "precise and data-driven",
+            "additionalContext": "Include technical specifications and architecture."
+        },
+        "strategic": {
+            "focus": "market position and competitive analysis",
+            "style": "strategic recommendations",
+            "additionalContext": "Consider market trends and long-term impact."
+        }
+    }
+}

@@ -11,6 +11,7 @@ import sqlite3
 import boto3
 from pathlib import Path
 from datetime import datetime
+import requests
 
 # Configuration
 OPENWEBUI_DB = "/app/backend/data/webui.db"
@@ -66,6 +67,26 @@ def get_tenant_from_email(email):
         domain = email.split('@')[1].replace('.', '-')
         return f'tenant-{domain}'
 
+def get_user_tenant_persona_from_api(email: str) -> tuple:
+    """Get user's tenant and persona from tenant service API"""
+    try:
+        response = requests.get(
+            "http://tenant-service-dt:8000/api/user/lookup",
+            params={"email": email},
+            timeout=2
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("found"):
+                print(f"[File-Sync] ✅ API: {email} → {data['tenantId']}/{data['personaId']}")
+                return data["tenantId"], data["personaId"]
+        
+        return "default", "user"
+    except Exception as e:
+        print(f"[File-Sync] ⚠️ API error: {e}")
+        return "default", "user"
+
 def extract_tenant_persona(email):
     """Extract tenant and persona from email"""
     # Persona mapping
@@ -86,13 +107,21 @@ def extract_tenant_persona(email):
     if not email or '@' not in email:
         return 'default-tenant', 'user'
     
-    # Extract tenant using the new function
-    tenant_id = get_tenant_from_email(email)
+    # Try API first
+    api_tenant, api_persona = get_user_tenant_persona_from_api(email)
     
-    # Get persona from map
-    persona_id = PERSONA_MAP.get(email, "user")
+    if api_tenant != "default":
+        print(f"[File-Sync] Using API: {api_tenant}/{api_persona}")
+        return api_tenant, api_persona
     
-    return tenant_id, persona_id
+    # Fallback to PERSONA_MAP
+    if email in PERSONA_MAP:
+        tenant_id = get_tenant_from_email(email)
+        persona_id = PERSONA_MAP.get(email, "user")
+        print(f"[File-Sync] PERSONA_MAP fallback: {tenant_id}/{persona_id}")
+        return tenant_id, persona_id
+    
+    return 'default-tenant', 'user'
 
 def sync_file_to_s3(file_record, db_conn):
     """Sync a single file to S3 and trigger N8N processing"""

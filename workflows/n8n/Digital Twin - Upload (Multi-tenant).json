@@ -8,7 +8,7 @@
         "responseMode": "lastNode",
         "options": {}
       },
-      "id": "17e5b9c1-05fb-4b59-99ba-ffb0a1eba5a2",
+      "id": "2a45fce9-2ee3-4025-8583-01ba12b1c664",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
@@ -20,9 +20,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Set Basic Info - Extract metadata and generate S3 path\nconst item = $input.first();\nif (!item) {\n  return [{ json: { error: \"No input\" } }];\n}\n\nconst data = item.json;\nconst fileName = data.fileName || data.body?.fileName || 'document.txt';\nconst content = data.content || data.body?.content || '';\n\n// Extract metadata (from Lambda or direct)\nconst metadata = data.metadata || data.body?.metadata || {};\nconst tenantId = metadata.tenantId || 'default';\nconst personaId = metadata.personaId || 'default';\n\n// Generate S3 bucket and key\nconst s3Bucket = 'digital-twin-docs';\nconst s3Key = `${tenantId}/${personaId}/${fileName}`;\n\nreturn [{\n  json: {\n    fileName,\n    content: String(content),\n    uploadDate: new Date().toISOString(),\n    tenantId,\n    personaId,\n    s3Key,\n    s3Bucket\n  }\n}];"
+        "jsCode": "// Set Basic Info - Extract metadata\nconst item = $input.first();\nif (!item) {\n  return [{ json: { error: \"No input\" } }];\n}\n\nconst data = item.json;\nconst fileName = data.fileName || data.body?.fileName || 'document.txt';\nconst content = data.content || data.body?.content || '';\n\nconst metadata = data.metadata || data.body?.metadata || {};\nconst tenantId = metadata.tenantId || 'default';\nconst personaId = metadata.personaId || 'default';\n\nconst collectionName = `${tenantId}_knowledge`;\n\nreturn [{\n  json: {\n    fileName,\n    content: String(content),\n    uploadDate: new Date().toISOString(),\n    tenantId,\n    personaId,\n    collectionName\n  }\n}];"
       },
-      "id": "0586cb08-6c53-4c36-b61c-66fbb5132eb5",
+      "id": "0dfc97ad-49ea-42d3-a4bd-eddcea018cc2",
       "name": "Set Basic Info",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -33,84 +33,97 @@
     },
     {
       "parameters": {
-        "jsCode": "// Split Chunks - Pass metadata\nconst item = $input.first();\nconst content = item.json.content || '';\nconst chunkSize = 2000;\nconst overlap = 200;\n\nconst items = [];\nlet start = 0;\nlet chunkIndex = 0;\n\nwhile (start < content.length) {\n  const end = Math.min(start + chunkSize, content.length);\n  items.push({\n    json: {\n      text: content.substring(start, end),\n      fileName: item.json.fileName,\n      chunkIndex: chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      s3Key: item.json.s3Key,\n      s3Bucket: item.json.s3Bucket\n    }\n  });\n  start += chunkSize - overlap;\n  chunkIndex++;\n}\n\nreturn items;"
+        "jsCode": "// Check if collection exists, create if not\nconst item = $input.first();\nconst collectionName = item.json.collectionName;\n\nconsole.log(`Checking if collection ${collectionName} exists...`);\n\nlet collectionExists = false;\ntry {\n    const checkResponse = await this.helpers.httpRequest({\n        method: 'GET',\n        url: `http://qdrant:6333/collections/${collectionName}`,\n        json: true\n    });\n    collectionExists = true;\n    console.log(`Collection ${collectionName} exists`);\n} catch (error) {\n    // 404 means collection doesn't exist - this is expected\n    console.log(`Collection ${collectionName} not found, will create it`);\n    collectionExists = false;\n}\n\n// Create collection if it doesn't exist\nif (!collectionExists) {\n    console.log(`Creating collection ${collectionName}...`);\n\n    const createResponse = await this.helpers.httpRequest({\n        method: 'PUT',\n        url: `http://qdrant:6333/collections/${collectionName}`,\n        body: {\n            vectors: {\n                size: 768,\n                distance: 'Cosine'\n            }\n        },\n        json: true\n    });\n\n    console.log(`Collection created successfully:`, createResponse);\n}\n\n// Pass through original data\nreturn [item];\n"
       },
-      "id": "4ff326a7-3f15-409b-99b8-931ab3221560",
+      "id": "1829cec1-baac-42d1-85df-ce2ccf8c121d",
+      "name": "Check & Create Collection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Chunks\nconst item = $input.first();\nconst content = item.json.content || '';\nconst chunkSize = 2000;\nconst overlap = 200;\n\nconst items = [];\nlet start = 0;\nlet chunkIndex = 0;\n\nwhile (start < content.length) {\n  const end = Math.min(start + chunkSize, content.length);\n  items.push({\n    json: {\n      text: content.substring(start, end),\n      fileName: item.json.fileName,\n      chunkIndex: chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      collectionName: item.json.collectionName\n    }\n  });\n  start += chunkSize - overlap;\n  chunkIndex++;\n}\n\nreturn items;"
+      },
+      "id": "70fa70b1-a6a2-47d9-9cb6-6315c0072763",
       "name": "Split Chunks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        448,
+        1152,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Generate Embedding\nconst item = $input.first();\nconst text = item.json.text || '';\n\nconst cleanedText = text.replace(/\\n+/g, ' ').replace(/\\s+/g, ' ').trim();\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://ollama:11434/api/embeddings',\n  body: { model: 'nomic-embed-text', prompt: cleanedText },\n  json: true\n});\n\nreturn [{\n  json: {\n    embedding: response.embedding,\n    text: item.json.text,\n    fileName: item.json.fileName,\n    chunkIndex: item.json.chunkIndex,\n    uploadDate: item.json.uploadDate,\n    tenantId: item.json.tenantId,\n    personaId: item.json.personaId,\n    s3Key: item.json.s3Key,\n    s3Bucket: item.json.s3Bucket\n  }\n}];"
+        "jsCode": "// Generate Embeddings for ALL chunks - BATCH PROCESSING\nconst items = $input.all();\nconst results = [];\n\nconsole.log(`Processing ${items.length} chunks...`);\n\nfor (const item of items) {\n  const text = item.json.text || '';\n  const cleanedText = text.replace(/\\n+/g, ' ').replace(/\\s+/g, ' ').trim();\n  \n  const response = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'http://ollama:11434/api/embeddings',\n    body: { model: 'nomic-embed-text', prompt: cleanedText },\n    json: true\n  });\n  \n  results.push({\n    json: {\n      embedding: response.embedding,\n      text: item.json.text,\n      fileName: item.json.fileName,\n      chunkIndex: item.json.chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      collectionName: item.json.collectionName\n    }\n  });\n}\n\nconsole.log(`Generated ${results.length} embeddings`);\nreturn results;"
       },
-      "id": "e797b990-9f06-4ed3-97b4-7ea80e255c4c",
-      "name": "Generate Embedding",
+      "id": "0a5dcc18-1ba1-4ea3-9357-57154875c764",
+      "name": "Generate Embeddings (All)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        672,
+        1376,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Prepare Qdrant Point\nconst item = $input.first();\n\nfunction generateUUID() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nreturn [{\n  json: {\n    id: generateUUID(),\n    vector: item.json.embedding,\n    payload: {\n      text: item.json.text,\n      fileName: item.json.fileName,\n      chunkIndex: item.json.chunkIndex,\n      uploadDate: item.json.uploadDate,\n      tenantId: item.json.tenantId,\n      personaId: item.json.personaId,\n      s3Key: item.json.s3Key,\n      s3Bucket: item.json.s3Bucket\n    }\n  }\n}];"
+        "jsCode": "// Prepare ALL Qdrant Points - BATCH\nconst items = $input.all();\nconst results = [];\n\nfunction generateUUID() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nfor (const item of items) {\n  results.push({\n    json: {\n      id: generateUUID(),\n      vector: item.json.embedding,\n      collectionName: item.json.collectionName,\n      payload: {\n        text: item.json.text,\n        fileName: item.json.fileName,\n        chunkIndex: item.json.chunkIndex,\n        uploadDate: item.json.uploadDate,\n        tenantId: item.json.tenantId,\n        personaId: item.json.personaId\n      }\n    }\n  });\n}\n\nconsole.log(`Prepared ${results.length} points`);\nreturn results;"
       },
-      "id": "ee47b752-4547-4320-9837-c10c4ea3c82a",
-      "name": "Prepare Qdrant Point",
+      "id": "ffa5e6e9-58e7-4105-b484-5571d67bec28",
+      "name": "Prepare Points (All)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        896,
+        1600,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first();\nreturn [{ json: { points: [{ id: item.json.id, vector: item.json.vector, payload: item.json.payload }] } }];"
+        "jsCode": "// Batch ALL points into single JSON for insert\nconst items = $input.all();\n\nconst points = items.map(item => ({\n  id: item.json.id,\n  vector: item.json.vector,\n  payload: item.json.payload\n}));\n\nconst collectionName = items[0]?.json.collectionName;\n\nconsole.log(`Batching ${points.length} points for collection: ${collectionName}`);\n\nreturn [{\n  json: {\n    points: points,\n    collectionName: collectionName\n  }\n}];"
       },
-      "id": "52dadb09-466d-4b48-bb20-42800ca0d616",
-      "name": "Prepare JSON",
+      "id": "c98cbf40-376f-40ec-930a-c2401c4aa089",
+      "name": "Batch Points",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1072,
+        1776,
         0
       ]
     },
     {
       "parameters": {
         "method": "PUT",
-        "url": "http://qdrant:6333/collections/digital_twin_knowledge/points",
+        "url": "=http://qdrant:6333/collections/{{$json.collectionName}}/points?wait=true",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ $json }}",
+        "jsonBody": "={{ { points: $json.points } }}",
         "options": {}
       },
-      "id": "2cc31125-8c8f-47fa-a3f9-8380bffe22ce",
-      "name": "Insert Qdrant",
+      "id": "0933feab-6be9-4114-b7ee-0d47a77a0a7d",
+      "name": "Batch Insert Qdrant",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1248,
+        1952,
         0
       ]
     },
     {
       "parameters": {
-        "jsCode": "const count = $input.all().length;\nconst prepareNode = $('Prepare JSON').all();\nconst firstPoint = prepareNode[0]?.json?.points?.[0]?.payload;\n\nreturn [{\n  json: {\n    success: true,\n    message: `Indexed ${count} chunks`,\n    fileName: firstPoint?.fileName || 'unknown',\n    tenantId: firstPoint?.tenantId || 'unknown',\n    personaId: firstPoint?.personaId || 'unknown',\n    chunksIndexed: count,\n    timestamp: new Date().toISOString()\n  }\n}];"
+        "jsCode": "const batchNode = $('Batch Points').first().json;\nconst insertResponse = $input.first().json;\n\nreturn [{\n  json: {\n    success: true,\n    message: `Indexed ${batchNode.points.length} chunks`,\n    fileName: batchNode.points[0]?.payload?.fileName || 'unknown',\n    tenantId: batchNode.points[0]?.payload?.tenantId || 'unknown',\n    personaId: batchNode.points[0]?.payload?.personaId || 'unknown',\n    collectionName: batchNode.collectionName,\n    chunksIndexed: batchNode.points.length,\n    qdrantResponse: insertResponse,\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
-      "id": "6b7e7179-7f60-410e-9a0e-33e4e7637407",
+      "id": "28d34c74-3c9f-4936-b064-fc04ec47b953",
       "name": "Final Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1424,
+        2128,
         0
       ]
     }
@@ -132,6 +145,17 @@
       "main": [
         [
           {
+            "node": "Check & Create Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check & Create Collection": {
+      "main": [
+        [
+          {
             "node": "Split Chunks",
             "type": "main",
             "index": 0
@@ -143,47 +167,47 @@
       "main": [
         [
           {
-            "node": "Generate Embedding",
+            "node": "Generate Embeddings (All)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Generate Embedding": {
+    "Generate Embeddings (All)": {
       "main": [
         [
           {
-            "node": "Prepare Qdrant Point",
+            "node": "Prepare Points (All)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare Qdrant Point": {
+    "Prepare Points (All)": {
       "main": [
         [
           {
-            "node": "Prepare JSON",
+            "node": "Batch Points",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare JSON": {
+    "Batch Points": {
       "main": [
         [
           {
-            "node": "Insert Qdrant",
+            "node": "Batch Insert Qdrant",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Insert Qdrant": {
+    "Batch Insert Qdrant": {
       "main": [
         [
           {
@@ -200,10 +224,10 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "c6c250ae-adb7-4aa8-ba94-cf7021e0c632",
+  "versionId": "30b2fe7f-6fe6-4138-aaff-4410e1a91016",
   "meta": {
-    "instanceId": "d257ca994eba4b36486d8050476c0879387ccae8f74d57213b2161f38bfce8ba"
+    "instanceId": "98021569524151863a958a43edb78ea0cce967957ce426dd6107c29f5967511b"
   },
-  "id": "Zo6ZRe-K0cRCqV5Xd5kdi",
+  "id": "jiiWtbun08oc6HVwx4Ldq",
   "tags": []
 }

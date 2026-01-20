@@ -1,0 +1,197 @@
+MASTRO METALS DEALERS - PIPE INVENTORY
+Last Updated: January 19, 2026
+Location: Godown B-12, Andheri Industrial Estate, Mumbai
+
+================================================================================
+SECTION A - MS (MILD STEEL) PIPES
+================================================================================
+
+1. MS Round Pipes - ERW (Electric Resistance Welded)
+   ------------------------------------------------
+   Size: 1/2 inch (15 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 450 pieces | Price: ₹185/piece | Brand: Tata Steel
+   
+   Size: 3/4 inch (20 NB) | Thickness: 2.3mm | Length: 6 meters
+   Stock: 380 pieces | Price: ₹245/piece | Brand: Tata Steel
+   
+   Size: 1 inch (25 NB) | Thickness: 2.6mm | Length: 6 meters
+   Stock: 520 pieces | Price: ₹340/piece | Brand: Jindal
+   
+   Size: 1.5 inch (40 NB) | Thickness: 2.9mm | Length: 6 meters
+   Stock: 290 pieces | Price: ₹580/piece | Brand: Jindal
+   
+   Size: 2 inch (50 NB) | Thickness: 2.9mm | Length: 6 meters
+   Stock: 410 pieces | Price: ₹780/piece | Brand: Tata Steel
+   
+   Size: 3 inch (80 NB) | Thickness: 3.2mm | Length: 6 meters
+   Stock: 150 pieces | Price: ₹1,450/piece | Brand: Jindal
+   
+   Size: 4 inch (100 NB) | Thickness: 3.6mm | Length: 6 meters
+   Stock: 125 pieces | Price: ₹2,180/piece | Brand: SAIL
+
+2. MS Square Pipes
+   ---------------
+   Size: 25x25mm | Thickness: 2.0mm | Length: 6 meters
+   Stock: 200 pieces | Price: ₹320/piece | Brand: JSW
+   
+   Size: 40x40mm | Thickness: 2.0mm | Length: 6 meters
+   Stock: 180 pieces | Price: ₹520/piece | Brand: JSW
+   
+   Size: 50x50mm | Thickness: 2.5mm | Length: 6 meters
+   Stock: 140 pieces | Price: ₹780/piece | Brand: Tata Steel
+
+3. MS Rectangular Pipes
+   --------------------
+   Size: 40x20mm | Thickness: 2.0mm | Length: 6 meters
+   Stock: 95 pieces | Price: ₹380/piece | Brand: JSW
+   
+   Size: 60x40mm | Thickness: 2.5mm | Length: 6 meters
+   Stock: 110 pieces | Price: ₹680/piece | Brand: Jindal
+
+================================================================================
+SECTION B - GI (GALVANIZED IRON) PIPES
+================================================================================
+
+1. GI Round Pipes - Medium Class
+   -----------------------------
+   Size: 1/2 inch (15 NB) | Thickness: 2.6mm | Length: 6 meters
+   Stock: 320 pieces | Price: ₹285/piece | Brand: Apollo Pipes
+   
+   Size: 3/4 inch (20 NB) | Thickness: 2.6mm | Length: 6 meters
+   Stock: 280 pieces | Price: ₹385/piece | Brand: Apollo Pipes
+   
+   Size: 1 inch (25 NB) | Thickness: 2.9mm | Length: 6 meters
+   Stock: 350 pieces | Price: ₹520/piece | Brand: Tata Tiscon
+   
+   Size: 1.5 inch (40 NB) | Thickness: 3.2mm | Length: 6 meters
+   Stock: 190 pieces | Price: ₹880/piece | Brand: Tata Tiscon
+   
+   Size: 2 inch (50 NB) | Thickness: 3.2mm | Length: 6 meters
+   Stock: 230 pieces | Price: ₹1,180/piece | Brand: Apollo Pipes
+
+2. GI Round Pipes - Heavy Class
+   ----------------------------
+   Size: 2 inch (50 NB) | Thickness: 3.6mm | Length: 6 meters
+   Stock: 85 pieces | Price: ₹1,420/piece | Brand: Tata Tiscon
+   
+   Size: 3 inch (80 NB) | Thickness: 4.0mm | Length: 6 meters
+   Stock: 65 pieces | Price: ₹2,350/piece | Brand: Tata Tiscon
+
+================================================================================
+SECTION C - SS (STAINLESS STEEL) PIPES
+================================================================================
+
+1. SS 304 Grade Pipes (Seamless)
+   -----------------------------
+   Size: 1/2 inch (15 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 75 pieces | Price: ₹1,280/piece | Brand: Ratnamani
+   
+   Size: 3/4 inch (20 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 60 pieces | Price: ₹1,750/piece | Brand: Ratnamani
+   
+   Size: 1 inch (25 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 85 pieces | Price: ₹2,480/piece | Brand: Sandvik
+
+2. SS 316 Grade Pipes (Seamless)
+   -----------------------------
+   Size: 1/2 inch (15 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 45 pieces | Price: ₹1,850/piece | Brand: Ratnamani
+   
+   Size: 1 inch (25 NB) | Thickness: 2.0mm | Length: 6 meters
+   Stock: 38 pieces | Price: ₹3,280/piece | Brand: Sandvik
+
+================================================================================
+SECTION D - CPVC & UPVC PIPES
+================================================================================
+
+1. CPVC Pipes (Hot & Cold Water)
+   -----------------------------
+   Size: 1/2 inch | Length: 3 meters | Schedule: SDR 11
+   Stock: 550 pieces | Price: ₹145/piece | Brand: Astral
+   
+   Size: 3/4 inch | Length: 3 meters | Schedule: SDR 11
+   Stock: 480 pieces | Price: ₹185/piece | Brand: Supreme
+   
+   Size: 1 inch | Length: 3 meters | Schedule: SDR 11
+   Stock: 420 pieces | Price: ₹268/piece | Brand: Astral
+
+2. UPVC Pipes (Plumbing)
+   ---------------------
+   Size: 2 inch | Length: 3 meters | Pressure: 6 kg/cm²
+   Stock: 380 pieces | Price: ₹320/piece | Brand: Prince Pipes
+   
+   Size: 3 inch | Length: 3 meters | Pressure: 6 kg/cm²
+   Stock: 240 pieces | Price: ₹580/piece | Brand: Prince Pipes
+   
+   Size: 4 inch | Length: 3 meters | Pressure: 4 kg/cm²
+   Stock: 190 pieces | Price: ₹850/piece | Brand: Supreme
+
+================================================================================
+SECTION E - PIPE FITTINGS & ACCESSORIES
+================================================================================
+
+1. MS Fittings
+   -----------
+   Elbows 90° - 1 inch: 850 pieces @ ₹45/piece
+   Elbows 90° - 2 inch: 420 pieces @ ₹95/piece
+   Tees - 1 inch: 520 pieces @ ₹65/piece
+   Tees - 2 inch: 280 pieces @ ₹135/piece
+   Sockets - 1 inch: 680 pieces @ ₹28/piece
+   Caps - 1 inch: 450 pieces @ ₹22/piece
+
+2. GI Fittings
+   -----------
+   Elbows 90° - 1 inch: 650 pieces @ ₹75/piece
+   Elbows 90° - 2 inch: 320 pieces @ ₹165/piece
+   Union - 1 inch: 280 pieces @ ₹185/piece
+   Reducer - 2"x1": 190 pieces @ ₹145/piece
+
+3. SS Fittings (304 Grade)
+   -----------------------
+   Elbows 90° - 1 inch: 120 pieces @ ₹485/piece
+   Tees - 1 inch: 85 pieces @ ₹620/piece
+   Ball Valves - 1 inch: 65 pieces @ ₹1,250/piece
+
+================================================================================
+PRICING & DELIVERY INFORMATION
+================================================================================
+
+Minimum Order Quantity (MOQ):
+- MS Pipes: 10 pieces per size
+- GI Pipes: 10 pieces per size
+- SS Pipes: 5 pieces per size
+- CPVC/UPVC: 20 pieces per size
+
+Bulk Discounts:
+- 100+ pieces: 5% discount
+- 500+ pieces: 8% discount
+- 1000+ pieces: 12% discount
+
+Delivery:
+- Mumbai & Thane: Free delivery for orders above ₹25,000
+- Navi Mumbai: Free delivery for orders above ₹40,000
+- Other Maharashtra: Transportation at actuals
+
+Payment Terms:
+- Cash/RTGS: Immediate delivery
+- Credit (approved customers): 30 days
+- Advance payment: Additional 2% discount
+
+Quality Certifications:
+- All MS pipes conform to IS 1239 standards
+- GI pipes conform to IS 1239 Part I standards
+- SS pipes conform to ASTM A312 standards
+- CPVC/UPVC pipes conform to IS 15778 standards
+
+Contact Information:
+Sales Manager: Rajesh Kumar | Mobile: +91 98765 43210
+Technical Support: Amit Sharma | Mobile: +91 98765 43211
+Email: sales@mastrometals.com
+Office Hours: Monday-Saturday, 9:00 AM - 6:00 PM
+
+NOTES:
+- Prices are subject to change based on raw material costs
+- Custom cutting available at ₹50 per cut
+- Threading service available for GI pipes at ₹25 per end
+- Stock levels updated daily
+- Inspection welcome before purchase

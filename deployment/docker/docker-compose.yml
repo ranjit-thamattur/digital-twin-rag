@@ -8,10 +8,11 @@ services:
       - "3000:8080"
     environment:
       ENABLE_PIPELINE_MODE: "true"
-      WEBUI_NAME: "Self² AI"
+      WEBUI_NAME: "CloneMind AI"
       DISABLE_OLLAMA: "false"
       OLLAMA_BASE_URL: "http://ollama:11434"
       WEBUI_AUTH: "true"
+      OLLAMA_REQUEST_TIMEOUT: "300"  # 5 minutes for slow models like phi3:mini
       GLOBAL_LOG_LEVEL: DEBUG
       BYPASS_MODEL_ACCESS_CONTROL: "true"
       WEBUI_AUTH_TRUSTED_EMAIL_HEADER: ""
@@ -32,7 +33,7 @@ services:
       OAUTH_USERNAME_CLAIM: "preferred_username"
       # Model Access Control
       MODEL_FILTER_ENABLED: "false"
-      DEFAULT_MODELS: "self2ai_rag"
+      DEFAULT_MODELS: "clonemind"
       ENABLE_MODEL_FILTER: "false"
     volumes:
       - openwebui_dt_data:/app/backend/data
@@ -56,6 +57,9 @@ services:
       - N8N_PROTOCOL=http
       - GENERIC_TIMEZONE=Asia/Kolkata
       - WEBHOOK_URL=http://n8n-dt:5678/
+      # Parallel execution configuration
+      - N8N_CONCURRENCY_PRODUCTION_LIMIT=10
+      - N8N_PAYLOAD_SIZE_MAX=64
     volumes:
       - n8n_dt_data:/home/node/.n8n
     networks:
@@ -71,7 +75,11 @@ services:
       - "11434:11434"
     environment:
       OLLAMA_KEEP_ALIVE: "30m"
-      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_MAX_LOADED_MODELS: "3"           # Keep 3 models in memory
+      OLLAMA_NUM_PARALLEL: "4"                # Handle 4 requests at once
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_FLASH_ATTENTION: "1"             # Faster inference
+      OLLAMA_MAX_QUEUE: "512"                 # Queue capacity
     volumes:
       - ollama_data:/root/.ollama
     networks:
@@ -203,35 +211,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # Tenant Service - Multi-tenant management API
-  tenant-service:
-    build:
-      context: ../../services
-      dockerfile: Dockerfile.tenant
-    container_name: tenant-service-dt
-    ports:
-      - "8001:8001"
-    environment:
-      DATABASE_URL: postgresql://keycloak:keycloak_password@postgres:5432/tenant_management
-      KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_REALM: self2ai
-      QDRANT_URL: http://qdrant:6333
-    volumes:
-      - ../../services:/app
-    networks:
-      - ai_net
-    depends_on:
-      postgres:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+    restart: unless-stopped
 
   # File Sync Service - Syncs OpenWebUI uploads to S3
   file-sync:
@@ -251,22 +231,28 @@ services:
       - openwebui
     restart: unless-stopped
 
-  # ngrok Tunnel for public demo access (free tier, no credit card)
-  ngrok:
-    image: ngrok/ngrok:latest
-    container_name: ngrok-tunnel
-    command: 
-      - "http"
-      - "openwebui:8080"
-      - "--log=stdout"
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+  # Tenant Management Service
+  tenant-service:
+    build: ../../services/tenant-service
+    container_name: tenant-service-dt
     ports:
-      - "4040:4040"  # ngrok web UI for viewing tunnel URL
+      - "8000:8000"  # API
+      - "8001:8001"  # Admin Portal (optional)
+    environment:
+      DATABASE_URL: postgresql://keycloak:keycloak_password@postgres-dt:5432/postgres
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_REALM: self2ai
+    volumes:
+      - ../../services/tenant-service:/app
     networks:
       - ai_net
     depends_on:
-      - openwebui
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Twin - Tenant Admin Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .actions {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 35px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .tenants-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .tenant-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .tenant-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        .tenant-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .tenant-name {
+            font-size: 1.5em;
+            color: #333;
+            font-weight: 700;
+        }
+
+        .tenant-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #4ade80;
+            color: white;
+        }
+
+        .status-inactive {
+            background: #f87171;
+            color: white;
+        }
+
+        .tenant-info {
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .tenant-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .error {
+            background: #fee2e2;
+            border: 2px solid #ef4444;
+            color: #991b1b;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏢 Tenant Management Portal</h1>
+            <p class="subtitle">Create and manage tenants for your Digital Twin RAG system</p>
+        </div>
+
+        <div class="actions">
+            <button class="btn" onclick="openCreateTenantModal()">➕ Create New Tenant</button>
+            <button class="btn btn-secondary" onclick="loadTenants()">🔄 Refresh Tenants</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="tenantsContainer" class="loading">Loading tenants...</div>
+    </div>
+
+    <!-- Create Tenant Modal -->
+    <div id="createTenantModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 25px;">Create New Tenant</h2>
+            <form id="createTenantForm" onsubmit="createTenant(event)">
+                <div class="form-group">
+                    <label>Tenant Name *</label>
+                    <input type="text" name="tenant_name" required placeholder="e.g., NewCompany">
+                </div>
+
+                <div class="form-group">
+                    <label>Company Name *</label>
+                    <input type="text" name="company_name" required placeholder="e.g., NewCompany Inc">
+                </div>
+
+                <div class="form-group">
+                    <label>Industry *</label>
+                    <input type="text" name="industry" required placeholder="e.g., Technology, Healthcare">
+                </div>
+
+                <div class="form-group">
+                    <label>Tone</label>
+                    <select name="tone">
+                        <option value="professional">Professional</option>
+                        <option value="professional and technical">Professional and Technical</option>
+                        <option value="strategic and executive-focused">Strategic and Executive</option>
+                        <option value="clear and demonstration-focused">Clear and Demo-friendly</option>
+                        <option value="formal and regulatory-compliant">Formal and Regulatory</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Special Instructions</label>
+                    <textarea name="special_instructions"
+                        placeholder="Custom instructions for this tenant's AI responses..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Admin Email *</label>
+                    <input type="email" name="admin_email" required placeholder="admin@company.com">
+                </div>
+
+                <div class="form-group">
+                    <label>Admin Password *</label>
+                    <input type="password" name="admin_password" required placeholder="Secure password">
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button type="submit" class="btn" style="flex: 1;">Create Tenant</button>
+                    <button type="button" class="btn btn-secondary" style="flex: 1;"
+                        onclick="closeCreateTenantModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 25px;">Add User to Tenant</h2>
+            <form id="addUserForm" onsubmit="addUser(event)">
+                <input type="hidden" id="selectedTenantId" name="tenant_id">
+
+                <div class="form-group">
+                    <label>First Name *</label>
+                    <input type="text" name="first_name" required placeholder="John">
+                </div>
+
+                <div class="form-group">
+                    <label>Last Name *</label>
+                    <input type="text" name="last_name" required placeholder="Doe">
+                </div>
+
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" name="email" required placeholder="john.doe@company.com">
+                </div>
+
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" name="password" required placeholder="Strong password (min 8 chars)">
+                </div>
+
+                <div class="form-group">
+                    <label>Persona *</label>
+                    <select name="persona" required>
+                        <option value="CEO">CEO - Strategic & Executive</option>
+                        <option value="manager" selected>Manager - Operational</option>
+                        <option value="analyst">Analyst - Technical & Data</option>
+                    </select>
+                </div>
+
+                <div style="background: #e0e7ff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>👤 Persona Guide:</strong>
+                    <ul style="margin: 10px 0 0 20px; font-size: 14px;">
+                        <li><strong>CEO:</strong> Strategic decisions, executive summaries</li>
+                        <li><strong>Manager:</strong> Team metrics, operational details</li>
+                        <li><strong>Analyst:</strong> Technical data, detailed analytics</li>
+                    </ul>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button type="submit" class="btn" style="flex: 1;">Add User</button>
+                    <button type="button" class="btn btn-secondary" style="flex: 1;"
+                        onclick="closeAddUserModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+
+        // Load tenants on page load
+        window.onload = function () {
+            loadTenants();
+        };
+
+        function openCreateTenantModal() {
+            document.getElementById('createTenantModal').classList.add('active');
+        }
+
+        function closeCreateTenantModal() {
+            document.getElementById('createTenantModal').classList.remove('active');
+            document.getElementById('createTenantForm').reset();
+        }
+
+        async function loadTenants() {
+            const container = document.getElementById('tenantsContainer');
+            container.innerHTML = '<div class="loading">Loading tenants...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/tenants`);
+                const data = await response.json();
+
+                if (data.tenants && data.tenants.length > 0) {
+                    container.innerHTML = '<div class="tenants-grid">' +
+                        data.tenants.map(tenant => createTenantCard(tenant)).join('') +
+                        '</div>';
+                } else {
+                    container.innerHTML = '<div class="loading">No tenants found. Create your first tenant!</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="error">Error loading tenants: ${error.message}</div>`;
+            }
+        }
+
+        function createTenantCard(tenant) {
+            const statusClass = tenant.is_active ? 'status-active' : 'status-inactive';
+            const statusText = tenant.is_active ? 'Active' : 'Inactive';
+            const createdDate = new Date(tenant.created_at).toLocaleDateString();
+
+            return `
+                <div class="tenant-card">
+                    <div class="tenant-header">
+                        <div class="tenant-name">${tenant.company_name}</div>
+                        <div class="tenant-status ${statusClass}">${statusText}</div>
+                    </div>
+                    <div class="tenant-info"><strong>ID:</strong> ${tenant.tenant_id}</div>
+                    <div class="tenant-info"><strong>Industry:</strong> ${tenant.industry}</div>
+                    <div class="tenant-info"><strong>Tone:</strong> ${tenant.tone}</div>
+                    <div class="tenant-info"><strong>Created:</strong> ${createdDate}</div>
+                    <div class="tenant-actions">
+                        <button class="btn btn-small" onclick="openAddUserModal('${tenant.tenant_id}', '${tenant.company_name}')">➕ Add User</button>
+                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenant_id}')">👁️ View Details</button>
+                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenant_id}', ${!tenant.is_active})">${tenant.is_active ? '🔒 Deactivate' : '✅ Activate'}</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function createTenant(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch(`${API_URL}/tenants`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`✅ Tenant created successfully! Admin can login at ${result.login_url}`, 'success');
+                    closeCreateTenantModal();
+                    loadTenants();
+                } else {
+                    showMessage(`❌ Error: ${result.detail}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Error creating tenant: ${error.message}`, 'error');
+            }
+        }
+
+        async function viewTenantDetails(tenantId) {
+            try {
+                const response = await fetch(`${API_URL}/tenants/${tenantId}`);
+                const data = await response.json();
+
+                let usersList = data.users.map(u =>
+                    `${u.email} (${u.persona}) - ${u.is_active ? 'Active' : 'Inactive'}`
+                ).join('\n');
+
+                alert(`Tenant: ${data.tenant.company_name}\n\nUsers:\n${usersList || 'No users yet'}\n\nPersonas Available:\n- CEO\n- manager\n- analyst`);
+            } catch (error) {
+                alert('Error loading tenant details');
+            }
+        }
+
+        function openAddUserModal(tenantId, companyName) {
+            document.getElementById('selectedTenantId').value = tenantId;
+            document.querySelector('#addUserModal h2').textContent = `Add User to ${companyName}`;
+            document.getElementById('addUserModal').classList.add('active');
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('addUserModal').classList.remove('active');
+            document.getElementById('addUserForm').reset();
+        }
+
+        async function addUser(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const tenantId = formData.get('tenant_id');
+
+            const data = {
+                email: formData.get('email'),
+                password: formData.get('password'),
+                first_name: formData.get('first_name'),
+                last_name: formData.get('last_name'),
+                persona: formData.get('persona')
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/tenants/${tenantId}/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`✅ User ${data.email} created successfully! They can login at http://localhost:3000`, 'success');
+                    closeAddUserModal();
+                } else {
+                    showMessage(`❌ Error: ${result.detail}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Error adding user: ${error.message}`, 'error');
+            }
+        }
+
+        async function viewTenantDetails_old(tenantId) {
+            alert(`View details for ${tenantId}\n\nAPI: GET ${API_URL}/tenants/${tenantId}`);
+        }
+
+        async function toggleTenantStatus(tenantId, activate) {
+            try {
+                const response = await fetch(`${API_URL}/tenants/${tenantId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_active: activate })
+                });
+
+                if (response.ok) {
+                    showMessage(`✅ Tenant ${activate ? 'activated' : 'deactivated'}`, 'success');
+                    loadTenants();
+                } else {
+                    showMessage('❌ Failed to update tenant', 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+    </script>
+</body>
+
+</html>

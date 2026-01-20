@@ -135,10 +135,6 @@ PERSONA_MAP = {
 ./scripts/approve-pending-users.sh
 ```
 
-### Setup ngrok tunnel (for demos):
-```bash
-./scripts/setup-ngrok-tunnel.sh
-```
 
 ## Configuration
 

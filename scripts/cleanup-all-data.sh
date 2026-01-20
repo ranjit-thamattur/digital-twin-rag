@@ -1,164 +1,45 @@
 #!/bin/bash
-# Cleanup Script - Flush all RAG system data
-# WARNING: This will DELETE all files, vectors, and metadata!
+# Complete Data Cleanup - S3, Qdrant, OpenWebUI
 
-set -e
-
-echo "╔════════════════════════════════════════════════════════════╗"
-echo "║   Digital Twin RAG - Complete Data Cleanup                ║"
-echo "╚════════════════════════════════════════════════════════════╝"
-echo ""
-echo "⚠️  WARNING: This will permanently delete:"
-echo "   - All files in S3 bucket"
-echo "   - All vectors in Qdrant collection"
-echo "   - All file records in OpenWebUI database"
-echo "   - File-sync processing cache"
-echo ""
-read -p "Are you sure you want to continue? (yes/no): " confirm
-
-if [ "$confirm" != "yes" ]; then
-    echo "❌ Cleanup cancelled."
-    exit 0
-fi
-
-echo ""
-echo "Starting cleanup..."
+echo "🧹 Starting complete data cleanup..."
 echo ""
 
-# ============================================================================
-# 1. Clear S3 Bucket
-# ============================================================================
-echo "📦 [1/4] Clearing S3 bucket..."
-FILE_COUNT=$(aws --endpoint-url=http://localhost:4566 s3 ls s3://digital-twin-docs/ --recursive 2>/dev/null | wc -l || echo 0)
+# 1. Clean S3 (LocalStack)
+echo "1️⃣ Cleaning S3..."
+aws --endpoint-url=http://localhost:4566 s3 rm s3://digital-twin-docs --recursive 2>/dev/null && echo "  ✅ S3 contents deleted" || echo "  ℹ️  Bucket empty or doesn't exist"
+echo "  ℹ️  Bucket preserved (not deleting bucket itself)"
 
-if [ "$FILE_COUNT" -gt 0 ]; then
-    echo "   Found $FILE_COUNT files to delete"
-    aws --endpoint-url=http://localhost:4566 s3 rm s3://digital-twin-docs/ --recursive
-    echo "   ✅ S3 bucket cleared"
-else
-    echo "   ℹ️  S3 bucket already empty"
-fi
-
-# ============================================================================
-# 2. Clear Qdrant Collection
-# ============================================================================
+# 2. Clean Qdrant collection
 echo ""
-echo "🔍 [2/4] Clearing Qdrant collection..."
+echo "2️⃣  Cleaning Qdrant..."
 
-# Check if collection exists
-COLLECTION_EXISTS=$(curl -s http://localhost:6333/collections/digital_twin_knowledge 2>/dev/null | jq -r '.status' || echo "not_found")
+# Delete all collections
+for collection in $(curl -s http://localhost:6333/collections | jq -r '.result.collections[].name'); do
+  curl -X DELETE http://localhost:6333/collections/$collection 2>/dev/null && echo "  ✅ Deleted: $collection"
+done
 
-if [ "$COLLECTION_EXISTS" = "ok" ]; then
-    POINT_COUNT=$(curl -s http://localhost:6333/collections/digital_twin_knowledge | jq -r '.result.points_count' || echo 0)
-    echo "   Found $POINT_COUNT points to delete"
-    
-    # Delete collection
-    curl -s -X DELETE http://localhost:6333/collections/digital_twin_knowledge > /dev/null
-    
-    # Recreate empty collection
-    curl -s -X PUT http://localhost:6333/collections/digital_twin_knowledge \
-      -H "Content-Type: application/json" \
-      -d '{"vectors": {"size": 768, "distance": "Cosine"}}' > /dev/null
-    
-    echo "   ✅ Qdrant collection cleared and recreated"
-else
-    echo "   ℹ️  Qdrant collection doesn't exist, creating fresh..."
-    curl -s -X PUT http://localhost:6333/collections/digital_twin_knowledge \
-      -H "Content-Type: application/json" \
-      -d '{"vectors": {"size": 768, "distance": "Cosine"}}' > /dev/null
-    echo "   ✅ Fresh Qdrant collection created"
-fi
+echo "  ✅ All Qdrant collections deleted"
 
-# ============================================================================
-# 3. Clear OpenWebUI File Database
-# ============================================================================
+# 3. Clean OpenWebUI data
 echo ""
-echo "📄 [3/5] Clearing OpenWebUI file records..."
+echo "3️⃣ Cleaning OpenWebUI data..."
+docker exec openwebui rm -rf /app/backend/data/cache/* 2>/dev/null && echo "  ✅ OpenWebUI cache cleared" || echo "  ⚠️  Could not clear cache"
+docker exec openwebui rm -rf /app/backend/data/uploads/* 2>/dev/null && echo "  ✅ OpenWebUI uploads cleared" || echo "  ⚠️  Could not clear uploads"
+echo "  ℹ️  Chat history preserved (delete manually if needed)"
 
-# Count files first
-FILE_DB_COUNT=$(docker exec openwebui python3 -c "
-import sqlite3
-conn = sqlite3.connect('/app/backend/data/webui.db')
-cur = conn.execute('SELECT COUNT(*) FROM file')
-print(cur.fetchone()[0])
-" 2>/dev/null || echo 0)
-
-if [ "$FILE_DB_COUNT" -gt 0 ]; then
-    echo "   Found $FILE_DB_COUNT file records to delete"
-    docker exec openwebui python3 -c "
-import sqlite3
-conn = sqlite3.connect('/app/backend/data/webui.db')
-conn.execute('DELETE FROM file')
-conn.commit()
-print('✅ File table cleared')
-"
-else
-    echo "   ℹ️  File table already empty"
-fi
-
-# ============================================================================
-# 4. Delete Physical Uploaded Files
-# ============================================================================
+# 4. Restart services (NOT localstack to preserve S3 bucket!)
 echo ""
-echo "🗑️  [4/5] Deleting physical uploaded files..."
-
-# Count files in uploads directory
-UPLOAD_COUNT=$(docker exec openwebui find /app/backend/data/uploads -type f 2>/dev/null | wc -l || echo 0)
-
-if [ "$UPLOAD_COUNT" -gt 0 ]; then
-    echo "   Found $UPLOAD_COUNT physical files to delete"
-    docker exec openwebui rm -rf /app/backend/data/uploads/*
-    echo "   ✅ Physical files deleted"
-else
-    echo "   ℹ️  Upload directory already empty"
-fi
-
-# ============================================================================
-# 5. Clear File-Sync Cache
-# ============================================================================
-echo ""
-echo "🔄 [5/5] Clearing file-sync cache..."
-
-if docker exec file-sync-dt test -f /app/backend/data/synced_files.json 2>/dev/null; then
-    docker exec file-sync-dt rm -f /app/backend/data/synced_files.json
-    echo "   ✅ File-sync cache cleared"
-else
-    echo "   ℹ️  File-sync cache already empty"
-fi
-
-# Restart file-sync to apply changes
-echo "   Restarting file-sync service..."
-docker restart file-sync-dt > /dev/null 2>&1
-echo "   ✅ File-sync restarted"
-
-# ============================================================================
-# Verification
-# ============================================================================
-echo ""
-echo "═══════════════════════════════════════════════════════════"
-echo "✅ Cleanup Complete!"
-echo "═══════════════════════════════════════════════════════════"
-echo ""
-echo "📊 Final Status:"
-echo ""
-
-# Verify S3
-S3_COUNT=$(aws --endpoint-url=http://localhost:4566 s3 ls s3://digital-twin-docs/ --recursive 2>/dev/null | wc -l || echo 0)
-echo "   S3 Files:        $S3_COUNT ✅"
-
-# Verify Qdrant
-QDRANT_COUNT=$(curl -s http://localhost:6333/collections/digital_twin_knowledge | jq -r '.result.points_count' || echo 0)
-echo "   Qdrant Points:   $QDRANT_COUNT ✅"
-
-# Verify OpenWebUI
-WEBUI_COUNT=$(docker exec openwebui python3 -c "
-import sqlite3
-conn = sqlite3.connect('/app/backend/data/webui.db')
-cur = conn.execute('SELECT COUNT(*) FROM file')
-print(cur.fetchone()[0])
-" 2>/dev/null || echo 0)
-echo "   OpenWebUI Files: $WEBUI_COUNT ✅"
+echo "4️⃣ Restarting services..."
+docker restart qdrant
+docker restart openwebui
+docker restart file-sync-dt
 
 echo ""
-echo "🎉 System is now clean and ready for fresh data!"
+echo "✅ Cleanup complete!"
+echo ""
+echo "📋 Next steps:"
+echo "1. Wait 30 seconds for services to restart"
+echo "2. S3 bucket still exists, just empty"
+echo "3. Qdrant collections deleted - will auto-create on upload"
+echo "4. Upload your files to start fresh"
 echo ""
