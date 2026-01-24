@@ -8,10 +8,9 @@ from clonemind.clonemind_stack import CloneMindStack
 
 app = cdk.App()
 CloneMindStack(app, "CloneMindStack",
-    # Specify your AWS Account ID and Region here
     env=cdk.Environment(
-        account='YOUR_AWS_ACCOUNT_ID', 
-        region='us-east-1'
+        account=os.getenv('CDK_DEFAULT_ACCOUNT'), 
+        region=os.getenv('CDK_DEFAULT_REGION', 'us-east-1')
     ),
 )
 

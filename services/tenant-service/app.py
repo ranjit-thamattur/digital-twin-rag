@@ -133,23 +133,35 @@ async def create_tenant(tenant: TenantCreate):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/tenants/{tenant_id}")
+async def get_tenant(tenant_id: str):
+    """Fetch tenant configuration for the pipeline prompt engine"""
+    try:
+        response = table.get_item(Key={"tenantId": tenant_id})
+        item = response.get("Item")
+        if not item:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        return {"tenant": item}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/user/lookup")
 async def lookup_user(email: str):
     """Lookup user tenant and persona from DynamoDB"""
     try:
-        # Scan or Query based on email (Ideally use a GSI on email if many users)
-        # For QA, we'll scan for simplicity or assume we know the tenant
-        response = table.scan() # Warning: slow for production
+        # Scan for demo/QA - in production, use a Global Secondary Index (GSI) on Email
+        response = table.scan()
         items = response.get("Items", [])
         
         for tenant in items:
             for user in tenant.get("users", []):
-                if user["email"] == email:
+                if user["email"].lower() == email.lower():
                     return {
                         "found": True,
                         "tenantId": tenant["tenantId"],
-                        "personaId": user["persona"],
-                        "companyName": tenant["companyName"]
+                        "personaId": user.get("persona", "user"),
+                        "companyName": tenant.get("companyName", "Unknown Corp"),
+                        "tone": tenant.get("tone", "professional")
                     }
         
         return {"found": False, "tenantId": "default", "personaId": "user"}

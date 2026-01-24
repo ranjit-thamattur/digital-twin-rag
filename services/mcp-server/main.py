@@ -177,6 +177,8 @@ async def call_tool_bridge(request: Request):
             result = await generate_twin_response(**arguments)
         elif tool_name == "search_knowledge_base":
             result = await search_knowledge_base(**arguments)
+        elif tool_name == "ingest_knowledge":
+            result = await ingest_knowledge(**arguments)
         else:
             return JSONResponse({"error": f"Tool {tool_name} not found in bridge"}, status_code=404)
         

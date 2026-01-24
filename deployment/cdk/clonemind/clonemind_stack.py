@@ -42,6 +42,13 @@ class CloneMindStack(Stack):
         user_pool = cognito.UserPool(self, "UserPool",
             user_pool_name="clonemind-users",
             self_sign_up_enabled=True,
+            signInCaseSensitive=False,
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=True, mutable=True)
+            ),
+            custom_attributes={
+                "tenant_id": cognito.StringAttribute(mutable=True)
+            },
             removal_policy=RemovalPolicy.DESTROY
         )
 
