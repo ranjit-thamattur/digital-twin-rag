@@ -41,27 +41,20 @@ services:
     networks:
       - ai_net
     depends_on:
-      - n8n
+      - mcp-server
       - ollama
       - keycloak
 
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n-dt
-    ports:
-      - "5678:5678"
+  mcp-server:
+    build:
+      context: ../../services/mcp-server
+      dockerfile: Dockerfile
+    container_name: mcp-server-dt
     environment:
-      - N8N_SECURE_COOKIE=false
-      - N8N_HOST=n8n-dt
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - GENERIC_TIMEZONE=Asia/Kolkata
-      - WEBHOOK_URL=http://n8n-dt:5678/
-      # Parallel execution configuration
-      - N8N_CONCURRENCY_PRODUCTION_LIMIT=10
-      - N8N_PAYLOAD_SIZE_MAX=64
-    volumes:
-      - n8n_dt_data:/home/node/.n8n
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6334
+      - AWS_DEFAULT_REGION=us-east-1
+      - MCP_TRANSPORT=sse
     networks:
       - ai_net
     depends_on:
@@ -122,7 +115,7 @@ services:
     networks:
       - ai_net
     depends_on:
-      - n8n
+      - mcp-server
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 10s
