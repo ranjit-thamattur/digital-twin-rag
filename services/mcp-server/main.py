@@ -13,7 +13,7 @@ load_dotenv()
 
 # Configuration
 QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v1"
 VECTOR_SIZE = 1536 # Titan embedding size
@@ -168,11 +168,11 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 
-@mcp.app.route("/", methods=["GET"])
+@mcp.route("/", methods=["GET"])
 async def health_check(request: Request):
     return JSONResponse({"status": "healthy"})
 
-@mcp.app.route("/call/{tool_name}", methods=["POST"])
+@mcp.route("/call/{tool_name}", methods=["POST"])
 async def call_tool_bridge(request: Request):
     tool_name = request.path_params["tool_name"]
     try:
