@@ -145,7 +145,8 @@ def lambda_handler(event, context):
             environment={
                 "MCP_URL": "http://mcp.clonemind.local:8080" 
             },
-            vpc=vpc
+            vpc=vpc,
+            allow_public_subnet=True
         )
         documents_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(s3_processor))
 
