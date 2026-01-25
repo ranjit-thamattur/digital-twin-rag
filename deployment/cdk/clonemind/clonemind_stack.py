@@ -288,10 +288,17 @@ def lambda_handler(event, context):
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
         )
 
-        # --- Security Group Configuration for ALB ---
-        security_group = cluster.connections.security_groups[0]
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "ALB Public Access")
-        security_group.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
+        # --- Security Group Configuration ---
+        # The Instances are in a PUBLIC subnet to avoid NAT Gateway costs, 
+        # but we restrict their incoming traffic to only allow the ALB.
+        instance_sg = cluster.connections.security_groups[0]
+        
+        # Allow the ALB to talk to the instances on all ports (managed by CDK target groups usually, 
+        # but explicit here for clarity in Bridge/VPC mapping)
+        instance_sg.connections.allow_from(alb, ec2.Port.all_tcp(), "Allow traffic from ALB")
+        
+        # Allow internal VPC traffic
+        instance_sg.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
 
         # 7. Permissions
         documents_bucket.grant_read_write(webui_task.task_role)
