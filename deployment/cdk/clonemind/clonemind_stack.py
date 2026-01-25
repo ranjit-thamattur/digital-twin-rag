@@ -49,9 +49,9 @@ class CloneMindStack(Stack):
         # 1.1 Create Application Load Balancer
         alb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB", vpc=vpc, internet_facing=True)
         web_listener = alb.add_listener("WebListener", port=80)
-        mcp_listener = alb.add_listener("McpListener", port=8080)
-        tenant_listener = alb.add_listener("TenantListener", port=8000)
-        qdrant_listener = alb.add_listener("QdrantListener", port=6333)
+        mcp_listener = alb.add_listener("McpListener", port=8080, protocol=elbv2.ApplicationProtocol.HTTP)
+        tenant_listener = alb.add_listener("TenantListener", port=8000, protocol=elbv2.ApplicationProtocol.HTTP)
+        qdrant_listener = alb.add_listener("QdrantListener", port=6333, protocol=elbv2.ApplicationProtocol.HTTP)
 
         # 2. AWS Cognito for Managed Identity
         user_pool = cognito.UserPool(self, "UserPool",
