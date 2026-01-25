@@ -45,11 +45,15 @@ class CloneMindStack(Stack):
         # Add S3 Gateway Endpoint (Free and allows VPC resources to talk to S3)
         vpc.add_gateway_endpoint("S3Endpoint", service=ec2.GatewayVpcEndpointAwsService.S3)
         
-        # Add Service Discovery Namespace
+        # Add Service Discovery Namespace (Using A records for simplicity)
         namespace = cluster.add_default_cloud_map_namespace(
             name="clonemind.local",
             type=servicediscovery.NamespaceType.DNS_PRIVATE
         )
+
+        # 1.1 Create Application Load Balancer
+        alb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB", vpc=vpc, internet_facing=True)
+        listener = alb.add_listener("PublicListener", port=80)
 
         # 2. AWS Cognito for Managed Identity
         user_pool = cognito.UserPool(self, "UserPool",
@@ -188,7 +192,7 @@ def lambda_handler(event, context):
                 task_definition=task_def,
                 cloud_map_options=ecs.CloudMapOptions(
                     name=id.lower(),
-                    dns_record_type=servicediscovery.DnsRecordType.SRV # Required for BRIDGE networking
+                    dns_record_type=servicediscovery.DnsRecordType.A # A records are simpler with fixed ports
                 ),
                 min_healthy_percent=0 
             )
@@ -243,18 +247,15 @@ def lambda_handler(event, context):
             cluster=cluster, task_definition=webui_task,
             cloud_map_options=ecs.CloudMapOptions(
                 name="webui",
-                dns_record_type=servicediscovery.DnsRecordType.SRV # Required for BRIDGE networking
+                dns_record_type=servicediscovery.DnsRecordType.A
             ),
             min_healthy_percent=0
         )
-
-        # 2. MCP Server (8080 -> 8080)
-        mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, 8080, env={
-            "AWS_DEFAULT_REGION": self.region,
-            "QDRANT_HOST": "qdrant.clonemind.local",
-            "TENANT_TABLE": tenant_table.table_name,
-            "MCP_TRANSPORT": "sse"
-        })
+        # Add WebUI as Default Route
+        listener.add_targets("WebUITarget", 
+            port=80, 
+            targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
+        )
 
         # 3. Tenant Service (8000 -> 8000)
         tenant_service = add_ec2_service("Tenant", "../../services/tenant-service", 8000, 8000, env={
@@ -262,14 +263,34 @@ def lambda_handler(event, context):
             "AWS_DEFAULT_REGION": self.region
         })
 
+        # --- ALB Path Based Routing Rules ---
+        listener.add_targets("McpTarget",
+            priority=10,
+            conditions=[elbv2.ListenerCondition.path_patterns(["/api/mcp*"])],
+            port=8080,
+            targets=[mcp_service.load_balancer_target(container_name="McpContainer", container_port=8080)]
+        )
+        
+        listener.add_targets("TenantTarget",
+            priority=20,
+            conditions=[elbv2.ListenerCondition.path_patterns(["/api/tenant*"])],
+            port=8000,
+            targets=[tenant_service.load_balancer_target(container_name="TenantContainer", container_port=8000)]
+        )
+        
+        listener.add_targets("QdrantTarget",
+            priority=30,
+            conditions=[elbv2.ListenerCondition.path_patterns(["/qdrant*"])],
+            port=6333,
+            targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
+        )
+
         # --- Security Group Configuration for Direct Access ---
         # Allow public access to specific ports since the ALB is gone
-        security_group = cluster.connections.security_groups[0]
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "OpenWebUI Dashboard")
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(8000), "Tenant Service Portal")
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(8080), "MCP Server API")
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(6333), "Qdrant Dashboard")
-        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(6379), "Redis Port")
+        # Allow Public LB access
+        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "ALB Public Access")
+        # Allow internal traffic from ALB to containers (or just keep open since it's Public VPC)
+        security_group.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
 
         # 7. Permissions
         documents_bucket.grant_read_write(webui_task.task_role)
