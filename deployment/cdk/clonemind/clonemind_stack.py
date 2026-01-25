@@ -13,6 +13,7 @@ from aws_cdk import (
     aws_elasticloadbalancingv2 as elbv2,
     aws_s3_notifications as s3n,
     RemovalPolicy,
+    Duration,
 )
 from constructs import Construct
 
@@ -173,19 +174,17 @@ def lambda_handler(event, context):
                 memory_limit_mib=mem,
                 cpu=cpu,
                 environment=env or {},
-                logging=ecs.LogDrivers.aws_logs(stream_prefix=id)
+                logging=ecs.LogDrivers.aws_logs(stream_prefix=id),
+                health_check=ecs.HealthCheck(
+                    command=["CMD-SHELL", f"netstat -an | grep {container_port} || exit 1"],
+                    interval=Duration.seconds(30),
+                    timeout=Duration.seconds(5),
+                    retries=3
+                )
             )
             container.add_port_mappings(ecs.PortMapping(container_port=container_port, host_port=host_port))
             if mounts:
                 for m in mounts: container.add_mount_points(m)
-            
-            # Simple health check to ensure Cloud Map registration finishes
-            container.add_health_check(
-                command=["CMD-SHELL", f"netstat -an | grep {container_port} || exit 1"],
-                interval=cdk.Duration.seconds(30),
-                timeout=cdk.Duration.seconds(5),
-                retries=3
-            )
 
             service = ecs.Ec2Service(self, f"{id}Service",
                 cluster=cluster,
