@@ -226,7 +226,7 @@ def lambda_handler(event, context):
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
-        webui_container.add_port_mappings(ecs.PortMapping(container_port=8080, host_port=80))
+        webui_container.add_port_mappings(ecs.PortMapping(container_port=8080))
         webui_container.add_mount_points(ecs.MountPoint(container_path="/app/backend/data", source_volume="OpenWebUIVolume", read_only=False))
 
         sync_container = webui_task.add_container("FileSyncSidecar",
