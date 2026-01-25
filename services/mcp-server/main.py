@@ -7,6 +7,9 @@ from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import uvicorn
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +23,9 @@ VECTOR_SIZE = 1536 # Titan embedding size
 
 # Initialize FastMCP server
 mcp = FastMCP("CloneMind Knowledge Base")
+
+# Initialize FastAPI for HTTP endpoints
+app = FastAPI()
 
 # Initialize Clients
 qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
@@ -164,19 +170,21 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
     except Exception as e:
         return f"Error ingesting knowledge: {str(e)}"
 
-# Simple HTTP Bridge for the Pipeline
-from starlette.responses import JSONResponse
-from starlette.requests import Request
+# FastAPI HTTP Bridge for the Pipeline
+@app.get("/")
+async def health_check():
+    return JSONResponse({"status": "healthy", "service": "CloneMind MCP Server"})
 
-@mcp.route("/", methods=["GET"])
-async def health_check(request: Request):
+@app.get("/health")
+async def health():
     return JSONResponse({"status": "healthy"})
 
-@mcp.route("/call/{tool_name}", methods=["POST"])
-async def call_tool_bridge(request: Request):
-    tool_name = request.path_params["tool_name"]
+@app.post("/call/{tool_name}")
+async def call_tool_bridge(tool_name: str, request: Request):
+    """HTTP bridge to call MCP tools"""
     try:
         arguments = await request.json()
+        
         if tool_name == "generate_twin_response":
             result = await generate_twin_response(**arguments)
         elif tool_name == "search_knowledge_base":
@@ -184,7 +192,10 @@ async def call_tool_bridge(request: Request):
         elif tool_name == "ingest_knowledge":
             result = await ingest_knowledge(**arguments)
         else:
-            return JSONResponse({"error": f"Tool {tool_name} not found in bridge"}, status_code=404)
+            return JSONResponse(
+                {"error": f"Tool {tool_name} not found"}, 
+                status_code=404
+            )
         
         return JSONResponse({"content": result})
     except Exception as e:
@@ -192,7 +203,11 @@ async def call_tool_bridge(request: Request):
 
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
+    port = int(os.getenv("PORT", "3000"))
+    
     if transport == "sse":
-        mcp.run(transport="sse", host="0.0.0.0", port=8080)
+        # Run FastAPI server for SSE/HTTP mode
+        uvicorn.run(app, host="0.0.0.0", port=port)
     else:
+        # Run MCP in stdio mode
         mcp.run(transport="stdio")

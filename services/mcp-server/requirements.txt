@@ -3,3 +3,5 @@ qdrant-client
 boto3
 pydantic
 python-dotenv
+fastapi
+uvicorn[standard]
