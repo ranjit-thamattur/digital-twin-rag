@@ -157,18 +157,17 @@ class CloneMindStack(Stack):
             network_mode=ecs.NetworkMode.HOST  # HOST mode for direct access
         )
         
-        redis_vol = ecs.Volume(
-            name="RedisVolume", 
+        redis_task.add_volume(
+            name="RedisVolume",
             efs_volume_configuration=ecs.EfsVolumeConfiguration(
                 file_system_id=file_system.file_system_id,
                 transit_encryption="ENABLED",
                 authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=redis_ap.access_point_id, 
+                    access_point_id=redis_ap.access_point_id,
                     iam="ENABLED"
                 )
             )
         )
-        redis_task.add_volume(**redis_vol.__dict__)
         
         redis_container = redis_task.add_container("RedisContainer",
             image=ecs.ContainerImage.from_registry("redis:7-alpine"),
@@ -203,18 +202,17 @@ class CloneMindStack(Stack):
             network_mode=ecs.NetworkMode.HOST
         )
         
-        qdrant_vol = ecs.Volume(
-            name="QdrantVolume", 
+        qdrant_task.add_volume(
+            name="QdrantVolume",
             efs_volume_configuration=ecs.EfsVolumeConfiguration(
                 file_system_id=file_system.file_system_id,
                 transit_encryption="ENABLED",
                 authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=qdrant_ap.access_point_id, 
+                    access_point_id=qdrant_ap.access_point_id,
                     iam="ENABLED"
                 )
             )
         )
-        qdrant_task.add_volume(**qdrant_vol.__dict__)
         
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
@@ -336,18 +334,17 @@ class CloneMindStack(Stack):
             network_mode=ecs.NetworkMode.HOST
         )
         
-        webui_vol = ecs.Volume(
-            name="OpenWebUIVolume", 
+        webui_task.add_volume(
+            name="OpenWebUIVolume",
             efs_volume_configuration=ecs.EfsVolumeConfiguration(
                 file_system_id=file_system.file_system_id,
                 transit_encryption="ENABLED",
                 authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=webui_ap.access_point_id, 
+                    access_point_id=webui_ap.access_point_id,
                     iam="ENABLED"
                 )
             )
         )
-        webui_task.add_volume(**webui_vol.__dict__)
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
