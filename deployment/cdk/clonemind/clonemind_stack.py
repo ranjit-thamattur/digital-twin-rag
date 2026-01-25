@@ -46,12 +46,12 @@ class CloneMindStack(Stack):
         # Add S3 Gateway Endpoint (Free and allows VPC resources to talk to S3)
         vpc.add_gateway_endpoint("S3Endpoint", service=ec2.GatewayVpcEndpointAwsService.S3)
         
-        # Add Service Discovery Namespace (Using A records for simplicity)
+        # Add Service Discovery Namespace (Using A records with AWS_VPC mode)
         namespace = cluster.add_default_cloud_map_namespace(
             name="clonemind.local",
             type=servicediscovery.NamespaceType.DNS_PRIVATE
         )
-
+        
         # 1.1 Create Application Load Balancer
         alb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB", vpc=vpc, internet_facing=True)
         listener = alb.add_listener("PublicListener", port=80)
@@ -157,9 +157,9 @@ def lambda_handler(event, context):
 
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
-        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=256, env=None, volumes=None, mounts=None):
-            # Using BRIDGE mode to map container ports to specific host ports
-            task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
+        def add_ec2_service(id: str, image_asset: str, container_port: int, cpu=128, mem=256, env=None, volumes=None, mounts=None):
+            # Using AWS_VPC mode for standard A-record service discovery
+            task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.AWS_VPC)
             if volumes: 
                 for v in volumes:
                     task_def.add_volume(
@@ -182,7 +182,7 @@ def lambda_handler(event, context):
                     retries=3
                 )
             )
-            container.add_port_mappings(ecs.PortMapping(container_port=container_port, host_port=host_port))
+            container.add_port_mappings(ecs.PortMapping(container_port=container_port))
             if mounts:
                 for m in mounts: container.add_mount_points(m)
 
@@ -191,22 +191,21 @@ def lambda_handler(event, context):
                 task_definition=task_def,
                 cloud_map_options=ecs.CloudMapOptions(
                     name=id.lower(),
-                    dns_record_type=servicediscovery.DnsRecordType.A # A records are simpler with fixed ports
+                    dns_record_type=servicediscovery.DnsRecordType.A
                 ),
                 min_healthy_percent=0 
             )
             return service
 
         # Infrastructure Services
-        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, 6379, env={}, mem=256,
+        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, env={}, mem=256,
             volumes=[redis_vol], mounts=[ecs.MountPoint(container_path="/data", source_volume="RedisVolume", read_only=False)])
         
-        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, 6333, env={}, mem=512,
+        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, env={}, mem=512,
             volumes=[qdrant_vol], mounts=[ecs.MountPoint(container_path="/qdrant/storage", source_volume="QdrantVolume", read_only=False)])
 
-        # Application Services
-        # 1. Open WebUI + Sidecar (Map Container 8080 -> Host 80 for easy access)
-        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.BRIDGE)
+        # 1. Open WebUI + Sidecar (AWS_VPC Mode)
+        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.AWS_VPC)
         webui_task.add_volume(
             name=openwebui_vol.name,
             efs_volume_configuration=openwebui_vol.efs_volume_configuration,
@@ -236,7 +235,7 @@ def lambda_handler(event, context):
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
                 "AWS_DEFAULT_REGION": self.region,
-                "TENANT_SERVICE_URL": "http://tenant.clonemind.local:8000" # Internal routing
+                "TENANT_SERVICE_URL": "http://tenant.clonemind.local:8000" 
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
         )
@@ -244,20 +243,25 @@ def lambda_handler(event, context):
 
         webui_service = ecs.Ec2Service(self, "WebUIService", 
             cluster=cluster, task_definition=webui_task,
-            cloud_map_options=ecs.CloudMapOptions(
-                name="webui",
-                dns_record_type=servicediscovery.DnsRecordType.A
-            ),
+            cloud_map_options=ecs.CloudMapOptions(name="webui", dns_record_type=servicediscovery.DnsRecordType.A),
             min_healthy_percent=0
         )
-        # Add WebUI as Default Route
+        # Add WebUI to ALB (Default Route)
         listener.add_targets("WebUITarget", 
-            port=80, 
+            port=8080, 
             targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
         )
 
-        # 3. Tenant Service (8000 -> 8000)
-        tenant_service = add_ec2_service("Tenant", "../../services/tenant-service", 8000, 8000, env={
+        # 2. MCP Server (8080)
+        mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, env={
+            "AWS_DEFAULT_REGION": self.region,
+            "QDRANT_HOST": "qdrant.clonemind.local", 
+            "TENANT_TABLE": tenant_table.table_name,
+            "MCP_TRANSPORT": "sse"
+        })
+
+        # 3. Tenant Service (8000)
+        tenant_service = add_ec2_service("Tenant", "../../services/tenant-service", 8000, env={
             "TENANT_TABLE": tenant_table.table_name,
             "AWS_DEFAULT_REGION": self.region
         })
@@ -284,11 +288,9 @@ def lambda_handler(event, context):
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
         )
 
-        # --- Security Group Configuration for Direct Access ---
-        # Allow public access to specific ports since the ALB is gone
-        # Allow Public LB access
+        # --- Security Group Configuration for ALB ---
+        security_group = cluster.connections.security_groups[0]
         security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80), "ALB Public Access")
-        # Allow internal traffic from ALB to containers (or just keep open since it's Public VPC)
         security_group.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
 
         # 7. Permissions
