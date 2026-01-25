@@ -139,11 +139,11 @@ class CloneMindStack(Stack):
             return file_system.add_access_point(id, 
                 path=path, 
                 create_acl=efs.Acl(
-                    owner_gid="1000", 
-                    owner_uid="1000", 
+                    owner_gid="0",
+                    owner_uid="0",
                     permissions="777"
-                ),
-                posix_user=efs.PosixUser(gid="1000", uid="1000")
+                )
+                # Removed posix_user to allow container to use its own user
             )
 
         # Only WebUI needs EFS for persistent data
