@@ -249,6 +249,7 @@ def lambda_handler(event, context):
         # Add WebUI to ALB (Default Route)
         listener.add_targets("WebUITarget", 
             port=8080, 
+            protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
         )
 
@@ -271,6 +272,7 @@ def lambda_handler(event, context):
             priority=10,
             conditions=[elbv2.ListenerCondition.path_patterns(["/api/mcp*"])],
             port=8080,
+            protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[mcp_service.load_balancer_target(container_name="McpContainer", container_port=8080)]
         )
         
@@ -278,6 +280,7 @@ def lambda_handler(event, context):
             priority=20,
             conditions=[elbv2.ListenerCondition.path_patterns(["/api/tenant*"])],
             port=8000,
+            protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[tenant_service.load_balancer_target(container_name="TenantContainer", container_port=8000)]
         )
         
@@ -285,6 +288,7 @@ def lambda_handler(event, context):
             priority=30,
             conditions=[elbv2.ListenerCondition.path_patterns(["/qdrant*"])],
             port=6333,
+            protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
         )
 
