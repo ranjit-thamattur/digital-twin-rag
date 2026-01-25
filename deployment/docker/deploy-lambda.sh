@@ -9,16 +9,17 @@ echo "Deploying document-processor Lambda..."
 ENDPOINT="http://localhost:4566"
 
 # Package Lambda function
-cd lambda/document-processor
-zip -r function.zip index.py
-cd ../..
+# Use the correct path for the lambda function
+cd deployment/localstack/lambda
+zip -r function.zip lambda_function.py
+cd ../../../
 
 # Create Lambda function
 aws --endpoint-url=$ENDPOINT lambda create-function \
   --function-name document-processor \
   --runtime python3.11 \
-  --handler index.lambda_handler \
-  --zip-file fileb://lambda/document-processor/function.zip \
+  --handler lambda_function.lambda_handler \
+  --zip-file fileb://deployment/localstack/lambda/function.zip \
   --role arn:aws:iam::000000000000:role/lambda-role \
   --timeout 300 \
   --memory-size 512 \
@@ -27,7 +28,7 @@ aws --endpoint-url=$ENDPOINT lambda create-function \
 # Update Lambda if it exists
 aws --endpoint-url=$ENDPOINT lambda update-function-code \
   --function-name document-processor \
-  --zip-file fileb://lambda/document-processor/function.zip \
+  --zip-file fileb://deployment/localstack/lambda/function.zip \
   2>/dev/null || true
 
 echo "Configuring S3 event notification..."

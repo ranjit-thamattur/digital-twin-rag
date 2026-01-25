@@ -1,0 +1,5 @@
+mcp>=0.1.0
+qdrant-client
+boto3
+pydantic
+python-dotenv

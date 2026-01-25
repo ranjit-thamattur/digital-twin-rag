@@ -1,7 +1,7 @@
 """
-title: CloneMind AI with RAG (Debug Version)
+title: CloneMind Dynamic Identity Pipeline
 author: CloneMind AI
-version: 3.0.1-debug
+version: 1.0.0
 requirements: requests
 """
 
@@ -10,272 +10,110 @@ from pydantic import BaseModel, Field
 import requests
 import json
 
-
 class Pipe:
     class Valves(BaseModel):
-        N8N_WEBHOOK_URL: str = Field(
-            default="http://n8n-dt:5678/webhook/openwebui",
-            description="n8n webhook URL for chat",
+        TENANT_SERVICE_URL: str = Field(
+            default="http://tenant-service-dt:8000",
+            description="URL for Tenant Management Service",
         )
-        N8N_UPLOAD_URL: str = Field(
-            default="http://n8n-dt:5678/webhook/upload-document",
-            description="n8n webhook URL for file uploads",
-        )
-        TENANT_MODE: str = Field(
-            default="email_domain",
-            description="Tenant assignment mode: email_domain, email_username, user_id, fixed",
-        )
-        DEFAULT_TENANT: str = Field(
-            default="default-tenant",
-            description="Fallback tenant if user info unavailable",
-        )
-        DEFAULT_PERSONA: str = Field(
-            default="user", description="Default persona for users"
-        )
-        TENANT_MAPPING: str = Field(
-            default="{}", description="JSON mapping of email to tenant (optional)"
-        )
-        DEBUG_MODE: bool = Field(
-            default=True, description="Enable detailed debug logging"
+        MCP_SERVER_URL: str = Field(
+            default="http://mcp-server-dt:8080/sse",
+            description="URL for MCP Knowledge Base Server",
         )
 
     def __init__(self):
         self.type = "manifold"
-        self.id = "clonemind"
+        self.id = "clonemind_proxy"
         self.name = "CloneMind: "
         self.valves = self.Valves()
-    
-    def get_user_tenant_persona_from_api(self, email: str) -> tuple:
-        """Get user's tenant and persona from tenant service API"""
-        try:
-            response = requests.get(
-                "http://tenant-service-dt:8000/api/user/lookup",
-                params={"email": email},
-                timeout=2
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("found"):
-                    print(f"[CloneMind] ✅ API: {email} → {data['tenantId']}/{data['personaId']}")
-                    return data["tenantId"], data["personaId"]
-            
-            return "default", "user"
-        except Exception as e:
-            print(f"[CloneMind] ⚠️ API error: {e}")
-            return "default", "user"
-    
-    # Persona assignments (email -> persona mapping)
-    PERSONA_MAP = {
-        # Tenant A users
-        "alice.tenanta@gmail.com": "CEO",
-        "bob.tenanta@gmail.com": "manager",
-        "sarah.tenanta@gmail.com": "analyst",
-        
-        # Tenant B users
-        "diana.tenantb@gmail.com": "CEO",
-        "john.tenantb@gmail.com": "manager",
-        
-        # Demo tenant
-        "demo.demotenant@gmail.com": "CEO",
-        
-        # Add more users here as needed
-        # "user@domain.com": "persona",
-    }
 
     def pipes(self) -> List[dict]:
-        return [{"id": "clonemind", "name": "CloneMind"}]
+        return [{"id": "twin", "name": "AI Twin Mode"}]
 
-    def get_tenant_persona(self, user_info: dict, __user__: dict = None) -> tuple:
-        """Extract tenant and persona from user info"""
-
-        if self.valves.DEBUG_MODE:
-            print(f"\n{'='*60}")
-            print(f"[CloneMind DEBUG] Full user_info received:")
-            print(json.dumps(user_info, indent=2, default=str))
-            if __user__:
-                print(f"\n[CloneMind DEBUG] Full __user__ received:")
-                print(json.dumps(__user__, indent=2, default=str))
-            print(f"{'='*60}\n")
-
-        # Try multiple sources for email
-        email = None
-
-        # Source 1: user_info dict
-        email = user_info.get("email", "")
-        if email:
-            print(f"[CloneMind] ✓ Found email in user_info: {email}")
-
-        # Source 2: __user__ parameter (Open WebUI passes this)
-        if not email and __user__:
-            email = __user__.get("email", "")
-            if email:
-                print(f"[CloneMind] ✓ Found email in __user__: {email}")
-
-        # Source 3: username field
-        if not email:
-            username = user_info.get("username", "") or user_info.get("name", "")
-            if username and "@" in username:
-                email = username
-                print(f"[CloneMind] ✓ Found email in username: {email}")
-
-        # Get other user data
-        user_id = user_info.get("id", "")
-        role = user_info.get("role", "user")
-
-        print(f"[CloneMind] Extracted - Email: {email}, ID: {user_id}, Role: {role}")
-
-        # Check tenant mapping
+    def get_tenant_dna(self, tenant_id: str):
+        """Fetch the prompt DNA (tone, industry, etc.) from Tenant Service"""
         try:
-            tenant_map = json.loads(self.valves.TENANT_MAPPING)
-        except:
-            tenant_map = {}
+            response = requests.get(f"{self.valves.TENANT_SERVICE_URL}/api/tenants/{tenant_id}", timeout=5)
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            print(f"Error fetching DNA: {e}")
+        return None
 
-        if email and email in tenant_map:
-            tenant_id = tenant_map[email]
-            persona_id = role
-            print(f"[CloneMind] ✓ Mapped from open_webui.config: {tenant_id} / {persona_id}")
-            return tenant_id, persona_id
-
-        # Process based on mode
-        if self.valves.TENANT_MODE == "email_domain":
-            if email and "@" in email:
-                username = email.split("@")[0]
-
-                # Pattern: alice.tenantb@gmail.com -> extract "tenantb"
-                if "." in username:
-                    parts = username.split(".")
-                    tenant_part = parts[-1]  # Last part after dot
-                    tenant_id = f"tenant-{tenant_part}"
-                    print(f"[CloneMind] ✓ Extracted from username pattern: {tenant_id}")
-                else:
-                    # No dot in username, use whole username
-                    tenant_id = f"tenant-{username}"
-                    print(f"[CloneMind] ✓ Using username as tenant: {tenant_id}")
-
-                persona_id = role or "user"
-            else:
-                tenant_id = self.valves.DEFAULT_TENANT
-                persona_id = self.valves.DEFAULT_PERSONA
-                print(f"[CloneMind] ⚠️ No email found, using defaults")
-
-        elif self.valves.TENANT_MODE == "email_username":
-            if email and "@" in email:
-                username = email.split("@")[0]
-                tenant_id = f"tenant-{username}"
-                persona_id = f"persona-{username}"
-            else:
-                tenant_id = self.valves.DEFAULT_TENANT
-                persona_id = self.valves.DEFAULT_PERSONA
-
-        elif self.valves.TENANT_MODE == "user_id":
-            if user_id:
-                tenant_id = f"tenant-{user_id[:8]}"
-                persona_id = role or "user"
-            else:
-                tenant_id = self.valves.DEFAULT_TENANT
-                persona_id = self.valves.DEFAULT_PERSONA
-
-        else:  # fixed mode
-            tenant_id = self.valves.DEFAULT_TENANT
-            persona_id = self.valves.DEFAULT_PERSONA
-
-        # Extract persona dynamically from tenant service API
-        if __user__:
-            email = __user__.get("email", "")
-            
-            # Try API first
-            api_tenant, api_persona = self.get_user_tenant_persona_from_api(email)
-            
-            if api_tenant != "default":
-                # Use API result
-                tenant_id = api_tenant
-                persona_id = api_persona
-                print(f"[CloneMind] ✓ API persona: {persona_id}")
-            else:
-                # Fallback to PERSONA_MAP
-                persona_id = self.PERSONA_MAP.get(email, "user")
-                if persona_id != "user":
-                    print(f"[CloneMind] ✓ PERSONA_MAP fallback: {persona_id}")
-                else:
-                    print(f"[CloneMind] ℹ️ Using default persona: user")
-
-        print(f"[CloneMind] ✅ Final Assignment: {tenant_id} / {persona_id}")
-        return tenant_id, persona_id
-
-    def pipe(
-        self, body: dict, __user__: dict = None
-    ) -> Union[str, Generator, Iterator]:
-        """Main pipeline entry point"""
-
-        if self.valves.DEBUG_MODE:
-            print(f"\n{'='*60}")
-            print(f"[CloneMind DEBUG] Full body received:")
-            print(
-                json.dumps(
-                    {k: v for k, v in body.items() if k != "messages"},
-                    indent=2,
-                    default=str,
-                )
-            )
-            if __user__:
-                print(f"\n[CloneMind DEBUG] __user__ parameter:")
-                print(json.dumps(__user__, indent=2, default=str))
-            print(f"{'='*60}\n")
-
-        messages = body.get("messages", [])
-        model_id = body.get("model", "unknown")
-        user_info = body.get("user", {})
-
-        # Extract tenant and persona - pass __user__ parameter
-        tenant_id, persona_id = self.get_tenant_persona(user_info, __user__)
-
-        # Get user message
-        user_message = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_message = msg.get("content", "")
-                break
-
-        print(f"[CloneMind] Query: {user_message[:100]}")
-
-        # Skip internal tasks
-        if user_message.startswith("###"):
-            return ""
-
-        # Call N8N RAG
+    def get_rag_context(self, query: str, tenant_id: str):
+        """Call MCP Server to get relevant document chunks via simple HTTP POST bridge"""
         try:
-            chat_payload = {
-                "message": user_message,
-                "messages": messages,
-                "model": model_id,
-                "tenantId": tenant_id,
-                "personaId": persona_id,
-            }
-
-            print(
-                f"[CloneMind] 📤 Sending to n8n: tenant={tenant_id}, persona={persona_id}"
-            )
-
+            mcp_url = self.valves.MCP_SERVER_URL.replace("/sse", "/call/search_knowledge_base")
             response = requests.post(
-                self.valves.N8N_WEBHOOK_URL,
-                json=chat_payload,
-                timeout=60,
+                mcp_url,
+                json={"query": query, "tenantId": tenant_id},
+                timeout=10
             )
+            if response.status_code == 200:
+                return response.json().get("content", "No context found")
+        except Exception as e:
+            print(f"Error calling MCP: {e}")
+        return "Knowledge Context placeholder..."
 
+    def pipe(self, body: dict, __user__: dict = None) -> Union[str, Generator, Iterator]:
+        # 1. Identify User & Tenant
+        email = __user__.get("email", "unknown")
+        
+        # 2. Lookup Tenant Context via API
+        try:
+            lookup_resp = requests.get(f"{self.valves.TENANT_SERVICE_URL}/api/user/lookup", params={"email": email}, timeout=5)
+            lookup = lookup_resp.json() if lookup_resp.status_code == 200 else {}
+        except:
+            lookup = {}
+
+        tenant_id = lookup.get("tenantId", "default")
+        persona_id = lookup.get("personaId", "user")
+        
+        # 3. Fetch Prompt DNA (Tone, Company Name)
+        dna = self.get_tenant_dna(tenant_id)
+        if dna:
+            tenant_info = dna.get("tenant", {})
+            company = tenant_info.get("companyName", "Unknown Corp")
+            tone = tenant_info.get("tone", "professional")
+            industry = tenant_info.get("industry", "Business")
+            
+            # 4. Construct the DYNAMIC SYSTEM PROMPT
+            system_prompt = f"""You are the official AI Twin of {company}, operating in the {industry} industry.
+Your mission is to represent {company} with a {tone} communication style.
+
+### CORE BEHAVIOR:
+1. **Fact-First**: Use the provided 'Knowledge Context' as your primary source of truth.
+2. **Identity**: Never break character. You are part of {company}. Use "we" and "our" when referring to the company.
+3. **Accuracy**: If the context doesn't contain the answer, politely state that you don't have that specific information but can help with other {industry}-related topics.
+4. **Style**: Maintain a {tone} tone in every interaction.
+
+Always prioritize the information found in the retrieved documents to provide accurate, industry-specific value."""
+        else:
+            system_prompt = "You are a helpful AI assistant representing a professional organization. Use the provided context to answer questions accurately."
+
+        # 5. Get User Message
+        user_message = body["messages"][-1]["content"]
+
+        # 6. Call MCP Server for Full Response (including RAG and Model Routing)
+        print(f"Sending request to MCP for tenant: {tenant_id}")
+        try:
+            # We'll call a combined 'generate_twin_response' tool on MCP via the HTTP bridge
+            mcp_chat_url = self.valves.MCP_SERVER_URL.replace("/sse", "/call/generate_twin_response")
+            payload = {
+                "query": user_message,
+                "tenantId": tenant_id,
+                "system_prompt": system_prompt,
+                "messages": body.get("messages", [])[:-1] # History
+            }
+            
+            response = requests.post(mcp_chat_url, json=payload, timeout=300)
+            
             if response.status_code == 200:
                 result = response.json()
-                response_text = result.get(
-                    "answer", result.get("response", str(result))
-                )
-                print(f"[CloneMind] ✅ Response received ({len(response_text)} chars)")
-                return response_text
+                return result.get("content", "No response from MCP")
             else:
-                error_msg = f"Error querying knowledge base: {response.status_code}"
-                print(f"[CloneMind] ❌ {error_msg}")
-                return error_msg
-
+                return f"Error from MCP Server: {response.status_code}"
+                
         except Exception as e:
-            error_msg = f"Error: {str(e)}"
-            print(f"[CloneMind] ❌ Exception: {error_msg}")
-            return error_msg
+            print(f"MCP Call failed: {e}")
+            return f"Error calling MCP: {str(e)}"
