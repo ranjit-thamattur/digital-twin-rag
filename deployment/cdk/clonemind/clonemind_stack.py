@@ -37,9 +37,9 @@ class CloneMindStack(Stack):
         # ECS Cluster with EC2 Capacity
         cluster = ecs.Cluster(self, "CloneMindCluster", vpc=vpc)
         cluster.add_capacity("DefaultCapacity",
-            instance_type=ec2.InstanceType("t3.micro"),
+            instance_type=ec2.InstanceType("t3.medium"),
             min_capacity=1,
-            max_capacity=2,
+            max_capacity=1,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
         )
         # Add S3 Gateway Endpoint (Free and allows VPC resources to talk to S3)
@@ -151,7 +151,8 @@ def lambda_handler(event, context):
         documents_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(s3_processor))
 
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
-        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=96, env=None, volumes=None, mounts=None):
+        # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
+        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=256, env=None, volumes=None, mounts=None):
             # Using BRIDGE mode to map container ports to specific host ports
             task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
@@ -181,10 +182,10 @@ def lambda_handler(event, context):
             return service
 
         # Infrastructure Services
-        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, 6379, env={}, mem=128,
+        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, 6379, env={}, mem=256,
             volumes=[redis_vol], mounts=[ecs.MountPoint(container_path="/data", source_volume="RedisVolume", read_only=False)])
         
-        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, 6333, env={}, mem=128,
+        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, 6333, env={}, mem=512,
             volumes=[qdrant_vol], mounts=[ecs.MountPoint(container_path="/qdrant/storage", source_volume="QdrantVolume", read_only=False)])
 
         # Application Services
@@ -197,7 +198,7 @@ def lambda_handler(event, context):
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
-            memory_limit_mib=256,
+            memory_limit_mib=1024,
             environment={
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
@@ -213,7 +214,7 @@ def lambda_handler(event, context):
 
         sync_container = webui_task.add_container("FileSyncSidecar",
             image=ecs.ContainerImage.from_asset("../../services/file-sync"),
-            memory_limit_mib=64,
+            memory_limit_mib=128,
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
                 "AWS_DEFAULT_REGION": self.region,
