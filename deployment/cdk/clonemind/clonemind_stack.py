@@ -141,7 +141,11 @@ def lambda_handler(event, context):
             # Using BRIDGE mode to map container ports to specific host ports
             task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
-                for v in volumes: task_def.add_volume(v)
+                for v in volumes:
+                    task_def.add_volume(
+                        name=v.name,
+                        efs_volume_configuration=v.efs_volume_configuration
+                    )
             
             container = task_def.add_container(f"{id}Container",
                 image=ecs.ContainerImage.from_asset(image_asset) if "../../" in image_asset else ecs.ContainerImage.from_registry(image_asset),
@@ -171,7 +175,10 @@ def lambda_handler(event, context):
         # Application Services
         # 1. Open WebUI + Sidecar (Map Container 8080 -> Host 80 for easy access)
         webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.BRIDGE)
-        webui_task.add_volume(openwebui_vol)
+        webui_task.add_volume(
+            name=openwebui_vol.name,
+            efs_volume_configuration=openwebui_vol.efs_volume_configuration
+        )
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
