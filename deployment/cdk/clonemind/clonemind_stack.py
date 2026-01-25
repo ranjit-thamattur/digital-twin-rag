@@ -42,7 +42,7 @@ class CloneMindStack(Stack):
         user_pool = cognito.UserPool(self, "UserPool",
             user_pool_name="clonemind-users",
             self_sign_up_enabled=True,
-            signInCaseSensitive=False,
+            sign_in_case_sensitive=False,
             standard_attributes=cognito.StandardAttributes(
                 email=cognito.StandardAttribute(required=True, mutable=True)
             ),
