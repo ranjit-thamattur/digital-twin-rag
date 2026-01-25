@@ -99,10 +99,10 @@ class CloneMindStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
 
-        # Volume Definitions
-        redis_vol = ecs.Volume(name="RedisVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id))
-        qdrant_vol = ecs.Volume(name="QdrantVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id))
-        openwebui_vol = ecs.Volume(name="OpenWebUIVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id))
+        # Volume Definitions (Isolated subdirectories on EFS)
+        redis_vol = ecs.Volume(name="RedisVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id, root_directory="/redis"))
+        qdrant_vol = ecs.Volume(name="QdrantVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id, root_directory="/qdrant"))
+        openwebui_vol = ecs.Volume(name="OpenWebUIVolume", efs_volume_configuration=ecs.EfsVolumeConfiguration(file_system_id=file_system.file_system_id, root_directory="/openwebui"))
 
         # 5. S3 Processor Lambda
         s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
@@ -171,13 +171,7 @@ def lambda_handler(event, context):
                 memory_limit_mib=mem,
                 cpu=cpu,
                 environment=env or {},
-                logging=ecs.LogDrivers.aws_logs(stream_prefix=id),
-                health_check=ecs.HealthCheck(
-                    command=["CMD-SHELL", f"netstat -an | grep {container_port} || exit 1"],
-                    interval=Duration.seconds(30),
-                    timeout=Duration.seconds(5),
-                    retries=3
-                )
+                logging=ecs.LogDrivers.aws_logs(stream_prefix=id)
             )
             # Map host port 1:1 with container port for predictable internal access if needed
             container.add_port_mappings(ecs.PortMapping(container_port=container_port, host_port=container_port))
@@ -240,11 +234,12 @@ def lambda_handler(event, context):
             min_healthy_percent=0
         )
         # Add WebUI to ALB
-        web_listener.add_targets("WebUITarget", 
+        tg_webui = web_listener.add_targets("WebUITarget", 
             port=80, 
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
         )
+        tg_webui.configure_health_check(path="/", healthy_http_codes="200-399")
 
         # 2. MCP Server (8080)
         mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, env={
@@ -262,35 +257,38 @@ def lambda_handler(event, context):
         })
 
         # --- ALB Routing Rules ---
-        mcp_listener.add_targets("McpTarget",
+        tg_mcp = mcp_listener.add_targets("McpTarget",
             port=8080,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[mcp_service.load_balancer_target(container_name="McpContainer", container_port=8080)]
         )
+        tg_mcp.configure_health_check(path="/", healthy_http_codes="200-399")
         
-        tenant_listener.add_targets("TenantTarget",
+        tg_tenant = tenant_listener.add_targets("TenantTarget",
             port=8000,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[tenant_service.load_balancer_target(container_name="TenantContainer", container_port=8000)]
         )
+        tg_tenant.configure_health_check(path="/", healthy_http_codes="200-399")
         
-        qdrant_listener.add_targets("QdrantTarget",
+        tg_qdrant = qdrant_listener.add_targets("QdrantTarget",
             port=6333,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
         )
+        tg_qdrant.configure_health_check(path="/", healthy_http_codes="200-399")
 
         # --- Security Group Configuration ---
-        # The Instances are in a PUBLIC subnet to avoid NAT Gateway costs, 
-        # but we restrict their incoming traffic to only allow the ALB.
+        # Ensure the ALB can reach the instances on all ports
         instance_sg = cluster.connections.security_groups[0]
-        
-        # Allow the ALB to talk to the instances on all ports (managed by CDK target groups usually, 
-        # but explicit here for clarity in Bridge/VPC mapping)
-        instance_sg.connections.allow_from(alb, ec2.Port.all_tcp(), "Allow traffic from ALB")
+        instance_sg.add_ingress_rule(alb.connections.security_groups[0], ec2.Port.all_tcp(), "Allow ALL traffic from ALB")
         
         # Allow internal VPC traffic
         instance_sg.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
+
+        # --- EFS Connectivity ---
+        # Allow instances to mount EFS (Port 2049) - use VPC CIDR to be safe
+        file_system.connections.allow_default_port_from(ec2.Peer.ipv4(vpc.vpc_cidr_block))
 
         # 7. Permissions
         documents_bucket.grant_read_write(webui_task.task_role)
