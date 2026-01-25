@@ -21,15 +21,26 @@ class CloneMindStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # 1. QA Network Infrastructure (EC2 based for cost control)
-        vpc = ec2.Vpc(self, "CloneMindVPC", max_azs=1)
+        # 1. QA Network Infrastructure (Public only for direct access and zero NAT cost)
+        vpc = ec2.Vpc(self, "CloneMindVPC", 
+            max_azs=1,
+            nat_gateways=0,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                    map_public_ip_on_launch=True
+                )
+            ]
+        )
         
         # ECS Cluster with EC2 Capacity
         cluster = ecs.Cluster(self, "CloneMindCluster", vpc=vpc)
         cluster.add_capacity("DefaultCapacity",
             instance_type=ec2.InstanceType("t3.micro"),
             min_capacity=1,
-            max_capacity=2
+            max_capacity=2,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
         )
         
         # Add Service Discovery Namespace
