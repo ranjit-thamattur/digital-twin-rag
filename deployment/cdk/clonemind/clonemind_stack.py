@@ -157,10 +157,7 @@ def lambda_handler(event, context):
             task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
                 for v in volumes:
-                    task_def.add_volume(
-                        name=v.name,
-                        efs_volume_configuration=v.efs_volume_configuration
-                    )
+                    task_def.add_volume(v)
             
             container = task_def.add_container(f"{id}Container",
                 image=ecs.ContainerImage.from_asset(image_asset) if "../../" in image_asset else ecs.ContainerImage.from_registry(image_asset),
@@ -172,12 +169,23 @@ def lambda_handler(event, context):
             container.add_port_mappings(ecs.PortMapping(container_port=container_port, host_port=host_port))
             if mounts:
                 for m in mounts: container.add_mount_points(m)
+            
+            # Simple health check to ensure Cloud Map registration finishes
+            container.add_health_check(
+                command=["CMD-SHELL", f"netstat -an | grep {container_port} || exit 1"],
+                interval=cdk.Duration.seconds(30),
+                timeout=cdk.Duration.seconds(5),
+                retries=3
+            )
 
             service = ecs.Ec2Service(self, f"{id}Service",
                 cluster=cluster,
                 task_definition=task_def,
-                cloud_map_options=ecs.CloudMapOptions(name=id.lower()),
-                min_healthy_percent=0 # Allow stopping old tasks before starting new ones on limited capacity
+                cloud_map_options=ecs.CloudMapOptions(
+                    name=id.lower(),
+                    dns_record_type=servicediscovery.DnsRecordType.SRV # Required for BRIDGE networking
+                ),
+                min_healthy_percent=0 
             )
             return service
 
@@ -191,10 +199,7 @@ def lambda_handler(event, context):
         # Application Services
         # 1. Open WebUI + Sidecar (Map Container 8080 -> Host 80 for easy access)
         webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.BRIDGE)
-        webui_task.add_volume(
-            name=openwebui_vol.name,
-            efs_volume_configuration=openwebui_vol.efs_volume_configuration
-        )
+        webui_task.add_volume(openwebui_vol)
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
@@ -218,7 +223,7 @@ def lambda_handler(event, context):
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
                 "AWS_DEFAULT_REGION": self.region,
-                "TENANT_SERVICE_URL": "http://webui.clonemind.local:8000" # Internal routing
+                "TENANT_SERVICE_URL": "http://tenant.clonemind.local:8000" # Internal routing
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
         )
@@ -226,7 +231,10 @@ def lambda_handler(event, context):
 
         webui_service = ecs.Ec2Service(self, "WebUIService", 
             cluster=cluster, task_definition=webui_task,
-            cloud_map_options=ecs.CloudMapOptions(name="webui"),
+            cloud_map_options=ecs.CloudMapOptions(
+                name="webui",
+                dns_record_type=servicediscovery.DnsRecordType.SRV # Required for BRIDGE networking
+            ),
             min_healthy_percent=0
         )
 
@@ -234,6 +242,7 @@ def lambda_handler(event, context):
         mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, 8080, env={
             "AWS_DEFAULT_REGION": self.region,
             "QDRANT_HOST": "qdrant.clonemind.local",
+            "TENANT_TABLE": tenant_table.table_name,
             "MCP_TRANSPORT": "sse"
         })
 
@@ -250,6 +259,7 @@ def lambda_handler(event, context):
         security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(8000), "Tenant Service Portal")
         security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(8080), "MCP Server API")
         security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(6333), "Qdrant Dashboard")
+        security_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(6379), "Redis Port")
 
         # 7. Permissions
         documents_bucket.grant_read_write(webui_task.task_role)
