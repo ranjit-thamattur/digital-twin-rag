@@ -8,10 +8,10 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_efs as efs,
     aws_cognito as cognito,
-    aws_elasticloadbalancingv2 as elbv2,
     aws_s3_notifications as s3n,
     RemovalPolicy,
     Duration,
+    CfnOutput,
 )
 from constructs import Construct
 
@@ -20,9 +20,11 @@ class CloneMindStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # 1. QA Network Infrastructure
+        # ===================================================================
+        # 1. NETWORK INFRASTRUCTURE - SINGLE AZ
+        # ===================================================================
         vpc = ec2.Vpc(self, "CloneMindVPC", 
-            max_azs=2,
+            max_azs=1,  # SIMPLIFIED: Single AZ for QA
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -33,182 +35,495 @@ class CloneMindStack(Stack):
             ]
         )
         
-        # 1.1 ECS Cluster with EC2 Capacity
-        cluster = ecs.Cluster(self, "CloneMindCluster", vpc=vpc)
+        # S3 Gateway Endpoint (free, improves performance)
+        vpc.add_gateway_endpoint("S3Endpoint", 
+            service=ec2.GatewayVpcEndpointAwsService.S3
+        )
+        
+        # ===================================================================
+        # 2. ECS CLUSTER WITH EC2 CAPACITY
+        # ===================================================================
+        cluster = ecs.Cluster(self, "CloneMindCluster", 
+            vpc=vpc,
+            cluster_name="clonemind-cluster"
+        )
+        
+        # Add EC2 capacity - t3.medium for QA with public IP
         asg = cluster.add_capacity("DefaultCapacity",
             instance_type=ec2.InstanceType("t3.medium"),
             min_capacity=1,
-            max_capacity=1,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+            max_capacity=1,  # SIMPLIFIED: Single instance for QA
+            desired_capacity=1,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            machine_image=ecs.EcsOptimizedImage.amazon_linux2(),
+            associate_public_ip_address=True  # CRITICAL: Ensure public IP
         )
-        # Critical IAM roles for ECS on EC2
-        asg.role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceforEC2Role"))
-        asg.role.add_managed_policy(iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"))
         
-        vpc.add_gateway_endpoint("S3Endpoint", service=ec2.GatewayVpcEndpointAwsService.S3)
-        
-        # 1.2 Application Load Balancer
-        alb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB", vpc=vpc, internet_facing=True)
-        web_listener = alb.add_listener("WebListener", port=80)
-        mcp_listener = alb.add_listener("McpListener", port=8080, protocol=elbv2.ApplicationProtocol.HTTP)
-        tenant_listener = alb.add_listener("TenantListener", port=8000, protocol=elbv2.ApplicationProtocol.HTTP)
-        qdrant_listener = alb.add_listener("QdrantListener", port=6333, protocol=elbv2.ApplicationProtocol.HTTP)
+        # CRITICAL: ECS Agent needs these permissions
+        asg.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "service-role/AmazonEC2ContainerServiceforEC2Role"
+            )
+        )
+        asg.role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonSSMManagedInstanceCore"
+            )
+        )
 
-        # 2. Identity & Persistence
+        # ===================================================================
+        # 3. COGNITO USER POOL - Dynamic EC2 IP Handling
+        # ===================================================================
         user_pool = cognito.UserPool(self, "UserPool",
             user_pool_name="clonemind-users",
             self_sign_up_enabled=True,
-            standard_attributes=cognito.StandardAttributes(email=cognito.StandardAttribute(required=True, mutable=True)),
-            custom_attributes={"tenant_id": cognito.StringAttribute(mutable=True)},
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=True, mutable=True)
+            ),
+            custom_attributes={
+                "tenant_id": cognito.StringAttribute(mutable=True)
+            },
             removal_policy=RemovalPolicy.DESTROY
         )
-        user_pool.add_domain("CognitoDomain", cognito_domain=cognito.CognitoDomainOptions(domain_prefix="clonemind-auth"))
+        
+        user_pool.add_domain("CognitoDomain", 
+            cognito_domain=cognito.CognitoDomainOptions(
+                domain_prefix=f"clonemind-{self.account}"
+            )
+        )
+        
+        # Note: You'll need to update callback URLs manually after deployment with EC2 IP
         user_pool_client = user_pool.add_client("AppClient",
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),
-                scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-                callback_urls=["http://localhost:3000/oauth/callback"]
+                scopes=[
+                    cognito.OAuthScope.OPENID, 
+                    cognito.OAuthScope.EMAIL, 
+                    cognito.OAuthScope.PROFILE
+                ],
+                callback_urls=[
+                    "http://localhost:3000/oauth/callback"  # Placeholder - update after deployment
+                ]
             ),
             generate_secret=True
         )
 
-        documents_bucket = s3.Bucket(self, "CloneMindDocs", removal_policy=RemovalPolicy.DESTROY, auto_delete_objects=True)
-        tenant_table = dynamodb.Table(self, "TenantMetadata", partition_key=dynamodb.Attribute(name="tenantId", type=dynamodb.AttributeType.STRING), removal_policy=RemovalPolicy.DESTROY)
-
-        # 3. EFS with Access Points (Ensures directories exist with correct permissions)
-        file_system = efs.FileSystem(self, "CloneMindEFS", vpc=vpc, removal_policy=RemovalPolicy.DESTROY)
+        # ===================================================================
+        # 4. STORAGE: S3 & DYNAMODB
+        # ===================================================================
+        documents_bucket = s3.Bucket(self, "CloneMindDocs", 
+            removal_policy=RemovalPolicy.DESTROY, 
+            auto_delete_objects=True,
+            bucket_name=f"clonemind-docs-{self.account}"
+        )
         
-        def create_ap(id: str, path: str):
+        tenant_table = dynamodb.Table(self, "TenantMetadata", 
+            partition_key=dynamodb.Attribute(
+                name="tenantId", 
+                type=dynamodb.AttributeType.STRING
+            ), 
+            removal_policy=RemovalPolicy.DESTROY,
+            table_name="clonemind-tenants"
+        )
+
+        # ===================================================================
+        # 5. EFS WITH ACCESS POINTS
+        # ===================================================================
+        file_system = efs.FileSystem(self, "CloneMindEFS", 
+            vpc=vpc, 
+            removal_policy=RemovalPolicy.DESTROY,
+            file_system_name="clonemind-efs"
+        )
+        
+        def create_access_point(id: str, path: str):
             return file_system.add_access_point(id, 
                 path=path, 
-                create_acl=efs.Acl(owner_gid="1000", owner_uid="1000", permissions="777"),
+                create_acl=efs.Acl(
+                    owner_gid="1000", 
+                    owner_uid="1000", 
+                    permissions="777"
+                ),
                 posix_user=efs.PosixUser(gid="1000", uid="1000")
             )
 
-        redis_ap = create_ap("RedisAP", "/redis")
-        qdrant_ap = create_ap("QdrantAP", "/qdrant")
-        webui_ap = create_ap("WebUIAP", "/openwebui")
+        redis_ap = create_access_point("RedisAP", "/redis")
+        qdrant_ap = create_access_point("QdrantAP", "/qdrant")
+        webui_ap = create_access_point("WebUIAP", "/openwebui")
 
-        def create_efs_vol(name: str, ap: efs.AccessPoint):
-            return ecs.Volume(name=name, efs_volume_configuration=ecs.EfsVolumeConfiguration(
+        # ===================================================================
+        # 6. REDIS SERVICE
+        # ===================================================================
+        redis_task = ecs.Ec2TaskDefinition(self, "RedisTask", 
+            network_mode=ecs.NetworkMode.HOST  # HOST mode for direct access
+        )
+        
+        redis_vol = ecs.Volume(
+            name="RedisVolume", 
+            efs_volume_configuration=ecs.EfsVolumeConfiguration(
                 file_system_id=file_system.file_system_id,
                 transit_encryption="ENABLED",
-                authorization_config=ecs.AuthorizationConfig(access_point_id=ap.access_point_id, iam="ENABLED")
-            ))
-
-        redis_vol = create_efs_vol("RedisVolume", redis_ap)
-        qdrant_vol = create_efs_vol("QdrantVolume", qdrant_ap)
-        openwebui_vol = create_efs_vol("OpenWebUIVolume", webui_ap)
-
-        # 4. S3 Processor
-        s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
-            runtime=_lambda.Runtime.PYTHON_3_11,
-            handler="index.lambda_handler",
-            code=_lambda.Code.from_inline("""
-import os, boto3, urllib.parse, requests
-def lambda_handler(event, context):
-    mcp_url = os.environ.get("MCP_URL")
-    for record in event['Records']:
-        key = urllib.parse.unquote_plus(record['s3']['object']['key'])
-        parts = key.split('/')
-        if len(parts) < 3: continue
-        try:
-            requests.post(f"{mcp_url}/call/ingest_knowledge", json={"text": f"New document: {key}", "tenantId": parts[0], "metadata": {"s3_key": key, "personaId": parts[1]}}, timeout=5)
-        except: pass
-    return {'statusCode': 200}
-"""),
-            environment={"MCP_URL": f"http://{alb.load_balancer_dns_name}:8080"},
-            vpc=vpc, allow_public_subnet=True
-        )
-        documents_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(s3_processor))
-
-        # 5. ECS Service Helper
-        def add_service(id: str, image: str, port: int, mem=256, cpu=128, env=None, volumes=None, mounts=None):
-            task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
-            if volumes:
-                for v in volumes: task_def.add_volume(name=v.name, efs_volume_configuration=v.efs_volume_configuration)
-            
-            container = task_def.add_container(f"{id}Container",
-                image=ecs.ContainerImage.from_asset(image) if "../../" in image else ecs.ContainerImage.from_registry(image),
-                memory_limit_mib=mem, cpu=cpu, environment=env or {},
-                logging=ecs.LogDrivers.aws_logs(stream_prefix=id)
+                authorization_config=ecs.AuthorizationConfig(
+                    access_point_id=redis_ap.access_point_id, 
+                    iam="ENABLED"
+                )
             )
-            container.add_port_mappings(ecs.PortMapping(container_port=port, host_port=port))
-            if mounts:
-                for m in mounts: container.add_mount_points(m)
-            
-            return ecs.Ec2Service(self, f"{id}Service", cluster=cluster, task_definition=task_def, min_healthy_percent=0)
-
-        # 6. Deploy Services
-        redis = add_service("Redis", "redis:7-alpine", 6379, 
-            volumes=[redis_vol], mounts=[ecs.MountPoint(container_path="/data", source_volume="RedisVolume", read_only=False)])
+        )
+        redis_task.add_volume(**redis_vol.__dict__)
         
-        qdrant = add_service("Qdrant", "qdrant/qdrant:latest", 6333, mem=512,
-            volumes=[qdrant_vol], mounts=[ecs.MountPoint(container_path="/qdrant/storage", source_volume="QdrantVolume", read_only=False)])
+        redis_container = redis_task.add_container("RedisContainer",
+            image=ecs.ContainerImage.from_registry("redis:7-alpine"),
+            memory_limit_mib=128,
+            cpu=64,
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Redis")
+        )
+        redis_container.add_port_mappings(
+            ecs.PortMapping(container_port=6379)  # HOST mode - no host port needed
+        )
+        redis_container.add_mount_points(
+            ecs.MountPoint(
+                container_path="/data", 
+                source_volume="RedisVolume", 
+                read_only=False
+            )
+        )
+        
+        redis_service = ecs.Ec2Service(self, "RedisService", 
+            cluster=cluster, 
+            task_definition=redis_task,
+            desired_count=1,
+            min_healthy_percent=0,
+            max_healthy_percent=100,
+            service_name="redis"
+        )
 
-        # WebUI Task (Custom build because of sidecar)
-        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.BRIDGE)
-        webui_task.add_volume(name=openwebui_vol.name, efs_volume_configuration=openwebui_vol.efs_volume_configuration)
+        # ===================================================================
+        # 7. QDRANT SERVICE
+        # ===================================================================
+        qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
+            network_mode=ecs.NetworkMode.HOST
+        )
+        
+        qdrant_vol = ecs.Volume(
+            name="QdrantVolume", 
+            efs_volume_configuration=ecs.EfsVolumeConfiguration(
+                file_system_id=file_system.file_system_id,
+                transit_encryption="ENABLED",
+                authorization_config=ecs.AuthorizationConfig(
+                    access_point_id=qdrant_ap.access_point_id, 
+                    iam="ENABLED"
+                )
+            )
+        )
+        qdrant_task.add_volume(**qdrant_vol.__dict__)
+        
+        qdrant_container = qdrant_task.add_container("QdrantContainer",
+            image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
+            memory_limit_mib=512,
+            cpu=128,
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Qdrant"),
+            health_check=ecs.HealthCheck(
+                command=["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"],
+                interval=Duration.seconds(30),
+                timeout=Duration.seconds(5),
+                retries=3,
+                start_period=Duration.seconds(60)
+            )
+        )
+        qdrant_container.add_port_mappings(
+            ecs.PortMapping(container_port=6333)
+        )
+        qdrant_container.add_mount_points(
+            ecs.MountPoint(
+                container_path="/qdrant/storage", 
+                source_volume="QdrantVolume", 
+                read_only=False
+            )
+        )
+        
+        file_system.grant_root_access(qdrant_task.task_role)
+        
+        qdrant_service = ecs.Ec2Service(self, "QdrantService", 
+            cluster=cluster, 
+            task_definition=qdrant_task,
+            desired_count=1,
+            min_healthy_percent=0,
+            max_healthy_percent=100,
+            service_name="qdrant"
+        )
+
+        # ===================================================================
+        # 8. MCP SERVER SERVICE  
+        # ===================================================================
+        mcp_task = ecs.Ec2TaskDefinition(self, "McpTask", 
+            network_mode=ecs.NetworkMode.HOST
+        )
+        
+        mcp_container = mcp_task.add_container("McpContainer",
+            image=ecs.ContainerImage.from_asset("../../services/mcp-server"),
+            memory_limit_mib=384,
+            cpu=128,
+            environment={
+                "QDRANT_HOST": "localhost",  # Same host with HOST network mode
+                "QDRANT_PORT": "6333",
+                "TENANT_TABLE": tenant_table.table_name,
+                "MCP_TRANSPORT": "sse",
+                "AWS_REGION": self.region
+            },
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
+        )
+        mcp_container.add_port_mappings(
+            ecs.PortMapping(container_port=8080)
+        )
+        
+        tenant_table.grant_read_write_data(mcp_task.task_role)
+        mcp_task.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=["*"]
+            )
+        )
+        
+        mcp_service = ecs.Ec2Service(self, "McpService", 
+            cluster=cluster, 
+            task_definition=mcp_task,
+            desired_count=1,
+            min_healthy_percent=0,
+            service_name="mcp-server"
+        )
+
+        # ===================================================================
+        # 9. TENANT SERVICE
+        # ===================================================================
+        tenant_task = ecs.Ec2TaskDefinition(self, "TenantTask", 
+            network_mode=ecs.NetworkMode.HOST
+        )
+        
+        tenant_container = tenant_task.add_container("TenantContainer",
+            image=ecs.ContainerImage.from_asset("../../services/tenant-service"),
+            memory_limit_mib=192,
+            cpu=64,
+            environment={
+                "TENANT_TABLE": tenant_table.table_name,
+                "COGNITO_USER_POOL_ID": user_pool.user_pool_id,
+                "AWS_REGION": self.region
+            },
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Tenant")
+        )
+        tenant_container.add_port_mappings(
+            ecs.PortMapping(container_port=8000)
+        )
+        
+        tenant_table.grant_read_write_data(tenant_task.task_role)
+        tenant_task.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["cognito-idp:*"],
+                resources=[user_pool.user_pool_arn]
+            )
+        )
+        
+        tenant_service = ecs.Ec2Service(self, "TenantService", 
+            cluster=cluster, 
+            task_definition=tenant_task,
+            desired_count=1,
+            min_healthy_percent=0,
+            service_name="tenant-service"
+        )
+
+        # ===================================================================
+        # 10. WEBUI SERVICE
+        # ===================================================================
+        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", 
+            network_mode=ecs.NetworkMode.HOST
+        )
+        
+        webui_vol = ecs.Volume(
+            name="OpenWebUIVolume", 
+            efs_volume_configuration=ecs.EfsVolumeConfiguration(
+                file_system_id=file_system.file_system_id,
+                transit_encryption="ENABLED",
+                authorization_config=ecs.AuthorizationConfig(
+                    access_point_id=webui_ap.access_point_id, 
+                    iam="ENABLED"
+                )
+            )
+        )
+        webui_task.add_volume(**webui_vol.__dict__)
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
-            memory_limit_mib=1024, cpu=256,
+            memory_limit_mib=1536,
+            cpu=256,
             environment={
-                "WEBUI_NAME": "CloneMind AI", "ENABLE_PIPELINE_MODE": "true", "WEBUI_AUTH": "true",
+                "WEBUI_NAME": "CloneMind AI",
+                "ENABLE_PIPELINE_MODE": "true",
+                "WEBUI_AUTH": "true",
                 "OAUTH_CLIENT_ID": user_pool_client.user_pool_client_id,
                 "OAUTH_CLIENT_SECRET": user_pool_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
-        webui_container.add_port_mappings(ecs.PortMapping(container_port=8080, host_port=80)) # Map to Host 80
-        webui_container.add_mount_points(ecs.MountPoint(container_path="/app/backend/data", source_volume="OpenWebUIVolume", read_only=False))
-
-        webui_task.add_container("FileSync",
-            image=ecs.ContainerImage.from_asset("../../services/file-sync"),
-            memory_limit_mib=128,
-            environment={"S3_BUCKET": documents_bucket.bucket_name, "TENANT_SERVICE_URL": f"http://{alb.load_balancer_dns_name}:8000"},
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
-        ).add_mount_points(ecs.MountPoint(container_path="/app/backend/data", source_volume="OpenWebUIVolume", read_only=False))
-
-        webui_service = ecs.Ec2Service(self, "WebUIService", cluster=cluster, task_definition=webui_task, min_healthy_percent=0)
-
-        mcp_service = add_service("Mcp", "../../services/mcp-server", 8080, env={
-            "QDRANT_HOST": alb.load_balancer_dns_name, "QDRANT_PORT": "6333", "TENANT_TABLE": tenant_table.table_name, "MCP_TRANSPORT": "sse"
-        })
-
-        tenant_service = add_service("Tenant", "../../services/tenant-service", 8000, env={
-            "TENANT_TABLE": tenant_table.table_name, "COGNITO_USER_POOL_ID": user_pool.user_pool_id
-        })
-
-        # 7. ALB Routing & Health Checks (Lenient for QA)
-        def config_tg(listener, service, port, name, container_port=None):
-            tg = listener.add_targets(name, 
-                port=port, protocol=elbv2.ApplicationProtocol.HTTP,
-                targets=[service.load_balancer_target(container_name=f"{service.node.id.replace('Service','')}Container" if not container_port else "WebUI", container_port=container_port or port)]
+        webui_container.add_port_mappings(
+            ecs.PortMapping(container_port=8080)  # WebUI runs on 8080
+        )
+        webui_container.add_mount_points(
+            ecs.MountPoint(
+                container_path="/app/backend/data", 
+                source_volume="OpenWebUIVolume", 
+                read_only=False
             )
-            tg.configure_health_check(path="/", healthy_http_codes="200-499")
-            return tg
-
-        config_tg(web_listener, webui_service, 80, "WebUITarget", 8080)
-        config_tg(mcp_listener, mcp_service, 8080, "McpTarget")
-        config_tg(tenant_listener, tenant_service, 8000, "TenantTarget")
-        config_tg(qdrant_listener, qdrant, 6333, "QdrantTarget")
-
-        # 8. Final Security Rules
-        instance_sg = asg.connections.security_groups[0]
-        instance_sg.add_ingress_rule(alb.connections.security_groups[0], ec2.Port.all_tcp(), "Allow ALL from ALB")
-        for p in [80, 8080, 8000, 6333, 6379]:
-            instance_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(p), f"QA Port {p}")
+        )
         
+        # Sidecar: File sync container
+        filesync_container = webui_task.add_container("FileSync",
+            image=ecs.ContainerImage.from_asset("../../services/file-sync"),
+            memory_limit_mib=192,
+            cpu=64,
+            environment={
+                "S3_BUCKET": documents_bucket.bucket_name,
+                "TENANT_SERVICE_URL": "http://localhost:8000"  # Same host
+            },
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
+        )
+        filesync_container.add_mount_points(
+            ecs.MountPoint(
+                container_path="/app/backend/data", 
+                source_volume="OpenWebUIVolume", 
+                read_only=False
+            )
+        )
+        
+        documents_bucket.grant_read_write(webui_task.task_role)
+        file_system.grant_root_access(webui_task.task_role)
+        
+        webui_service = ecs.Ec2Service(self, "WebUIService", 
+            cluster=cluster, 
+            task_definition=webui_task,
+            desired_count=1,
+            min_healthy_percent=0,
+            service_name="webui"
+        )
+
+        # ===================================================================
+        # 11. S3 PROCESSOR LAMBDA
+        # ===================================================================
+        # Note: Lambda will need to be updated with EC2 IP after deployment
+        s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="index.lambda_handler",
+            code=_lambda.Code.from_inline("""
+import os, boto3, urllib.parse, requests, json
+
+def lambda_handler(event, context):
+    mcp_url = os.environ.get("MCP_URL")
+    
+    if not mcp_url:
+        print("MCP_URL not configured")
+        return {'statusCode': 200, 'body': json.dumps('MCP_URL not set')}
+    
+    for record in event.get('Records', []):
+        try:
+            key = urllib.parse.unquote_plus(record['s3']['object']['key'])
+            parts = key.split('/')
+            
+            if len(parts) < 3:
+                print(f"Skipping {key}: insufficient path parts")
+                continue
+            
+            tenant_id = parts[0]
+            persona_id = parts[1]
+            
+            print(f"Processing: {key} -> tenant={tenant_id}, persona={persona_id}")
+            
+            response = requests.post(
+                f"{mcp_url}/call/ingest_knowledge",
+                json={
+                    "text": f"New document uploaded: {key}",
+                    "tenantId": tenant_id,
+                    "metadata": {
+                        "s3_key": key,
+                        "personaId": persona_id
+                    }
+                },
+                timeout=10
+            )
+            
+            print(f"MCP response: {response.status_code}")
+            
+        except Exception as e:
+            print(f"Error processing {key}: {str(e)}")
+            continue
+    
+    return {'statusCode': 200, 'body': json.dumps('Processed')}
+"""),
+            environment={
+                "MCP_URL": ""  # Update this after deployment with http://EC2_IP:8080
+            },
+            vpc=vpc,
+            allow_public_subnet=True,
+            timeout=Duration.seconds(30)
+        )
+        
+        documents_bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            s3n.LambdaDestination(s3_processor)
+        )
+
+        # ===================================================================
+        # 12. SECURITY GROUPS
+        # ===================================================================
+        instance_sg = asg.connections.security_groups[0]
+        
+        # Allow public access to all service ports
+        for port in [80, 8080, 8000, 6333, 6379]:
+            instance_sg.add_ingress_rule(
+                ec2.Peer.any_ipv4(),
+                ec2.Port.tcp(port),
+                f"Public Access Port {port}"
+            )
+        
+        # Allow EFS access from EC2 instances
         file_system.connections.allow_default_port_from(instance_sg)
 
-        # Permissions
-        documents_bucket.grant_read_write(webui_task.task_role)
-        mcp_service.task_definition.task_role.add_to_policy(iam.PolicyStatement(actions=["bedrock:InvokeModel"], resources=["*"]))
-        file_system.grant_root_access(webui_task.task_role)
-        file_system.grant_root_access(qdrant.task_definition.task_role)
-        file_system.grant_root_access(redis.task_definition.task_role)
-        tenant_table.grant_read_write_data(mcp_service.task_definition.task_role)
-        tenant_table.grant_read_write_data(tenant_service.task_definition.task_role)
-        tenant_service.task_definition.task_role.add_to_policy(iam.PolicyStatement(actions=["cognito-idp:*"], resources=[user_pool.user_pool_arn]))
+        # ===================================================================
+        # 13. OUTPUTS
+        # ===================================================================
+        CfnOutput(self, "EC2InstanceInfo",
+            value="Use AWS Console or CLI to get EC2 public IP: aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*DefaultCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress'",
+            description="Command to get EC2 Public IP"
+        )
+        
+        CfnOutput(self, "ServiceEndpoints",
+            value="After deployment, access services at: WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:8080, Tenant=http://EC2_IP:8000",
+            description="Service Access URLs (replace EC2_IP with actual IP)"
+        )
+        
+        CfnOutput(self, "PostDeploymentSteps",
+            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:8080",
+            description="Required manual steps after deployment"
+        )
+        
+        CfnOutput(self, "S3BucketName",
+            value=documents_bucket.bucket_name,
+            description="Documents S3 Bucket"
+        )
+        
+        CfnOutput(self, "UserPoolId",
+            value=user_pool.user_pool_id,
+            description="Cognito User Pool ID"
+        )
+        
+        CfnOutput(self, "UserPoolClientId",
+            value=user_pool_client.user_pool_client_id,
+            description="Cognito User Pool Client ID"
+        )
+        
+        CfnOutput(self, "AutoScalingGroupName",
+            value=asg.auto_scaling_group_name,
+            description="Auto Scaling Group Name"
+        )
+        
+        CfnOutput(self, "CostSavings",
+            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 2944MB",
+            description="Cost optimizations applied"
+        )
