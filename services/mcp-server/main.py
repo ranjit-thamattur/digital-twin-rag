@@ -168,6 +168,10 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 
+@mcp.app.route("/", methods=["GET"])
+async def health_check(request: Request):
+    return JSONResponse({"status": "healthy"})
+
 @mcp.app.route("/call/{tool_name}", methods=["POST"])
 async def call_tool_bridge(request: Request):
     tool_name = request.path_params["tool_name"]
