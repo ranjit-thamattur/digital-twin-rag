@@ -186,6 +186,9 @@ class CloneMindStack(Stack):
             )
         )
         
+        # FIXED: Grant EFS access to Redis task role
+        file_system.grant_root_access(redis_task.task_role)
+        
         redis_service = ecs.Ec2Service(self, "RedisService", 
             cluster=cluster, 
             task_definition=redis_task,
@@ -354,6 +357,7 @@ class CloneMindStack(Stack):
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
+                "PORT": "80",  # Explicitly set WebUI to listen on port 80
                 "OAUTH_CLIENT_ID": user_pool_client.user_pool_client_id,
                 "OAUTH_CLIENT_SECRET": user_pool_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
@@ -361,7 +365,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
         webui_container.add_port_mappings(
-            ecs.PortMapping(container_port=8080)  # WebUI runs on 8080
+            ecs.PortMapping(container_port=80)  # Changed from 8080 to avoid MCP conflict
         )
         webui_container.add_mount_points(
             ecs.MountPoint(
@@ -491,12 +495,12 @@ def lambda_handler(event, context):
         )
         
         CfnOutput(self, "ServiceEndpoints",
-            value="After deployment, access services at: WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:8080, Tenant=http://EC2_IP:8000",
+            value="After deployment, access services at: WebUI=http://EC2_IP:80, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:8080, Tenant=http://EC2_IP:8000",
             description="Service Access URLs (replace EC2_IP with actual IP)"
         )
         
         CfnOutput(self, "PostDeploymentSteps",
-            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:8080",
+            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:80/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:8080",
             description="Required manual steps after deployment"
         )
         
