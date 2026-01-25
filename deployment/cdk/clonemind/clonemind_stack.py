@@ -42,6 +42,8 @@ class CloneMindStack(Stack):
             max_capacity=2,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
         )
+        # Add S3 Gateway Endpoint (Free and allows VPC resources to talk to S3)
+        vpc.add_gateway_endpoint("S3Endpoint", service=ec2.GatewayVpcEndpointAwsService.S3)
         
         # Add Service Discovery Namespace
         namespace = cluster.add_default_cloud_map_namespace(
@@ -148,7 +150,7 @@ def lambda_handler(event, context):
         documents_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(s3_processor))
 
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
-        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=256, env=None, volumes=None, mounts=None):
+        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=128, env=None, volumes=None, mounts=None):
             # Using BRIDGE mode to map container ports to specific host ports
             task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
@@ -172,15 +174,16 @@ def lambda_handler(event, context):
             service = ecs.Ec2Service(self, f"{id}Service",
                 cluster=cluster,
                 task_definition=task_def,
-                cloud_map_options=ecs.CloudMapOptions(name=id.lower())
+                cloud_map_options=ecs.CloudMapOptions(name=id.lower()),
+                min_healthy_percent=0 # Allow stopping old tasks before starting new ones on limited capacity
             )
             return service
 
         # Infrastructure Services
-        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, 6379, env={}, 
+        redis = add_ec2_service("Redis", "redis:7-alpine", 6379, 6379, env={}, mem=128,
             volumes=[redis_vol], mounts=[ecs.MountPoint(container_path="/data", source_volume="RedisVolume", read_only=False)])
         
-        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, 6333, env={},
+        qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, 6333, env={}, mem=128,
             volumes=[qdrant_vol], mounts=[ecs.MountPoint(container_path="/qdrant/storage", source_volume="QdrantVolume", read_only=False)])
 
         # Application Services
@@ -193,7 +196,7 @@ def lambda_handler(event, context):
         
         webui_container = webui_task.add_container("WebUI",
             image=ecs.ContainerImage.from_asset("../../deployment/docker"),
-            memory_limit_mib=512,
+            memory_limit_mib=256,
             environment={
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
@@ -221,7 +224,8 @@ def lambda_handler(event, context):
 
         webui_service = ecs.Ec2Service(self, "WebUIService", 
             cluster=cluster, task_definition=webui_task,
-            cloud_map_options=ecs.CloudMapOptions(name="webui")
+            cloud_map_options=ecs.CloudMapOptions(name="webui"),
+            min_healthy_percent=0
         )
 
         # 2. MCP Server (8080 -> 8080)
