@@ -24,7 +24,7 @@ class CloneMindStack(Stack):
 
         # 1. QA Network Infrastructure (Public only for direct access and zero NAT cost)
         vpc = ec2.Vpc(self, "CloneMindVPC", 
-            max_azs=1,
+            max_azs=2,
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
