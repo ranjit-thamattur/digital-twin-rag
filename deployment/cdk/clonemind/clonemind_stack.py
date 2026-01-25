@@ -46,15 +46,12 @@ class CloneMindStack(Stack):
         # Add S3 Gateway Endpoint (Free and allows VPC resources to talk to S3)
         vpc.add_gateway_endpoint("S3Endpoint", service=ec2.GatewayVpcEndpointAwsService.S3)
         
-        # Add Service Discovery Namespace (Using A records with AWS_VPC mode)
-        namespace = cluster.add_default_cloud_map_namespace(
-            name="clonemind.local",
-            type=servicediscovery.NamespaceType.DNS_PRIVATE
-        )
-        
         # 1.1 Create Application Load Balancer
         alb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB", vpc=vpc, internet_facing=True)
-        listener = alb.add_listener("PublicListener", port=80)
+        web_listener = alb.add_listener("WebListener", port=80)
+        mcp_listener = alb.add_listener("McpListener", port=8080)
+        tenant_listener = alb.add_listener("TenantListener", port=8000)
+        qdrant_listener = alb.add_listener("QdrantListener", port=6333)
 
         # 2. AWS Cognito for Managed Identity
         user_pool = cognito.UserPool(self, "UserPool",
@@ -148,7 +145,7 @@ def lambda_handler(event, context):
     return {'statusCode': 200}
             """),
             environment={
-                "MCP_URL": "http://mcp.clonemind.local:8080" 
+                "MCP_URL": f"http://{alb.load_balancer_dns_name}:8080" 
             },
             vpc=vpc,
             allow_public_subnet=True
@@ -158,8 +155,8 @@ def lambda_handler(event, context):
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
         def add_ec2_service(id: str, image_asset: str, container_port: int, cpu=128, mem=256, env=None, volumes=None, mounts=None):
-            # Using AWS_VPC mode for standard A-record service discovery
-            task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.AWS_VPC)
+            # Using BRIDGE mode for high-density task placement on a single instance
+            task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
                 for v in volumes:
                     task_def.add_volume(
@@ -182,17 +179,14 @@ def lambda_handler(event, context):
                     retries=3
                 )
             )
-            container.add_port_mappings(ecs.PortMapping(container_port=container_port))
+            # Map host port 1:1 with container port for predictable internal access if needed
+            container.add_port_mappings(ecs.PortMapping(container_port=container_port, host_port=container_port))
             if mounts:
                 for m in mounts: container.add_mount_points(m)
 
             service = ecs.Ec2Service(self, f"{id}Service",
                 cluster=cluster,
                 task_definition=task_def,
-                cloud_map_options=ecs.CloudMapOptions(
-                    name=id.lower(),
-                    dns_record_type=servicediscovery.DnsRecordType.A
-                ),
                 min_healthy_percent=0 
             )
             return service
@@ -204,8 +198,8 @@ def lambda_handler(event, context):
         qdrant = add_ec2_service("Qdrant", "qdrant/qdrant:latest", 6333, env={}, mem=512,
             volumes=[qdrant_vol], mounts=[ecs.MountPoint(container_path="/qdrant/storage", source_volume="QdrantVolume", read_only=False)])
 
-        # 1. Open WebUI + Sidecar (AWS_VPC Mode)
-        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.AWS_VPC)
+        # 1. Open WebUI + Sidecar (BRIDGE Mode)
+        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", network_mode=ecs.NetworkMode.BRIDGE)
         webui_task.add_volume(
             name=openwebui_vol.name,
             efs_volume_configuration=openwebui_vol.efs_volume_configuration,
@@ -226,7 +220,7 @@ def lambda_handler(event, context):
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
-        webui_container.add_port_mappings(ecs.PortMapping(container_port=8080))
+        webui_container.add_port_mappings(ecs.PortMapping(container_port=8080, host_port=80))
         webui_container.add_mount_points(ecs.MountPoint(container_path="/app/backend/data", source_volume="OpenWebUIVolume", read_only=False))
 
         sync_container = webui_task.add_container("FileSyncSidecar",
@@ -235,7 +229,7 @@ def lambda_handler(event, context):
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
                 "AWS_DEFAULT_REGION": self.region,
-                "TENANT_SERVICE_URL": "http://tenant.clonemind.local:8000" 
+                "TENANT_SERVICE_URL": f"http://{alb.load_balancer_dns_name}:8000" 
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
         )
@@ -243,12 +237,11 @@ def lambda_handler(event, context):
 
         webui_service = ecs.Ec2Service(self, "WebUIService", 
             cluster=cluster, task_definition=webui_task,
-            cloud_map_options=ecs.CloudMapOptions(name="webui", dns_record_type=servicediscovery.DnsRecordType.A),
             min_healthy_percent=0
         )
-        # Add WebUI to ALB (Default Route)
-        listener.add_targets("WebUITarget", 
-            port=8080, 
+        # Add WebUI to ALB
+        web_listener.add_targets("WebUITarget", 
+            port=80, 
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
         )
@@ -256,7 +249,8 @@ def lambda_handler(event, context):
         # 2. MCP Server (8080)
         mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, env={
             "AWS_DEFAULT_REGION": self.region,
-            "QDRANT_HOST": "qdrant.clonemind.local", 
+            "QDRANT_HOST": alb.load_balancer_dns_name, 
+            "QDRANT_PORT": "6333",
             "TENANT_TABLE": tenant_table.table_name,
             "MCP_TRANSPORT": "sse"
         })
@@ -267,26 +261,20 @@ def lambda_handler(event, context):
             "AWS_DEFAULT_REGION": self.region
         })
 
-        # --- ALB Path Based Routing Rules ---
-        listener.add_targets("McpTarget",
-            priority=10,
-            conditions=[elbv2.ListenerCondition.path_patterns(["/api/mcp*"])],
+        # --- ALB Routing Rules ---
+        mcp_listener.add_targets("McpTarget",
             port=8080,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[mcp_service.load_balancer_target(container_name="McpContainer", container_port=8080)]
         )
         
-        listener.add_targets("TenantTarget",
-            priority=20,
-            conditions=[elbv2.ListenerCondition.path_patterns(["/api/tenant*"])],
+        tenant_listener.add_targets("TenantTarget",
             port=8000,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[tenant_service.load_balancer_target(container_name="TenantContainer", container_port=8000)]
         )
         
-        listener.add_targets("QdrantTarget",
-            priority=30,
-            conditions=[elbv2.ListenerCondition.path_patterns(["/qdrant*"])],
+        qdrant_listener.add_targets("QdrantTarget",
             port=6333,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
