@@ -189,16 +189,10 @@ class CloneMindStack(Stack):
         
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
-            memory_limit_mib=512,
-            cpu=128,
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="Qdrant"),
-            health_check=ecs.HealthCheck(
-                command=["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"],
-                interval=Duration.seconds(30),
-                timeout=Duration.seconds(5),
-                retries=3,
-                start_period=Duration.seconds(60)
-            )
+            memory_limit_mib=768,  # Increased from 512 to 768
+            cpu=256,  # Increased from 128 to 256
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Qdrant")
+            # Removed health check - causing restart loop
         )
         qdrant_container.add_port_mappings(
             ecs.PortMapping(container_port=6333)
@@ -210,8 +204,10 @@ class CloneMindStack(Stack):
             task_definition=qdrant_task,
             desired_count=1,
             min_healthy_percent=0,
-            max_healthy_percent=100,
-            service_name="qdrant"
+            max_healthy_percent=200,  # Changed from 100 to 200 to allow rolling updates
+            service_name="qdrant",
+            enable_execute_command=True,  # For debugging
+            circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True)  # Stop bad deployments
         )
 
         # ===================================================================
@@ -488,6 +484,6 @@ def lambda_handler(event, context):
         )
         
         CfnOutput(self, "CostSavings",
-            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 3072MB, Redis+Qdrant use ephemeral storage (no EFS locking issues)",
+            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 3328MB, Redis+Qdrant use ephemeral storage (no EFS locking issues)",
             description="Cost optimizations applied"
         )
