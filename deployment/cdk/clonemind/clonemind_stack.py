@@ -146,48 +146,28 @@ class CloneMindStack(Stack):
                 posix_user=efs.PosixUser(gid="1000", uid="1000")
             )
 
-        redis_ap = create_access_point("RedisAP", "/redis")
-        qdrant_ap = create_access_point("QdrantAP", "/qdrant")
+        # Only WebUI needs EFS for persistent data
         webui_ap = create_access_point("WebUIAP", "/openwebui")
 
         # ===================================================================
-        # 6. REDIS SERVICE
+        # 6. REDIS SERVICE - IN-MEMORY ONLY (NO EFS FOR QA)
         # ===================================================================
         redis_task = ecs.Ec2TaskDefinition(self, "RedisTask", 
             network_mode=ecs.NetworkMode.HOST  # HOST mode for direct access
         )
         
-        redis_task.add_volume(
-            name="RedisVolume",
-            efs_volume_configuration=ecs.EfsVolumeConfiguration(
-                file_system_id=file_system.file_system_id,
-                transit_encryption="ENABLED",
-                authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=redis_ap.access_point_id,
-                    iam="ENABLED"
-                )
-            )
-        )
+        # No EFS volume - Redis uses in-memory storage for QA
         
         redis_container = redis_task.add_container("RedisContainer",
             image=ecs.ContainerImage.from_registry("redis:7-alpine"),
-            memory_limit_mib=128,
-            cpu=64,
+            memory_limit_mib=256,  # Increased from 128 for stability
+            cpu=128,  # Increased from 64
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Redis")
         )
         redis_container.add_port_mappings(
             ecs.PortMapping(container_port=6379)  # HOST mode - no host port needed
         )
-        redis_container.add_mount_points(
-            ecs.MountPoint(
-                container_path="/data", 
-                source_volume="RedisVolume", 
-                read_only=False
-            )
-        )
-        
-        # FIXED: Grant EFS access to Redis task role
-        file_system.grant_root_access(redis_task.task_role)
+        # No mount points - using in-memory storage
         
         redis_service = ecs.Ec2Service(self, "RedisService", 
             cluster=cluster, 
@@ -199,23 +179,13 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 7. QDRANT SERVICE
+        # 7. QDRANT SERVICE - EPHEMERAL STORAGE FOR QA
         # ===================================================================
         qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
             network_mode=ecs.NetworkMode.HOST
         )
         
-        qdrant_task.add_volume(
-            name="QdrantVolume",
-            efs_volume_configuration=ecs.EfsVolumeConfiguration(
-                file_system_id=file_system.file_system_id,
-                transit_encryption="ENABLED",
-                authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=qdrant_ap.access_point_id,
-                    iam="ENABLED"
-                )
-            )
-        )
+        # Using ephemeral storage instead of EFS to avoid NFS locking issues
         
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
@@ -233,15 +203,7 @@ class CloneMindStack(Stack):
         qdrant_container.add_port_mappings(
             ecs.PortMapping(container_port=6333)
         )
-        qdrant_container.add_mount_points(
-            ecs.MountPoint(
-                container_path="/qdrant/storage", 
-                source_volume="QdrantVolume", 
-                read_only=False
-            )
-        )
-        
-        file_system.grant_root_access(qdrant_task.task_role)
+        # No mount points - using container's ephemeral storage
         
         qdrant_service = ecs.Ec2Service(self, "QdrantService", 
             cluster=cluster, 
@@ -268,12 +230,13 @@ class CloneMindStack(Stack):
                 "QDRANT_PORT": "6333",
                 "TENANT_TABLE": tenant_table.table_name,
                 "MCP_TRANSPORT": "sse",
-                "AWS_REGION": self.region
+                "AWS_REGION": self.region,
+                "PORT": "3000"  # Changed from 8080 to avoid OpenWebUI conflict
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
         )
         mcp_container.add_port_mappings(
-            ecs.PortMapping(container_port=8080)
+            ecs.PortMapping(container_port=3000)  # Changed from 8080
         )
         
         tenant_table.grant_read_write_data(mcp_task.task_role)
@@ -350,14 +313,14 @@ class CloneMindStack(Stack):
         )
         
         webui_container = webui_task.add_container("WebUI",
-            image=ecs.ContainerImage.from_asset("../../deployment/docker"),
+            image=ecs.ContainerImage.from_registry("ghcr.io/open-webui/open-webui:main"),
             memory_limit_mib=1536,
             cpu=256,
             environment={
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
-                "PORT": "80",  # Explicitly set WebUI to listen on port 80
+                "PORT": "8080",  # OpenWebUI default port
                 "OAUTH_CLIENT_ID": user_pool_client.user_pool_client_id,
                 "OAUTH_CLIENT_SECRET": user_pool_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
@@ -365,7 +328,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
         webui_container.add_port_mappings(
-            ecs.PortMapping(container_port=80)  # Changed from 8080 to avoid MCP conflict
+            ecs.PortMapping(container_port=8080)  # OpenWebUI runs on 8080
         )
         webui_container.add_mount_points(
             ecs.MountPoint(
@@ -476,7 +439,7 @@ def lambda_handler(event, context):
         instance_sg = asg.connections.security_groups[0]
         
         # Allow public access to all service ports
-        for port in [80, 8080, 8000, 6333, 6379]:
+        for port in [8080, 3000, 8000, 6333, 6379]:
             instance_sg.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(port),
@@ -495,12 +458,12 @@ def lambda_handler(event, context):
         )
         
         CfnOutput(self, "ServiceEndpoints",
-            value="After deployment, access services at: WebUI=http://EC2_IP:80, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:8080, Tenant=http://EC2_IP:8000",
+            value="After deployment, access services at: WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:3000, Tenant=http://EC2_IP:8000",
             description="Service Access URLs (replace EC2_IP with actual IP)"
         )
         
         CfnOutput(self, "PostDeploymentSteps",
-            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:80/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:8080",
+            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:3000",
             description="Required manual steps after deployment"
         )
         
@@ -525,6 +488,6 @@ def lambda_handler(event, context):
         )
         
         CfnOutput(self, "CostSavings",
-            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 2944MB",
+            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 3072MB, Redis+Qdrant use ephemeral storage (no EFS locking issues)",
             description="Cost optimizations applied"
         )
