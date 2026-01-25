@@ -153,7 +153,7 @@ class CloneMindStack(Stack):
         # 6. REDIS SERVICE - IN-MEMORY ONLY (NO EFS FOR QA)
         # ===================================================================
         redis_task = ecs.Ec2TaskDefinition(self, "RedisTask", 
-            network_mode=ecs.NetworkMode.HOST  # HOST mode for direct access
+            network_mode=ecs.NetworkMode.BRIDGE  # HOST mode for direct access
         )
         
         # No EFS volume - Redis uses in-memory storage for QA
@@ -165,7 +165,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Redis")
         )
         redis_container.add_port_mappings(
-            ecs.PortMapping(container_port=6379)  # HOST mode - no host port needed
+            ecs.PortMapping(container_port=6379, host_port=6379)
         )
         # No mount points - using in-memory storage
         
@@ -179,42 +179,39 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 7. QDRANT SERVICE - EPHEMERAL STORAGE FOR QA
+        # 7. QDRANT SERVICE - BRIDGE MODE TO AVOID PORT CONFLICTS
         # ===================================================================
         qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
-            network_mode=ecs.NetworkMode.HOST
+            network_mode=ecs.NetworkMode.BRIDGE  # Changed from HOST to BRIDGE
         )
         
         # Using ephemeral storage instead of EFS to avoid NFS locking issues
         
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
-            memory_limit_mib=768,  # Increased from 512 to 768
-            cpu=256,  # Increased from 128 to 256
+            memory_limit_mib=768,
+            cpu=256,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Qdrant")
-            # Removed health check - causing restart loop
         )
         qdrant_container.add_port_mappings(
-            ecs.PortMapping(container_port=6333)
+            ecs.PortMapping(container_port=6333, host_port=6333),  # BRIDGE mode needs explicit mapping
+            ecs.PortMapping(container_port=6334, host_port=6334)   # gRPC port
         )
-        # No mount points - using container's ephemeral storage
         
         qdrant_service = ecs.Ec2Service(self, "QdrantService", 
             cluster=cluster, 
             task_definition=qdrant_task,
             desired_count=1,
             min_healthy_percent=0,
-            max_healthy_percent=200,  # Changed from 100 to 200 to allow rolling updates
-            service_name="qdrant",
-            enable_execute_command=True,  # For debugging
-            circuit_breaker=ecs.DeploymentCircuitBreaker(rollback=True)  # Stop bad deployments
+            max_healthy_percent=100,
+            service_name="qdrant"
         )
 
         # ===================================================================
         # 8. MCP SERVER SERVICE  
         # ===================================================================
         mcp_task = ecs.Ec2TaskDefinition(self, "McpTask", 
-            network_mode=ecs.NetworkMode.HOST
+            network_mode=ecs.NetworkMode.BRIDGE
         )
         
         mcp_container = mcp_task.add_container("McpContainer",
@@ -222,17 +219,17 @@ class CloneMindStack(Stack):
             memory_limit_mib=384,
             cpu=128,
             environment={
-                "QDRANT_HOST": "localhost",  # Same host with HOST network mode
+                "QDRANT_HOST": "172.17.0.1",  # Docker bridge gateway for BRIDGE mode
                 "QDRANT_PORT": "6333",
                 "TENANT_TABLE": tenant_table.table_name,
                 "MCP_TRANSPORT": "sse",
                 "AWS_REGION": self.region,
-                "PORT": "3000"  # Changed from 8080 to avoid OpenWebUI conflict
+                "PORT": "3000"
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
         )
         mcp_container.add_port_mappings(
-            ecs.PortMapping(container_port=3000)  # Changed from 8080
+            ecs.PortMapping(container_port=3000, host_port=3000)
         )
         
         tenant_table.grant_read_write_data(mcp_task.task_role)
@@ -255,7 +252,7 @@ class CloneMindStack(Stack):
         # 9. TENANT SERVICE
         # ===================================================================
         tenant_task = ecs.Ec2TaskDefinition(self, "TenantTask", 
-            network_mode=ecs.NetworkMode.HOST
+            network_mode=ecs.NetworkMode.BRIDGE
         )
         
         tenant_container = tenant_task.add_container("TenantContainer",
@@ -270,7 +267,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Tenant")
         )
         tenant_container.add_port_mappings(
-            ecs.PortMapping(container_port=8000)
+            ecs.PortMapping(container_port=8000, host_port=8000)
         )
         
         tenant_table.grant_read_write_data(tenant_task.task_role)
@@ -293,7 +290,7 @@ class CloneMindStack(Stack):
         # 10. WEBUI SERVICE
         # ===================================================================
         webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", 
-            network_mode=ecs.NetworkMode.HOST
+            network_mode=ecs.NetworkMode.BRIDGE
         )
         
         webui_task.add_volume(
@@ -324,7 +321,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
         webui_container.add_port_mappings(
-            ecs.PortMapping(container_port=8080)  # OpenWebUI runs on 8080
+            ecs.PortMapping(container_port=8080, host_port=8080)
         )
         webui_container.add_mount_points(
             ecs.MountPoint(
@@ -341,7 +338,7 @@ class CloneMindStack(Stack):
             cpu=64,
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
-                "TENANT_SERVICE_URL": "http://localhost:8000"  # Same host
+                "TENANT_SERVICE_URL": "http://172.17.0.1:8000"  # Docker bridge for BRIDGE mode
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
         )
@@ -435,7 +432,7 @@ def lambda_handler(event, context):
         instance_sg = asg.connections.security_groups[0]
         
         # Allow public access to all service ports
-        for port in [8080, 3000, 8000, 6333, 6379]:
+        for port in [8080, 3000, 8000, 6333, 6334, 6379]:  # Added 6334 for Qdrant gRPC
             instance_sg.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(port),
