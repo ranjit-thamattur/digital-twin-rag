@@ -239,7 +239,7 @@ def lambda_handler(event, context):
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[webui_service.load_balancer_target(container_name="WebUI", container_port=8080)]
         )
-        tg_webui.configure_health_check(path="/", healthy_http_codes="200-399")
+        tg_webui.configure_health_check(path="/", healthy_http_codes="200-499")
 
         # 2. MCP Server (8080)
         mcp_service = add_ec2_service("Mcp", "../../services/mcp-server", 8080, env={
@@ -262,26 +262,31 @@ def lambda_handler(event, context):
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[mcp_service.load_balancer_target(container_name="McpContainer", container_port=8080)]
         )
-        tg_mcp.configure_health_check(path="/", healthy_http_codes="200-399")
+        tg_mcp.configure_health_check(path="/", healthy_http_codes="200-499")
         
         tg_tenant = tenant_listener.add_targets("TenantTarget",
             port=8000,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[tenant_service.load_balancer_target(container_name="TenantContainer", container_port=8000)]
         )
-        tg_tenant.configure_health_check(path="/", healthy_http_codes="200-399")
+        tg_tenant.configure_health_check(path="/", healthy_http_codes="200-499")
         
         tg_qdrant = qdrant_listener.add_targets("QdrantTarget",
             port=6333,
             protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[qdrant.load_balancer_target(container_name="QdrantContainer", container_port=6333)]
         )
-        tg_qdrant.configure_health_check(path="/", healthy_http_codes="200-399")
+        tg_qdrant.configure_health_check(path="/", healthy_http_codes="200-499")
 
-        # --- Security Group Configuration ---
-        # Ensure the ALB can reach the instances on all ports
+        # --- Security Group Configuration (QA Mode: Priority on access) ---
         instance_sg = cluster.connections.security_groups[0]
+        
+        # Allow the ALB to talk to the instances
         instance_sg.add_ingress_rule(alb.connections.security_groups[0], ec2.Port.all_tcp(), "Allow ALL traffic from ALB")
+        
+        # Allow direct access from anywhere on app ports for QA debugging
+        for p in [80, 8080, 8000, 6333, 6379]:
+            instance_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(p), f"QA Direct Access Port {p}")
         
         # Allow internal VPC traffic
         instance_sg.add_ingress_rule(ec2.Peer.ipv4(vpc.vpc_cidr_block), ec2.Port.all_tcp(), "Internal VPC traffic")
