@@ -151,7 +151,7 @@ def lambda_handler(event, context):
         documents_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, s3n.LambdaDestination(s3_processor))
 
         # 6. ECS Services (EC2 Mode with BRIDGE Networking for Direct IP)
-        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=128, env=None, volumes=None, mounts=None):
+        def add_ec2_service(id: str, image_asset: str, container_port: int, host_port: int, cpu=128, mem=96, env=None, volumes=None, mounts=None):
             # Using BRIDGE mode to map container ports to specific host ports
             task_def = ecs.Ec2TaskDefinition(self, f"{id}Task", network_mode=ecs.NetworkMode.BRIDGE)
             if volumes: 
@@ -213,7 +213,7 @@ def lambda_handler(event, context):
 
         sync_container = webui_task.add_container("FileSyncSidecar",
             image=ecs.ContainerImage.from_asset("../../services/file-sync"),
-            memory_limit_mib=128,
+            memory_limit_mib=64,
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
                 "AWS_DEFAULT_REGION": self.region,
