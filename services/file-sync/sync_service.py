@@ -17,7 +17,12 @@ PROCESSED_FILE = "/app/backend/data/synced_files.json"
 TENANT_SERVICE_URL = os.getenv("TENANT_SERVICE_URL", "http://tenant-service-dt:8000")
 
 # Initialize S3 client
-s3_client = boto3.client('s3', region_name=REGION)
+S3_ENDPOINT = os.getenv("S3_ENDPOINT")
+s3_params = {'region_name': REGION}
+if S3_ENDPOINT:
+    s3_params['endpoint_url'] = S3_ENDPOINT
+
+s3_client = boto3.client('s3', **s3_params)
 
 def load_processed_files():
     if os.path.exists(PROCESSED_FILE):

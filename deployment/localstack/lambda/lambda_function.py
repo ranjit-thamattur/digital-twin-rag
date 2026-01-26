@@ -8,7 +8,6 @@ S3 Structure: <tenant_id>/<persona>/<filename>
 import json
 import boto3
 import os
-import requests
 from urllib.parse import unquote_plus
 import io
 
@@ -108,14 +107,35 @@ def lambda_handler(event, context):
         }
         
         print(f"Calling MCP: {MCP_INGEST_URL}")
-        resp = requests.post(MCP_INGEST_URL, json=payload, timeout=15)
         
-        if resp.status_code == 200:
-            print("✅ Successfully ingested into MCP")
-            return {'statusCode': 200, 'body': 'Success'}
-        else:
-            print(f"❌ MCP Error: {resp.status_code} - {resp.text}")
-            return {'statusCode': resp.status_code, 'body': resp.text}
+        import urllib.request
+        import urllib.error
+
+        req = urllib.request.Request(
+            MCP_INGEST_URL,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                status_code = response.getcode()
+                response_text = response.read().decode('utf-8')
+                
+                if status_code == 200:
+                    print("✅ Successfully ingested into MCP")
+                    return {'statusCode': 200, 'body': 'Success'}
+                else:
+                    print(f"❌ MCP Error: {status_code} - {response_text}")
+                    return {'statusCode': status_code, 'body': response_text}
+        except urllib.error.HTTPError as e:
+            error_text = e.read().decode('utf-8')
+            print(f"❌ MCP HTTP Error: {e.code} - {error_text}")
+            return {'statusCode': e.code, 'body': error_text}
+        except Exception as e:
+            print(f"❌ MCP Connection Error: {str(e)}")
+            return {'statusCode': 500, 'body': str(e)}
 
     except Exception as e:
         print(f"Fatal Error: {e}")

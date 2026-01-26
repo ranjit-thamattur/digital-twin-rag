@@ -152,7 +152,8 @@ if [ ! -f lambda/lambda_function.py ]; then
 import json
 import boto3
 import os
-import requests
+import urllib.request
+import urllib.error
 from urllib.parse import unquote_plus
 
 # For LocalStack
@@ -204,14 +205,27 @@ def lambda_handler(event, context):
         }
         
         print(f"Calling n8n: {N8N_WEBHOOK_URL}")
-        n8n_response = requests.post(N8N_WEBHOOK_URL, json=payload, timeout=300)
-        n8n_response.raise_for_status()
         
-        return {
-            'statusCode': 200,
-            'body': json.dumps({'message': 'Processed', 'file': file_name})
-        }
-        
+        req = urllib.request.Request(
+            N8N_WEBHOOK_URL,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=300) as n8n_response:
+                status = n8n_response.getcode()
+                if status >= 200 and status < 300:
+                    return {
+                        'statusCode': 200,
+                        'body': json.dumps({'message': 'Processed', 'file': file_name})
+                    }
+                else:
+                    raise Exception(f"n8n returned status {status}")
+        except urllib.error.HTTPError as e:
+            raise Exception(f"n8n HTTP Error: {e.code}")
+
     except Exception as e:
         print(f"Error: {str(e)}")
         return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}

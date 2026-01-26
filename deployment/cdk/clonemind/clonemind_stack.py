@@ -385,7 +385,7 @@ class CloneMindStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.lambda_handler",
             code=_lambda.Code.from_inline("""
-import os, boto3, urllib.parse, requests, json
+import os, boto3, urllib.parse, urllib.request, json
 
 def lambda_handler(event, context):
     mcp_url = os.environ.get("MCP_URL")
@@ -408,20 +408,24 @@ def lambda_handler(event, context):
             
             print(f"Processing: {key} -> tenant={tenant_id}, persona={persona_id}")
             
-            response = requests.post(
+            payload = {
+                "text": f"New document uploaded: {key}",
+                "tenantId": tenant_id,
+                "metadata": {
+                    "s3_key": key,
+                    "personaId": persona_id
+                }
+            }
+            
+            req = urllib.request.Request(
                 f"{mcp_url}/call/ingest_knowledge",
-                json={
-                    "text": f"New document uploaded: {key}",
-                    "tenantId": tenant_id,
-                    "metadata": {
-                        "s3_key": key,
-                        "personaId": persona_id
-                    }
-                },
-                timeout=10
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
             )
             
-            print(f"MCP response: {response.status_code}")
+            with urllib.request.urlopen(req, timeout=10) as response:
+                print(f"MCP response: {response.getcode()}")
             
         except Exception as e:
             print(f"Error processing {key}: {str(e)}")
