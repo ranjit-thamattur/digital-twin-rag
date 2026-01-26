@@ -93,8 +93,8 @@ class CloneMindStack(Stack):
             )
         )
         
-        # Note: You'll need to update callback URLs manually after deployment with EC2 IP
-        user_pool_client = user_pool.add_client("AppClient",
+        # 1. WebUI Client (Port 8080)
+        webui_client = user_pool.add_client("WebUIClient",
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),
                 scopes=[
@@ -103,7 +103,24 @@ class CloneMindStack(Stack):
                     cognito.OAuthScope.PROFILE
                 ],
                 callback_urls=[
-                    "http://localhost:8080/oauth/callback"  # Fixed to port 8080
+                    "http://localhost:8080/oauth/callback",
+                    "http://localhost:8080/oauth/oidc/callback"
+                ]
+            ),
+            generate_secret=True
+        )
+        
+        # 2. Admin Portal Client (Port 8000)
+        admin_client = user_pool.add_client("AdminClient",
+            o_auth=cognito.OAuthSettings(
+                flows=cognito.OAuthFlows(authorization_code_grant=True),
+                scopes=[
+                    cognito.OAuthScope.OPENID, 
+                    cognito.OAuthScope.EMAIL, 
+                    cognito.OAuthScope.PROFILE
+                ],
+                callback_urls=[
+                    "http://localhost:8000/oauth/callback"
                 ]
             ),
             generate_secret=True
@@ -257,7 +274,7 @@ class CloneMindStack(Stack):
             environment={
                 "TENANT_TABLE": tenant_table.table_name,
                 "COGNITO_USER_POOL_ID": user_pool.user_pool_id,
-                "COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
+                "COGNITO_CLIENT_ID": admin_client.user_pool_client_id,
                 "AWS_REGION": self.region
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Tenant")
@@ -309,10 +326,14 @@ class CloneMindStack(Stack):
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
+                "ENABLE_SIGNUP": "true",
+                "ENABLE_OAUTH_SIGNUP": "true",
+                "DEFAULT_USER_ROLE": "user",
                 "PORT": "8080",
-                "OAUTH_CLIENT_ID": user_pool_client.user_pool_client_id,
-                "OAUTH_CLIENT_SECRET": user_pool_client.user_pool_client_secret.unsafe_unwrap(),
+                "OAUTH_CLIENT_ID": webui_client.user_pool_client_id,
+                "OAUTH_CLIENT_SECRET": webui_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
+                "REDIRECT_URI": "http://localhost:8080/oauth/oidc/callback",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
@@ -455,4 +476,5 @@ def lambda_handler(event, context):
         
         CfnOutput(self, "S3BucketName", value=documents_bucket.bucket_name)
         CfnOutput(self, "UserPoolId", value=user_pool.user_pool_id)
-        CfnOutput(self, "UserPoolClientId", value=user_pool_client.user_pool_client_id)
+        CfnOutput(self, "WebUIClientId", value=webui_client.user_pool_client_id)
+        CfnOutput(self, "AdminClientId", value=admin_client.user_pool_client_id)
