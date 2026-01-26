@@ -390,24 +390,24 @@
         }
 
         function createTenantCard(tenant) {
-            const statusClass = tenant.is_active ? 'status-active' : 'status-inactive';
-            const statusText = tenant.is_active ? 'Active' : 'Inactive';
-            const createdDate = new Date(tenant.created_at).toLocaleDateString();
+            const statusClass = tenant.isActive ? 'status-active' : 'status-inactive';
+            const statusText = tenant.isActive ? 'Active' : 'Inactive';
+            const createdDate = new Date(tenant.createdAt).toLocaleDateString();
 
             return `
                 <div class="tenant-card">
                     <div class="tenant-header">
-                        <div class="tenant-name">${tenant.company_name}</div>
+                        <div class="tenant-name">${tenant.companyName}</div>
                         <div class="tenant-status ${statusClass}">${statusText}</div>
                     </div>
-                    <div class="tenant-info"><strong>ID:</strong> ${tenant.tenant_id}</div>
+                    <div class="tenant-info"><strong>ID:</strong> ${tenant.tenantId}</div>
                     <div class="tenant-info"><strong>Industry:</strong> ${tenant.industry}</div>
                     <div class="tenant-info"><strong>Tone:</strong> ${tenant.tone}</div>
                     <div class="tenant-info"><strong>Created:</strong> ${createdDate}</div>
                     <div class="tenant-actions">
-                        <button class="btn btn-small" onclick="openAddUserModal('${tenant.tenant_id}', '${tenant.company_name}')">➕ Add User</button>
-                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenant_id}')">👁️ View Details</button>
-                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenant_id}', ${!tenant.is_active})">${tenant.is_active ? '🔒 Deactivate' : '✅ Activate'}</button>
+                        <button class="btn btn-small" onclick="openAddUserModal('${tenant.tenantId}', '${tenant.companyName}')">➕ Add User</button>
+                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenantId}')">👁️ View Details</button>
+                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenantId}', ${!tenant.isActive})">${tenant.isActive ? '🔒 Deactivate' : '✅ Activate'}</button>
                     </div>
                 </div>
             `;
