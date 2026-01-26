@@ -23,11 +23,19 @@ load_dotenv()
 QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
-# AWS Configuration - Use AWS_REGION if available (CDK standard), otherwise default
+# AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-# Try Titan V2 first as it's the modern standard, fallback to V1
 EMBEDDING_MODEL_ID = os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
-VECTOR_SIZE = 1024  # Default for Titan V2. Titan V1 is 1536.
+VECTOR_SIZE = 1024
+
+# Generation Model Configuration
+# For Demo: Use Claude 3.5 Haiku (Fast/Cheap) for everything
+DEFAULT_MODEL = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-haiku-20241022-v1:0")
+
+# Local Model (Ollama) Support
+USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() == "true"
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b") # Small 3B model for speed
 
 # Initialize FastMCP server
 mcp = FastMCP("CloneMind Knowledge Base")
@@ -169,6 +177,20 @@ def get_embedding(text: str, use_cache: bool = True) -> List[float]:
     
     raise Exception("Failed to get embedding after multiple retries")
 
+def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
+    """Split text into overlapping chunks for better RAG retrieval."""
+    if len(text) <= chunk_size:
+        return [text]
+    
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start += (chunk_size - overlap)
+    
+    return chunks
+
 def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists for the tenant."""
     try:
@@ -235,21 +257,27 @@ async def generate_twin_response(
         # 1. Search Knowledge Base
         context = await search_knowledge_base(query, tenantId)
         
-        # 2. Intelligent Model selection (Router)
-        # Fast: Claude 3.5 Haiku, Smart: Claude 3.5 Sonnet
-        selected_model = "anthropic.claude-3-5-haiku-20241022-v1:0"
+        # 2. Performance Tracking
+        cost_tracker["haiku_calls"] += 1
         
-        q = query.lower()
-        complex_keywords = ['compare', 'difference', 'calculate', 'optimize', 'why', 'explain']
-        if any(k in q for k in complex_keywords) or len(q.split()) > 20:
-            selected_model = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-            # Claude 3.5 Sonnet works best with a Chain of Thought instruction for complex queries
-            system_prompt += "\n\nFor complex queries, please reason through the knowledge context step-by-step before providing your final answer to ensure maximum accuracy."
-            print(f"Routing to Smart Model: {selected_model}")
-            cost_tracker["sonnet_calls"] += 1
-        else:
-            print(f"Routing to Fast Model: {selected_model}")
-            cost_tracker["haiku_calls"] += 1
+        # 3. Handle Ollama if enabled
+        if USE_OLLAMA:
+            import requests # Move to top or keep if only used here
+            print(f"Routing to local Ollama model: {OLLAMA_MODEL}")
+            payload = {
+                "model": OLLAMA_MODEL,
+                "prompt": f"{system_prompt}\n\nContext:\n{context}\n\nUser: {query}",
+                "stream": False
+            }
+            res = requests.post(f"{OLLAMA_URL}/api/generate", json=payload)
+            return res.json().get("response", "Ollama Error")
+
+        # 4. Bedrock Haiku (Standard Demo Path)
+        print(f"Routing to Bedrock Haiku: {DEFAULT_MODEL}")
+        
+        bedrock_messages = []
+        if messages:
+            for msg in messages[-5:]:  # Last 5 for context
 
         # 3. Prepare Bedrock Call
         bedrock_messages = []
@@ -272,7 +300,7 @@ User Query: {query}"""
 
         # 4. Invoke Bedrock
         response = bedrock_client.invoke_model(
-            modelId=selected_model,
+            modelId=DEFAULT_MODEL,
             body=json.dumps({
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 2048,
@@ -301,34 +329,56 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
     Ingest information into a tenant's private collection.
     """
     try:
-        # Add a small delay to space out rapid ingestion requests
-        await asyncio.sleep(0.5)
-        
-        print(f"Ingesting knowledge for tenant: {tenantId}")
-        collection_name = tenantId.replace("-", "_")
-        
-        if not text or not text.strip():
+        # 1. Cleaning & Pre-processing
+        text = text.strip()
+        if not text:
             print("Warning: Received empty text for ingestion")
             return "Error: Text content is empty."
 
-        # 1. Get embedding first to know the size
-        vector = get_embedding(text)
-        vector_size = len(vector)
+        print(f"Ingesting knowledge for tenant: {tenantId} (Source length: {len(text)})")
+        collection_name = tenantId.replace("-", "_")
         
-        # 2. Ensure collection matches embedding size
+        # 2. Chunking
+        chunks = chunk_text(text)
+        print(f"Split document into {len(chunks)} chunks")
+        
+        # 3. Process first chunk to ensure collection matches
+        first_vector = get_embedding(chunks[0])
+        vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)
         
-        payload = {"text": text, "tenantId": tenantId, **(metadata or {})}
+        points = []
         
-        point_id = str(uuid.uuid4())
-        print(f"Upserting point {point_id} to collection {collection_name} (vector size: {vector_size})")
-        
+        # 4. Generate points for all chunks
+        for i, chunk in enumerate(chunks):
+            # The first one is already done, skip embedding call but use the result
+            vector = first_vector if i == 0 else get_embedding(chunk)
+            
+            point_id = str(uuid.uuid4())
+            payload = {
+                "text": chunk, 
+                "tenantId": tenantId, 
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                **(metadata or {})
+            }
+            
+            points.append(models.PointStruct(id=point_id, vector=vector, payload=payload))
+            
+            # Progress log for large files
+            if (i + 1) % 5 == 0:
+                print(f"  Processed {i+1}/{len(chunks)} chunks...")
+
+        # 5. Batch Upsert
+        print(f"Upserting {len(points)} points to collection {collection_name}")
         qdrant_client.upsert(
             collection_name=collection_name,
-            points=[models.PointStruct(id=point_id, vector=vector, payload=payload)]
+            points=points
         )
-        print(f"✓ Successfully ingested information for {tenantId}.")
-        return f"Successfully ingested information for {tenantId}."
+        
+        print(f"✓ Successfully ingested {len(chunks)} chunks for {tenantId}.")
+        return f"Successfully ingested {len(chunks)} chunks for {tenantId}."
+        
     except Exception as e:
         print(f"✗ Critical Ingestion Error: {str(e)}")
         return f"Error ingesting knowledge: {str(e)}"
@@ -342,17 +392,16 @@ async def get_cost_stats() -> str:
 Cost Tracking Statistics:
 ========================
 Embedding API Calls: {cost_tracker['embedding_calls']}
-Haiku Model Calls: {cost_tracker['haiku_calls']}
-Sonnet Model Calls: {cost_tracker['sonnet_calls']}
+Model Calls (Haiku/Local): {cost_tracker['haiku_calls']}
 Total Tokens Processed: {cost_tracker['total_tokens']}
 
 Estimated Costs:
 - Embeddings: ~${cost_tracker['embedding_calls'] * 0.0003:.4f}
-- Haiku Queries: ~${cost_tracker['haiku_calls'] * 0.0012:.4f}
-- Sonnet Queries: ~${cost_tracker['sonnet_calls'] * 0.006:.4f}
-- Total Estimated: ~${(cost_tracker['embedding_calls'] * 0.0003) + (cost_tracker['haiku_calls'] * 0.0012) + (cost_tracker['sonnet_calls'] * 0.006):.4f}
+- Model Queries: ~${cost_tracker['haiku_calls'] * 0.0012:.4f}
+- Total Estimated: ~${(cost_tracker['embedding_calls'] * 0.0003) + (cost_tracker['haiku_calls'] * 0.0012):.4f}
 
 Cache Hit Rate: {len(embedding_cache)} cached embeddings
+Mode: {"Ollama (Local)" if USE_OLLAMA else "Bedrock (Remote)"}
 """
     return stats
 

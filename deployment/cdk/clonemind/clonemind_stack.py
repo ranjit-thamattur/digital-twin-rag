@@ -381,14 +381,16 @@ class CloneMindStack(Stack):
 import os, boto3, urllib.parse, urllib.request, json
 
 def lambda_handler(event, context):
+    s3 = boto3.client('s3')
     mcp_url = os.environ.get("MCP_URL")
     
     if not mcp_url:
         print("MCP_URL not configured")
-        return {'statusCode': 200, 'body': json.dumps('MCP_URL not set')}
+        return {'statusCode': 200, 'body': 'MCP_URL not set'}
     
     for record in event.get('Records', []):
         try:
+            bucket = record['s3']['bucket']['name']
             key = urllib.parse.unquote_plus(record['s3']['object']['key'])
             parts = key.split('/')
             
@@ -398,13 +400,20 @@ def lambda_handler(event, context):
             
             tenant_id = parts[0]
             persona_id = parts[1]
+            filename = parts[-1]
             
-            print(f"Processing: {key} -> tenant={tenant_id}, persona={persona_id}")
+            print(f"Processing knowledge: s3://{bucket}/{key}")
             
+            # Download content from S3
+            response = s3.get_object(Bucket=bucket, Key=key)
+            content = response['Body'].read().decode('utf-8', errors='ignore')
+            
+            # Payload with actual text
             payload = {
-                "text": f"New document uploaded: {key}",
+                "text": content[:150000], # Send up to 150k chars for demo
                 "tenantId": tenant_id,
                 "metadata": {
+                    "filename": filename,
                     "s3_key": key,
                     "personaId": persona_id
                 }
@@ -417,9 +426,9 @@ def lambda_handler(event, context):
                 method='POST'
             )
             
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 resp_body = response.read().decode('utf-8')
-                print(f"MCP response ({response.getcode()}): {resp_body}")
+                print(f"MCP Response ({response.getcode()}): {resp_body}")
             
         except Exception as e:
             print(f"Error processing {key}: {str(e)}")
@@ -428,11 +437,14 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed')}
 """),
             environment={
-                "MCP_URL": ""  # Update this after deployment: http://EC2_PUBLIC_IP:3000
+                "MCP_URL": ""  # Update after deployment: http://EC2_IP:3000
             },
-            # REMOVED VPC - Lambda can now access MCP via public IP
-            timeout=Duration.seconds(30)
+            timeout=Duration.seconds(45),
+            memory_size=256
         )
+        
+        # GRANT PERMISSION
+        documents_bucket.grant_read(s3_processor)
         
         documents_bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
