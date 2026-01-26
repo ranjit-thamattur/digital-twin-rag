@@ -2,6 +2,9 @@ import os
 import asyncio
 import json
 import boto3
+import time
+import random
+import uuid
 from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
@@ -35,55 +38,66 @@ qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 def get_embedding(text: str) -> List[float]:
-    """Generate embedding using Bedrock Titan."""
-    try:
-        current_model = EMBEDDING_MODEL_ID
-        print(f"Generating embedding for text (length: {len(text)}) using model {current_model} in region {AWS_REGION}")
-        
-        # Ensure text is not too long for Titan (approx 8k tokens, roughly 30k chars)
-        if len(text) > 30000:
-            print(f"Warning: Text is very long ({len(text)} chars), truncating to 30000")
-            text = text[:30000]
-
-        body_dict = {"inputText": text}
-        # If using V2, we can specify dimensions to match our collection if needed, 
-        # but 1024 is the high-quality default.
-        
-        body = json.dumps(body_dict)
-        
+    """Generate embedding using Bedrock Titan with exponential backoff."""
+    max_retries = 5
+    base_delay = 1 # second
+    
+    current_model = EMBEDDING_MODEL_ID
+    
+    for attempt in range(max_retries):
         try:
-            response = bedrock_client.invoke_model(
-                body=body,
-                modelId=current_model,
-                accept="application/json",
-                contentType="application/json"
-            )
-        except Exception as e:
-            if "model is not available" in str(e).lower() and current_model == "amazon.titan-embed-text-v2:0":
-                print("Titan V2 not available, falling back to V1...")
-                current_model = "amazon.titan-embed-text-v1"
-                # Note: This will fail if the collection was already created with 1024
+            print(f"Generating embedding (Attempt {attempt+1}/{max_retries}) for text (length: {len(text)}) using model {current_model}")
+            
+            # Ensure text is not too long for Titan
+            if len(text) > 30000:
+                text = text[:30000]
+
+            body = json.dumps({"inputText": text})
+            
+            try:
                 response = bedrock_client.invoke_model(
                     body=body,
                     modelId=current_model,
                     accept="application/json",
                     contentType="application/json"
                 )
-            else:
+            except Exception as e:
+                error_str = str(e).lower()
+                # Handle model unavailability (Region/Account specific)
+                if "model is not available" in error_str and current_model == "amazon.titan-embed-text-v2:0":
+                    print("Titan V2 not available, failing back to V1...")
+                    current_model = "amazon.titan-embed-text-v1"
+                    continue # Retry immediately with V1
+                
+                # Handle Throttling explicitly
+                if "throttling" in error_str or "too many requests" in error_str:
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt) # Exponential backoff
+                        delay += random.uniform(0, 1) # Add jitter
+                        print(f"Bedrock Throttled. Retrying in {delay:.2f} seconds...")
+                        time.sleep(delay)
+                        continue
                 raise
 
-        response_body = json.loads(response.get("body").read())
-        embedding = response_body.get("embedding")
-        
-        if not embedding:
-            print(f"Error: Bedrock returned empty embedding. Response keys: {list(response_body.keys())}")
-            raise Exception("Empty embedding returned from Bedrock")
-        
-        print(f"Successfully generated embedding (size: {len(embedding)}) using {current_model}")
-        return embedding
-    except Exception as e:
-        print(f"Bedrock Embedding Error: {str(e)}")
-        raise
+            response_body = json.loads(response.get("body").read())
+            embedding = response_body.get("embedding")
+            
+            if not embedding:
+                print(f"Error: Bedrock returned empty embedding.")
+                raise Exception("Empty embedding returned from Bedrock")
+            
+            print(f"Successfully generated embedding (size: {len(embedding)}) using {current_model}")
+            return embedding
+            
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"Final Bedrock Embedding Error: {str(e)}")
+                raise
+            else:
+                print(f"Transient Bedrock Error: {str(e)}. Retrying...")
+                time.sleep(base_delay * (attempt + 1))
+    
+    raise Exception("Failed to get embedding after multiple retries")
 
 def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists for the tenant."""
@@ -225,7 +239,6 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
         
         payload = {"text": text, "tenantId": tenantId, **(metadata or {})}
         
-        import uuid
         point_id = str(uuid.uuid4())
         print(f"Upserting point {point_id} to collection {collection_name} (vector size: {vector_size})")
         
