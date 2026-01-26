@@ -49,7 +49,7 @@ class CloneMindStack(Stack):
         )
         
         # Add EC2 capacity - t3.medium for QA with public IP
-        asg = cluster.add_capacity("DefaultCapacity",
+        asg = cluster.add_capacity("MainCapacity",
             instance_type=ec2.InstanceType("t3.medium"),
             key_name="cloud mind",
             min_capacity=1,
@@ -439,7 +439,7 @@ def lambda_handler(event, context):
         # 13. OUTPUTS
         # ===================================================================
         CfnOutput(self, "EC2InstanceInfo",
-            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*DefaultCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
+            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*MainCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
             description="Command to get EC2 Public IP"
         )
         
