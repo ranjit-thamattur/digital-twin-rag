@@ -443,14 +443,15 @@
         async function viewTenantDetails(tenantId) {
             try {
                 const response = await fetch(`${API_URL}/tenants/${tenantId}`);
-                const data = await response.json();
+                const tenant = await response.json();
 
-                let usersList = data.users.map(u =>
-                    `${u.email} (${u.persona}) - ${u.is_active ? 'Active' : 'Inactive'}`
+                let usersList = tenant.users.map(u =>
+                    `${u.email} (${u.persona})`
                 ).join('\n');
 
-                alert(`Tenant: ${data.tenant.company_name}\n\nUsers:\n${usersList || 'No users yet'}\n\nPersonas Available:\n- CEO\n- manager\n- analyst`);
+                alert(`Tenant: ${tenant.companyName}\n\nUsers:\n${usersList || 'No users yet'}\n\nPersonas Available:\n- CEO\n- manager\n- analyst`);
             } catch (error) {
+                console.error(error);
                 alert('Error loading tenant details');
             }
         }
