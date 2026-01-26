@@ -51,33 +51,41 @@ class StatusUpdate(BaseModel):
 
 # Helper Functions
 def create_cognito_user(email: str, password: str, first_name: str, last_name: str, tenant_id: str):
-    """Create user in Cognito User Pool"""
+    """Create user in Cognito User Pool with idempotency"""
     try:
         # 1. Create User
-        response = cognito.admin_create_user(
-            UserPoolId=COGNITO_USER_POOL_ID,
-            Username=email,
-            UserAttributes=[
-                {"Name": "email", "Value": email},
-                {"Name": "given_name", "Value": first_name},
-                {"Name": "family_name", "Value": last_name},
-                {"Name": "email_verified", "Value": "true"},
-                {"Name": "custom:tenant_id", "Value": tenant_id}
-            ],
-            TemporaryPassword=password,
-            MessageAction="SUPPRESS"
-        )
-        
-        # 2. Set password permanently
-        cognito.admin_set_user_password(
-            UserPoolId=COGNITO_USER_POOL_ID,
-            Username=email,
-            Password=password,
-            Permanent=True
-        )
+        try:
+            cognito.admin_create_user(
+                UserPoolId=COGNITO_USER_POOL_ID,
+                Username=email,
+                UserAttributes=[
+                    {"Name": "email", "Value": email},
+                    {"Name": "given_name", "Value": first_name},
+                    {"Name": "family_name", "Value": last_name},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "custom:tenant_id", "Value": tenant_id}
+                ],
+                TemporaryPassword=password,
+                MessageAction="SUPPRESS"
+            )
+            print(f"Cognito: User {email} created.")
+        except cognito.exceptions.UsernameExistsException:
+            print(f"Cognito: User {email} already exists, proceeding to password/db sync.")
+
+        # 2. Set password permanently (ensures user can login even if previous attempt was partial)
+        try:
+            cognito.admin_set_user_password(
+                UserPoolId=COGNITO_USER_POOL_ID,
+                Username=email,
+                Password=password,
+                Permanent=True
+            )
+        except Exception as pe:
+            print(f"Cognito Password Warning: {str(pe)}")
+            
         return True
     except Exception as e:
-        print(f"Cognito Error: {str(e)}")
+        print(f"CRITICAL Cognito Error: {str(e)}")
         return False
 
 # API Endpoints
@@ -99,9 +107,11 @@ async def list_tenants():
 async def create_tenant(tenant: TenantCreate):
     """Create new tenant with admin user in Cognito and metadata in DynamoDB"""
     tenant_id = f"tenant-{tenant.tenant_name.lower().replace(' ', '')}"
+    print(f"Starting registration for tenant: {tenant_id}")
     
     try:
         # 1. Create Admin User in Cognito
+        print(f"Step 1: Registering {tenant.admin_email} in Cognito...")
         success = create_cognito_user(
             tenant.admin_email, 
             tenant.admin_password, 
@@ -111,9 +121,11 @@ async def create_tenant(tenant: TenantCreate):
         )
         
         if not success:
+            print("ERROR: Cognito registration failed.")
             raise HTTPException(status_code=500, detail="Failed to create Cognito user")
 
         # 2. Store Tenant Metadata in DynamoDB
+        print(f"Step 2: Storing metadata for {tenant_id} in DynamoDB table '{TENANT_TABLE}'...")
         table.put_item(
             Item={
                 "tenantId": tenant_id,
@@ -135,6 +147,7 @@ async def create_tenant(tenant: TenantCreate):
                 }
             }
         )
+        print("Step 3: DynamoDB write successful.")
         
         return {
             "success": True,
@@ -143,6 +156,7 @@ async def create_tenant(tenant: TenantCreate):
         }
         
     except Exception as e:
+        print(f"ERROR in create_tenant: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/tenants/{tenant_id}")
