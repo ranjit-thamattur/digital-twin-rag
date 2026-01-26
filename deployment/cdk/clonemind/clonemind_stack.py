@@ -23,7 +23,7 @@ class CloneMindStack(Stack):
         # ===================================================================
         # 1. NETWORK INFRASTRUCTURE - SINGLE AZ
         # ===================================================================
-        vpc = ec2.Vpc(self, "CloneMindVPC", 
+        vpc = ec2.Vpc(self, "CloneMindVPCV2", 
             max_azs=1,  # SIMPLIFIED: Single AZ for QA
             nat_gateways=0,
             subnet_configuration=[
@@ -43,13 +43,13 @@ class CloneMindStack(Stack):
         # ===================================================================
         # 2. ECS CLUSTER WITH EC2 CAPACITY
         # ===================================================================
-        cluster = ecs.Cluster(self, "CloneMindCluster", 
+        cluster = ecs.Cluster(self, "CloneMindClusterV2", 
             vpc=vpc,
             cluster_name="clonemind-cluster"
         )
         
         # Add EC2 capacity - t3.medium for QA with public IP
-        asg = cluster.add_capacity("MainCapacity",
+        asg = cluster.add_capacity("FinalCapacity",
             instance_type=ec2.InstanceType("t3.medium"),
             key_name="cloud mind",
             min_capacity=1,
@@ -439,7 +439,7 @@ def lambda_handler(event, context):
         # 13. OUTPUTS
         # ===================================================================
         CfnOutput(self, "EC2InstanceInfo",
-            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*MainCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
+            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*FinalCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
             description="Command to get EC2 Public IP"
         )
         
