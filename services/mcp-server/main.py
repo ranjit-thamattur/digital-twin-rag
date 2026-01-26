@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
+import requests
 
 # Load environment variables
 load_dotenv()
@@ -262,7 +263,6 @@ async def generate_twin_response(
         
         # 3. Handle Ollama if enabled
         if USE_OLLAMA:
-            import requests # Move to top or keep if only used here
             print(f"Routing to local Ollama model: {OLLAMA_MODEL}")
             payload = {
                 "model": OLLAMA_MODEL,
@@ -322,58 +322,58 @@ User Query: {query}"""
 async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = None) -> str:
     """
     Ingest information into a tenant's private collection.
+    Automatically chunks large text for better RAG performance.
     """
     try:
-        # 1. Cleaning & Pre-processing
-        text = text.strip()
-        if not text:
+        if not text or not text.strip():
             print("Warning: Received empty text for ingestion")
             return "Error: Text content is empty."
 
-        print(f"Ingesting knowledge for tenant: {tenantId} (Source length: {len(text)})")
+        print(f"Ingesting knowledge for tenant: {tenantId} (Length: {len(text)})")
         collection_name = tenantId.replace("-", "_")
         
-        # 2. Chunking
-        chunks = chunk_text(text)
-        print(f"Split document into {len(chunks)} chunks")
+        # 1. Chunk the text
+        chunks = chunk_text(text, chunk_size=2000, overlap=300)
+        print(f"Split text into {len(chunks)} chunks for processing.")
         
-        # 3. Process first chunk to ensure collection matches
+        # 2. Get embedding for the first chunk to ensure collection is created with correct size
         first_vector = get_embedding(chunks[0])
         vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)
         
-        points = []
+        successful_chunks = 0
         
-        # 4. Generate points for all chunks
         for i, chunk in enumerate(chunks):
-            # The first one is already done, skip embedding call but use the result
-            vector = first_vector if i == 0 else get_embedding(chunk)
-            
-            point_id = str(uuid.uuid4())
-            payload = {
-                "text": chunk, 
-                "tenantId": tenantId, 
-                "chunk_index": i,
-                "total_chunks": len(chunks),
-                **(metadata or {})
-            }
-            
-            points.append(models.PointStruct(id=point_id, vector=vector, payload=payload))
-            
-            # Progress log for large files
-            if (i + 1) % 5 == 0:
-                print(f"  Processed {i+1}/{len(chunks)} chunks...")
-
-        # 5. Batch Upsert
-        print(f"Upserting {len(points)} points to collection {collection_name}")
-        qdrant_client.upsert(
-            collection_name=collection_name,
-            points=points
-        )
+            try:
+                # Use cached embedding if possible, skip first chunk as we already got it
+                vector = first_vector if i == 0 else get_embedding(chunk)
+                
+                chunk_metadata = {
+                    "text": chunk,
+                    "tenantId": tenantId,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    **(metadata or {})
+                }
+                
+                point_id = str(uuid.uuid4())
+                qdrant_client.upsert(
+                    collection_name=collection_name,
+                    points=[models.PointStruct(id=point_id, vector=vector, payload=chunk_metadata)]
+                )
+                successful_chunks += 1
+                
+                # Small delay to keep logs clean and respect Bedrock/Qdrant
+                if i % 5 == 0 and i > 0:
+                    print(f"Processed {i}/{len(chunks)} chunks...")
+                    await asyncio.sleep(0.1)
+                
+            except Exception as chunk_err:
+                print(f"Error processing chunk {i}: {str(chunk_err)}")
+                # Continue with other chunks even if one fails
         
-        print(f"✓ Successfully ingested {len(chunks)} chunks for {tenantId}.")
-        return f"Successfully ingested {len(chunks)} chunks for {tenantId}."
-        
+        print(f"✓ Successfully ingested {successful_chunks}/{len(chunks)} chunks for {tenantId}.")
+        return f"Successfully ingested {successful_chunks}/{len(chunks)} chunks for {tenantId}."
     except Exception as e:
         print(f"✗ Critical Ingestion Error: {str(e)}")
         return f"Error ingesting knowledge: {str(e)}"

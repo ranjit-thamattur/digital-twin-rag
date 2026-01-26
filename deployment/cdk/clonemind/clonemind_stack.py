@@ -378,15 +378,17 @@ class CloneMindStack(Stack):
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.lambda_handler",
             code=_lambda.Code.from_inline("""
-import os, boto3, urllib.parse, urllib.request, json
+import os, boto3, urllib.parse, urllib.request, json, time
 
 def lambda_handler(event, context):
     s3 = boto3.client('s3')
     mcp_url = os.environ.get("MCP_URL")
     
     if not mcp_url:
-        print("MCP_URL not configured")
-        return {'statusCode': 200, 'body': 'MCP_URL not set'}
+        print("CRITICAL: MCP_URL not configured in environment variables")
+        return {'statusCode': 500, 'body': 'MCP_URL not set'}
+    
+    print(f"Starting ingestion process. MCP URL: {mcp_url}")
     
     for record in event.get('Records', []):
         try:
@@ -395,29 +397,37 @@ def lambda_handler(event, context):
             parts = key.split('/')
             
             if len(parts) < 3:
-                print(f"Skipping {key}: insufficient path parts")
+                print(f"Skipping {key}: path does not follow 'tenant/persona/file' structure")
                 continue
             
             tenant_id = parts[0]
             persona_id = parts[1]
             filename = parts[-1]
             
-            print(f"Processing knowledge: s3://{bucket}/{key}")
+            print(f"Processing knowledge: s3://{bucket}/{key} for tenant: {tenant_id}")
             
             # Download content from S3
             response = s3.get_object(Bucket=bucket, Key=key)
             content = response['Body'].read().decode('utf-8', errors='ignore')
             
+            if not content:
+                print(f"Warning: File {key} is empty")
+                continue
+
             # Payload with actual text
+            # We send up to 250k chars now that MCP server handles chunking
             payload = {
-                "text": content[:150000], # Send up to 150k chars for demo
+                "text": content[:250000], 
                 "tenantId": tenant_id,
                 "metadata": {
                     "filename": filename,
                     "s3_key": key,
-                    "personaId": persona_id
+                    "personaId": persona_id,
+                    "ingested_at": int(time.time())
                 }
             }
+            
+            print(f"Sending {len(payload['text'])} characters to MCP server...")
             
             req = urllib.request.Request(
                 f"{mcp_url}/call/ingest_knowledge",
@@ -426,21 +436,25 @@ def lambda_handler(event, context):
                 method='POST'
             )
             
-            with urllib.request.urlopen(req, timeout=60) as response:
-                resp_body = response.read().decode('utf-8')
-                print(f"MCP Response ({response.getcode()}): {resp_body}")
+            # Extended timeout for large files (MCP server will chunk them)
+            try:
+                with urllib.request.urlopen(req, timeout=110) as response:
+                    resp_body = response.read().decode('utf-8')
+                    print(f"Successfully processed {key}. MCP Response: {resp_body}")
+            except Exception as req_err:
+                print(f"Request to MCP failed for {key}: {str(req_err)}")
             
         except Exception as e:
-            print(f"Error processing {key}: {str(e)}")
+            print(f"Unexpected error processing {key}: {str(e)}")
             continue
     
-    return {'statusCode': 200, 'body': json.dumps('Processed')}
+    return {'statusCode': 200, 'body': json.dumps('Processed all records')}
 """),
             environment={
                 "MCP_URL": ""  # Update after deployment: http://EC2_IP:3000
             },
-            timeout=Duration.seconds(120),
-            memory_size=256
+            timeout=Duration.seconds(180),
+            memory_size=512
         )
         
         # GRANT PERMISSION

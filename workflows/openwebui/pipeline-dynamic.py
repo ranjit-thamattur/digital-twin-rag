@@ -13,12 +13,12 @@ import json
 class Pipe:
     class Valves(BaseModel):
         TENANT_SERVICE_URL: str = Field(
-            default="http://tenant-service-dt:8000",
-            description="URL for Tenant Management Service",
+            default="http://172.17.0.1:8000",
+            description="URL for Tenant Management Service (Local Bridge)",
         )
         MCP_SERVER_URL: str = Field(
-            default="http://mcp-server-dt:8080/sse",
-            description="URL for MCP Knowledge Base Server",
+            default="http://172.17.0.1:3000/sse",
+            description="URL for MCP Knowledge Base Server (Local Bridge)",
         )
 
     def __init__(self):
