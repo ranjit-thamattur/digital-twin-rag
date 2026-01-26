@@ -13,12 +13,12 @@ import json
 class Pipe:
     class Valves(BaseModel):
         TENANT_SERVICE_URL: str = Field(
-            default="http://tenant-service-dt:8000",
-            description="URL for Tenant Management Service",
+            default="http://172.17.0.1:8000",
+            description="URL for Tenant Management Service (Local Bridge)",
         )
         MCP_SERVER_URL: str = Field(
-            default="http://mcp-server-dt:8080/sse",
-            description="URL for MCP Knowledge Base Server",
+            default="http://172.17.0.1:3000/sse",
+            description="URL for MCP Knowledge Base Server (Local Bridge)",
         )
 
     def __init__(self):
@@ -72,22 +72,24 @@ class Pipe:
         # 3. Fetch Prompt DNA (Tone, Company Name)
         dna = self.get_tenant_dna(tenant_id)
         if dna:
-            tenant_info = dna.get("tenant", {})
-            company = tenant_info.get("companyName", "Unknown Corp")
-            tone = tenant_info.get("tone", "professional")
-            industry = tenant_info.get("industry", "Business")
+            company = dna.get("companyName", "Unknown Corp")
+            tone = dna.get("tone", "professional")
+            industry = dna.get("industry", "Business")
+            instructions = dna.get("specialInstructions", "")
+            
+            # Fetch Persona Detail
+            personas = dna.get("personas", {})
+            persona_config = personas.get(persona_id, {"focus": "general", "style": "helpful"})
+            focus = persona_config.get("focus", "general")
+            style = persona_config.get("style", "professional")
             
             # 4. Construct the DYNAMIC SYSTEM PROMPT
-            system_prompt = f"""You are the official AI Twin of {company}, operating in the {industry} industry.
-Your mission is to represent {company} with a {tone} communication style.
-
-### CORE BEHAVIOR:
-1. **Fact-First**: Use the provided 'Knowledge Context' as your primary source of truth.
-2. **Identity**: Never break character. You are part of {company}. Use "we" and "our" when referring to the company.
-3. **Accuracy**: If the context doesn't contain the answer, politely state that you don't have that specific information but can help with other {industry}-related topics.
-4. **Style**: Maintain a {tone} tone in every interaction.
-
-Always prioritize the information found in the retrieved documents to provide accurate, industry-specific value."""
+            system_prompt = f"You are the AI Twin of the {persona_id} at {company} ({industry} industry). "
+            system_prompt += f"Your communication style is {tone} and your persona focus is {focus}. "
+            system_prompt += f"Adopt a {style} style of speaking. "
+            if instructions:
+                system_prompt += f"\nSpecial Guidelines: {instructions}"
+            system_prompt += "\nUse the provided knowledge context to answer accurately and cite your sources."
         else:
             system_prompt = "You are a helpful AI assistant representing a professional organization. Use the provided context to answer questions accurately."
 
