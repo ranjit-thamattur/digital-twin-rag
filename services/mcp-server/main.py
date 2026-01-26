@@ -278,11 +278,6 @@ async def generate_twin_response(
         bedrock_messages = []
         if messages:
             for msg in messages[-5:]:  # Last 5 for context
-
-        # 3. Prepare Bedrock Call
-        bedrock_messages = []
-        if messages:
-            for msg in messages[-5:]:  # Last 5 for context
                 role = "user" if msg.get("role") == "user" else "assistant"
                 content = msg.get("content", "")
                 if content:
