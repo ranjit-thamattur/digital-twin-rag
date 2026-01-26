@@ -418,7 +418,8 @@ def lambda_handler(event, context):
             )
             
             with urllib.request.urlopen(req, timeout=10) as response:
-                print(f"MCP response: {response.getcode()}")
+                resp_body = response.read().decode('utf-8')
+                print(f"MCP response ({response.getcode()}): {resp_body}")
             
         except Exception as e:
             print(f"Error processing {key}: {str(e)}")

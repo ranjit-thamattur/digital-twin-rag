@@ -15,11 +15,14 @@ import uvicorn
 load_dotenv()
 
 # Configuration
-QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
+QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v1"
-VECTOR_SIZE = 1536 # Titan embedding size
+
+# AWS Configuration - Use AWS_REGION if available (CDK standard), otherwise default
+AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
+# Try Titan V2 first as it's the modern standard, fallback to V1
+EMBEDDING_MODEL_ID = os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
+VECTOR_SIZE = 1024 # Default for Titan V2. Titan V1 is 1536.
 
 # Initialize FastMCP server
 mcp = FastMCP("CloneMind Knowledge Base")
@@ -33,23 +36,73 @@ bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 def get_embedding(text: str) -> List[float]:
     """Generate embedding using Bedrock Titan."""
-    body = json.dumps({"inputText": text})
-    response = bedrock_client.invoke_model(
-        body=body,
-        modelId=EMBEDDING_MODEL_ID,
-        accept="application/json",
-        contentType="application/json"
-    )
-    response_body = json.loads(response.get("body").read())
-    return response_body.get("embedding")
+    try:
+        current_model = EMBEDDING_MODEL_ID
+        print(f"Generating embedding for text (length: {len(text)}) using model {current_model} in region {AWS_REGION}")
+        
+        # Ensure text is not too long for Titan (approx 8k tokens, roughly 30k chars)
+        if len(text) > 30000:
+            print(f"Warning: Text is very long ({len(text)} chars), truncating to 30000")
+            text = text[:30000]
 
-def ensure_collection(collection_name: str):
+        body_dict = {"inputText": text}
+        # If using V2, we can specify dimensions to match our collection if needed, 
+        # but 1024 is the high-quality default.
+        
+        body = json.dumps(body_dict)
+        
+        try:
+            response = bedrock_client.invoke_model(
+                body=body,
+                modelId=current_model,
+                accept="application/json",
+                contentType="application/json"
+            )
+        except Exception as e:
+            if "model is not available" in str(e).lower() and current_model == "amazon.titan-embed-text-v2:0":
+                print("Titan V2 not available, falling back to V1...")
+                current_model = "amazon.titan-embed-text-v1"
+                # Note: This will fail if the collection was already created with 1024
+                response = bedrock_client.invoke_model(
+                    body=body,
+                    modelId=current_model,
+                    accept="application/json",
+                    contentType="application/json"
+                )
+            else:
+                raise
+
+        response_body = json.loads(response.get("body").read())
+        embedding = response_body.get("embedding")
+        
+        if not embedding:
+            print(f"Error: Bedrock returned empty embedding. Response keys: {list(response_body.keys())}")
+            raise Exception("Empty embedding returned from Bedrock")
+        
+        print(f"Successfully generated embedding (size: {len(embedding)}) using {current_model}")
+        return embedding
+    except Exception as e:
+        print(f"Bedrock Embedding Error: {str(e)}")
+        raise
+
+def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists for the tenant."""
-    if not qdrant_client.collection_exists(collection_name):
-        qdrant_client.create_collection(
-            collection_name=collection_name,
-            vectors_config=models.VectorParams(size=VECTOR_SIZE, distance=models.Distance.COSINE),
-        )
+    try:
+        if not qdrant_client.collection_exists(collection_name):
+            print(f"Creating collection: {collection_name} with vector size {vector_size}")
+            qdrant_client.create_collection(
+                collection_name=collection_name,
+                vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
+            )
+        else:
+            # Check existing collection vector size
+            col_info = qdrant_client.get_collection(collection_name)
+            existing_size = col_info.config.params.vectors.size
+            if existing_size != vector_size:
+                print(f"WARNING: Collection {collection_name} has size {existing_size}, but we want {vector_size}!")
+    except Exception as e:
+        print(f"Qdrant ensure_collection error: {str(e)}")
+        raise
 
 @mcp.tool()
 async def search_knowledge_base(query: str, tenantId: str, limit: Optional[int] = 5) -> str:
@@ -156,18 +209,34 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
     Ingest information into a tenant's private collection.
     """
     try:
+        print(f"Ingesting knowledge for tenant: {tenantId}")
         collection_name = tenantId.replace("-", "_")
-        ensure_collection(collection_name)
+        
+        if not text or not text.strip():
+            print("Warning: Received empty text for ingestion")
+            return "Error: Text content is empty."
+
+        # 1. Get embedding first to know the size
         vector = get_embedding(text)
+        vector_size = len(vector)
+        
+        # 2. Ensure collection matches embedding size
+        ensure_collection(collection_name, vector_size)
+        
         payload = {"text": text, "tenantId": tenantId, **(metadata or {})}
         
         import uuid
+        point_id = str(uuid.uuid4())
+        print(f"Upserting point {point_id} to collection {collection_name} (vector size: {vector_size})")
+        
         qdrant_client.upsert(
             collection_name=collection_name,
-            points=[models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=payload)]
+            points=[models.PointStruct(id=point_id, vector=vector, payload=payload)]
         )
+        print(f"Successfully ingested information for {tenantId}.")
         return f"Successfully ingested information for {tenantId}."
     except Exception as e:
+        print(f"Critical Ingestion Error: {str(e)}")
         return f"Error ingesting knowledge: {str(e)}"
 
 # FastAPI HTTP Bridge for the Pipeline
