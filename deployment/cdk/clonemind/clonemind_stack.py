@@ -24,7 +24,7 @@ class CloneMindStack(Stack):
         # 1. NETWORK INFRASTRUCTURE - SINGLE AZ
         # ===================================================================
         vpc = ec2.Vpc(self, "CloneMindVPCV2", 
-            max_azs=1,  # SIMPLIFIED: Single AZ for QA
+            max_azs=1,
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -35,7 +35,6 @@ class CloneMindStack(Stack):
             ]
         )
         
-        # S3 Gateway Endpoint (free, improves performance)
         vpc.add_gateway_endpoint("S3Endpoint", 
             service=ec2.GatewayVpcEndpointAwsService.S3
         )
@@ -48,19 +47,17 @@ class CloneMindStack(Stack):
             cluster_name="clonemind-cluster"
         )
         
-        # Add EC2 capacity - t3.medium for QA with public IP
         asg = cluster.add_capacity("FinalCapacity",
             instance_type=ec2.InstanceType("t3.medium"),
             key_name="cloud mind",
             min_capacity=1,
-            max_capacity=1,  # SIMPLIFIED: Single instance for QA
+            max_capacity=1,
             desired_capacity=1,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             machine_image=ecs.EcsOptimizedImage.amazon_linux2(),
-            associate_public_ip_address=True  # CRITICAL: Ensure public IP
+            associate_public_ip_address=True
         )
         
-        # CRITICAL: ECS Agent needs these permissions
         asg.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
                 "service-role/AmazonEC2ContainerServiceforEC2Role"
@@ -73,7 +70,7 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 3. COGNITO USER POOL - Dynamic EC2 IP Handling
+        # 3. COGNITO USER POOL
         # ===================================================================
         user_pool = cognito.UserPool(self, "UserPool",
             user_pool_name="clonemind-users",
@@ -82,7 +79,7 @@ class CloneMindStack(Stack):
                 email=cognito.StandardAttribute(required=True, mutable=True)
             ),
             custom_attributes={
-                "tenant_id": cognito.StringAttribute(mutable=True) # THIS MATCHES THE TENANT SERVICE
+                "tenant_id": cognito.StringAttribute(mutable=True)
             },
             removal_policy=RemovalPolicy.DESTROY
         )
@@ -93,7 +90,6 @@ class CloneMindStack(Stack):
             )
         )
         
-        # 1. WebUI Client (Port 8080)
         webui_client = user_pool.add_client("WebUIClient",
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),
@@ -110,7 +106,6 @@ class CloneMindStack(Stack):
             generate_secret=True
         )
         
-        # 2. Admin Portal Client (Port 8000)
         admin_client = user_pool.add_client("AdminClient",
             o_auth=cognito.OAuthSettings(
                 flows=cognito.OAuthFlows(authorization_code_grant=True),
@@ -163,11 +158,10 @@ class CloneMindStack(Stack):
                 )
             )
 
-        # Only WebUI needs EFS for persistent data
         webui_ap = create_access_point("WebUIAP", "/openwebui")
 
         # ===================================================================
-        # 6. REDIS SERVICE - IN-MEMORY ONLY (NO EFS FOR QA)
+        # 6. REDIS SERVICE
         # ===================================================================
         redis_task = ecs.Ec2TaskDefinition(self, "RedisTask", 
             network_mode=ecs.NetworkMode.BRIDGE
@@ -193,7 +187,7 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 7. QDRANT SERVICE - BRIDGE MODE
+        # 7. QDRANT SERVICE
         # ===================================================================
         qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
             network_mode=ecs.NetworkMode.BRIDGE
@@ -231,7 +225,7 @@ class CloneMindStack(Stack):
             memory_limit_mib=384,
             cpu=128,
             environment={
-                "QDRANT_HOST": "172.17.0.1",  # Docker bridge gateway
+                "QDRANT_HOST": "172.17.0.1",
                 "QDRANT_PORT": "6333",
                 "TENANT_TABLE": tenant_table.table_name,
                 "MCP_TRANSPORT": "sse",
@@ -348,7 +342,6 @@ class CloneMindStack(Stack):
             )
         )
         
-        # Sidecar: File sync container
         filesync_container = webui_task.add_container("FileSync",
             image=ecs.ContainerImage.from_asset("../../services/file-sync"),
             memory_limit_mib=192,
@@ -379,7 +372,7 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 11. S3 PROCESSOR LAMBDA
+        # 11. S3 PROCESSOR LAMBDA - FIXED: REMOVED FROM VPC
         # ===================================================================
         s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
             runtime=_lambda.Runtime.PYTHON_3_11,
@@ -434,10 +427,9 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed')}
 """),
             environment={
-                "MCP_URL": ""  # Update after deployment
+                "MCP_URL": ""  # Update this after deployment: http://EC2_PUBLIC_IP:3000
             },
-            vpc=vpc,
-            allow_public_subnet=True,
+            # REMOVED VPC - Lambda can now access MCP via public IP
             timeout=Duration.seconds(30)
         )
         
@@ -482,3 +474,4 @@ def lambda_handler(event, context):
         CfnOutput(self, "UserPoolId", value=user_pool.user_pool_id)
         CfnOutput(self, "WebUIClientId", value=webui_client.user_pool_client_id)
         CfnOutput(self, "AdminClientId", value=admin_client.user_pool_client_id)
+        CfnOutput(self, "LambdaFunctionName", value=s3_processor.function_name)
