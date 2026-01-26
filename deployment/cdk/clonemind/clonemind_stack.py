@@ -426,7 +426,7 @@ def lambda_handler(event, context):
                 method='POST'
             )
             
-            with urllib.request.urlopen(req, timeout=15) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:
                 resp_body = response.read().decode('utf-8')
                 print(f"MCP Response ({response.getcode()}): {resp_body}")
             
@@ -439,7 +439,7 @@ def lambda_handler(event, context):
             environment={
                 "MCP_URL": ""  # Update after deployment: http://EC2_IP:3000
             },
-            timeout=Duration.seconds(45),
+            timeout=Duration.seconds(120),
             memory_size=256
         )
         
