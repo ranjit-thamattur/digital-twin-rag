@@ -51,6 +51,7 @@ class CloneMindStack(Stack):
         # Add EC2 capacity - t3.medium for QA with public IP
         asg = cluster.add_capacity("DefaultCapacity",
             instance_type=ec2.InstanceType("t3.medium"),
+            key_name="cloud mind",
             min_capacity=1,
             max_capacity=1,  # SIMPLIFIED: Single instance for QA
             desired_capacity=1,
