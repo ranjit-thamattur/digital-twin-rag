@@ -81,7 +81,7 @@ class CloneMindStack(Stack):
                 email=cognito.StandardAttribute(required=True, mutable=True)
             ),
             custom_attributes={
-                "tenant_id": cognito.StringAttribute(mutable=True)
+                "tenant_id": cognito.StringAttribute(mutable=True) # THIS MATCHES THE TENANT SERVICE
             },
             removal_policy=RemovalPolicy.DESTROY
         )
@@ -102,7 +102,7 @@ class CloneMindStack(Stack):
                     cognito.OAuthScope.PROFILE
                 ],
                 callback_urls=[
-                    "http://localhost:3000/oauth/callback"  # Placeholder - update after deployment
+                    "http://localhost:8080/oauth/callback"  # Fixed to port 8080
                 ]
             ),
             generate_secret=True
@@ -143,7 +143,6 @@ class CloneMindStack(Stack):
                     owner_uid="0",
                     permissions="777"
                 )
-                # Removed posix_user to allow container to use its own user
             )
 
         # Only WebUI needs EFS for persistent data
@@ -153,21 +152,18 @@ class CloneMindStack(Stack):
         # 6. REDIS SERVICE - IN-MEMORY ONLY (NO EFS FOR QA)
         # ===================================================================
         redis_task = ecs.Ec2TaskDefinition(self, "RedisTask", 
-            network_mode=ecs.NetworkMode.BRIDGE  # HOST mode for direct access
+            network_mode=ecs.NetworkMode.BRIDGE
         )
-        
-        # No EFS volume - Redis uses in-memory storage for QA
         
         redis_container = redis_task.add_container("RedisContainer",
             image=ecs.ContainerImage.from_registry("redis:7-alpine"),
-            memory_limit_mib=256,  # Increased from 128 for stability
-            cpu=128,  # Increased from 64
+            memory_limit_mib=256,
+            cpu=128,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Redis")
         )
         redis_container.add_port_mappings(
             ecs.PortMapping(container_port=6379, host_port=6379)
         )
-        # No mount points - using in-memory storage
         
         redis_service = ecs.Ec2Service(self, "RedisService", 
             cluster=cluster, 
@@ -179,13 +175,11 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 7. QDRANT SERVICE - BRIDGE MODE TO AVOID PORT CONFLICTS
+        # 7. QDRANT SERVICE - BRIDGE MODE
         # ===================================================================
         qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
-            network_mode=ecs.NetworkMode.BRIDGE  # Changed from HOST to BRIDGE
+            network_mode=ecs.NetworkMode.BRIDGE
         )
-        
-        # Using ephemeral storage instead of EFS to avoid NFS locking issues
         
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
@@ -194,8 +188,8 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Qdrant")
         )
         qdrant_container.add_port_mappings(
-            ecs.PortMapping(container_port=6333, host_port=6333),  # BRIDGE mode needs explicit mapping
-            ecs.PortMapping(container_port=6334, host_port=6334)   # gRPC port
+            ecs.PortMapping(container_port=6333, host_port=6333),
+            ecs.PortMapping(container_port=6334, host_port=6334)
         )
         
         qdrant_service = ecs.Ec2Service(self, "QdrantService", 
@@ -219,7 +213,7 @@ class CloneMindStack(Stack):
             memory_limit_mib=384,
             cpu=128,
             environment={
-                "QDRANT_HOST": "172.17.0.1",  # Docker bridge gateway for BRIDGE mode
+                "QDRANT_HOST": "172.17.0.1",  # Docker bridge gateway
                 "QDRANT_PORT": "6333",
                 "TENANT_TABLE": tenant_table.table_name,
                 "MCP_TRANSPORT": "sse",
@@ -262,6 +256,7 @@ class CloneMindStack(Stack):
             environment={
                 "TENANT_TABLE": tenant_table.table_name,
                 "COGNITO_USER_POOL_ID": user_pool.user_pool_id,
+                "COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
                 "AWS_REGION": self.region
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Tenant")
@@ -313,7 +308,7 @@ class CloneMindStack(Stack):
                 "WEBUI_NAME": "CloneMind AI",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
-                "PORT": "8080",  # OpenWebUI default port
+                "PORT": "8080",
                 "OAUTH_CLIENT_ID": user_pool_client.user_pool_client_id,
                 "OAUTH_CLIENT_SECRET": user_pool_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
@@ -338,7 +333,7 @@ class CloneMindStack(Stack):
             cpu=64,
             environment={
                 "S3_BUCKET": documents_bucket.bucket_name,
-                "TENANT_SERVICE_URL": "http://172.17.0.1:8000"  # Docker bridge for BRIDGE mode
+                "TENANT_SERVICE_URL": "http://172.17.0.1:8000"
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
         )
@@ -364,7 +359,6 @@ class CloneMindStack(Stack):
         # ===================================================================
         # 11. S3 PROCESSOR LAMBDA
         # ===================================================================
-        # Note: Lambda will need to be updated with EC2 IP after deployment
         s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
             runtime=_lambda.Runtime.PYTHON_3_11,
             handler="index.lambda_handler",
@@ -414,7 +408,7 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed')}
 """),
             environment={
-                "MCP_URL": ""  # Update this after deployment with http://EC2_IP:8080
+                "MCP_URL": ""  # Update after deployment
             },
             vpc=vpc,
             allow_public_subnet=True,
@@ -431,56 +425,33 @@ def lambda_handler(event, context):
         # ===================================================================
         instance_sg = asg.connections.security_groups[0]
         
-        # Allow public access to all service ports
-        for port in [8080, 3000, 8000, 6333, 6334, 6379]:  # Added 6334 for Qdrant gRPC
+        for port in [8080, 3000, 8000, 6333, 6334, 6379]:
             instance_sg.add_ingress_rule(
                 ec2.Peer.any_ipv4(),
                 ec2.Port.tcp(port),
                 f"Public Access Port {port}"
             )
         
-        # Allow EFS access from EC2 instances
         file_system.connections.allow_default_port_from(instance_sg)
 
         # ===================================================================
         # 13. OUTPUTS
         # ===================================================================
         CfnOutput(self, "EC2InstanceInfo",
-            value="Use AWS Console or CLI to get EC2 public IP: aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*DefaultCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress'",
+            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*DefaultCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
             description="Command to get EC2 Public IP"
         )
         
         CfnOutput(self, "ServiceEndpoints",
-            value="After deployment, access services at: WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:3000, Tenant=http://EC2_IP:8000",
-            description="Service Access URLs (replace EC2_IP with actual IP)"
+            value="WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:3000, Tenant=http://EC2_IP:8000",
+            description="Service Access URLs"
         )
         
         CfnOutput(self, "PostDeploymentSteps",
-            value="1. Get EC2 IP using command above. 2. Update Cognito callback URL to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:3000",
-            description="Required manual steps after deployment"
+            value="1. Get EC2 IP. 2. Update Cognito callback to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:3000",
+            description="Manual steps after deployment"
         )
         
-        CfnOutput(self, "S3BucketName",
-            value=documents_bucket.bucket_name,
-            description="Documents S3 Bucket"
-        )
-        
-        CfnOutput(self, "UserPoolId",
-            value=user_pool.user_pool_id,
-            description="Cognito User Pool ID"
-        )
-        
-        CfnOutput(self, "UserPoolClientId",
-            value=user_pool_client.user_pool_client_id,
-            description="Cognito User Pool Client ID"
-        )
-        
-        CfnOutput(self, "AutoScalingGroupName",
-            value=asg.auto_scaling_group_name,
-            description="Auto Scaling Group Name"
-        )
-        
-        CfnOutput(self, "CostSavings",
-            value="QA optimized: No ALB ($16-20/mo saved), Single AZ, t3.medium, Total memory: 3328MB, Redis+Qdrant use ephemeral storage (no EFS locking issues)",
-            description="Cost optimizations applied"
-        )
+        CfnOutput(self, "S3BucketName", value=documents_bucket.bucket_name)
+        CfnOutput(self, "UserPoolId", value=user_pool.user_pool_id)
+        CfnOutput(self, "UserPoolClientId", value=user_pool_client.user_pool_client_id)

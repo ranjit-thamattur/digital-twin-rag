@@ -19,11 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# AWS Configuration
-REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+# AWS Configuration - Use AWS_REGION if available (CDK standard), otherwise default
+REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID")
-COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
-TENANT_TABLE = os.getenv("TENANT_TABLE", "TenantMetadata")
+TENANT_TABLE = os.getenv("TENANT_TABLE", "clonemind-tenants")
 
 # Initialize AWS Clients
 cognito = boto3.client("cognito-idp", region_name=REGION)
@@ -47,6 +46,9 @@ class UserCreate(BaseModel):
     last_name: str
     persona: str
 
+class StatusUpdate(BaseModel):
+    is_active: bool
+
 # Helper Functions
 def create_cognito_user(email: str, password: str, first_name: str, last_name: str, tenant_id: str):
     """Create user in Cognito User Pool"""
@@ -60,7 +62,7 @@ def create_cognito_user(email: str, password: str, first_name: str, last_name: s
                 {"Name": "given_name", "Value": first_name},
                 {"Name": "family_name", "Value": last_name},
                 {"Name": "email_verified", "Value": "true"},
-                {"Name": "custom:tenant_id", "Value": tenant_id} # Assuming custom attribute exists
+                {"Name": "custom:tenant_id", "Value": tenant_id}
             ],
             TemporaryPassword=password,
             MessageAction="SUPPRESS"
@@ -81,7 +83,17 @@ def create_cognito_user(email: str, password: str, first_name: str, last_name: s
 # API Endpoints
 @app.get("/")
 async def root():
-    return {"message": "CloneMind Tenant Management API", "auth": "Cognito", "db": "DynamoDB"}
+    """Serve the Admin Portal HTML"""
+    return FileResponse("admin-portal.html")
+
+@app.get("/api/tenants")
+async def list_tenants():
+    """List all tenants from DynamoDB"""
+    try:
+        response = table.scan()
+        return {"tenants": response.get("Items", [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/tenants")
 async def create_tenant(tenant: TenantCreate):
@@ -127,7 +139,7 @@ async def create_tenant(tenant: TenantCreate):
         return {
             "success": True,
             "tenant_id": tenant_id,
-            "message": f"Tenant '{tenant.tenant_name}' registered successfully in Cognito",
+            "message": f"Tenant '{tenant.tenant_name}' registered successfully",
         }
         
     except Exception as e:
@@ -135,21 +147,67 @@ async def create_tenant(tenant: TenantCreate):
 
 @app.get("/api/tenants/{tenant_id}")
 async def get_tenant(tenant_id: str):
-    """Fetch tenant configuration for the pipeline prompt engine"""
+    """Fetch tenant configuration"""
     try:
         response = table.get_item(Key={"tenantId": tenant_id})
         item = response.get("Item")
         if not item:
             raise HTTPException(status_code=404, detail="Tenant not found")
-        return {"tenant": item}
+        # Ensure 'users' field exists
+        if "users" not in item:
+            item["users"] = []
+        return item
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/api/tenants/{tenant_id}")
+async def update_tenant_status(tenant_id: str, status: StatusUpdate):
+    """Toggle tenant active status"""
+    try:
+        table.update_item(
+            Key={"tenantId": tenant_id},
+            UpdateExpression="SET isActive = :val",
+            ExpressionAttributeValues={":val": status.is_active}
+        )
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/tenants/{tenant_id}/users")
+async def add_user_to_tenant(tenant_id: str, user: UserCreate):
+    """Create additional Cognito user and link to tenant"""
+    try:
+        # 1. Create in Cognito
+        success = create_cognito_user(
+            user.email,
+            user.password,
+            user.first_name,
+            user.last_name,
+            tenant_id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to create Cognito user")
+            
+        # 2. Add to DynamoDB 'users' list
+        table.update_item(
+            Key={"tenantId": tenant_id},
+            UpdateExpression="SET #u = list_append(if_not_exists(#u, :empty_list), :new_user)",
+            ExpressionAttributeNames={"#u": "users"},
+            ExpressionAttributeValues={
+                ":new_user": [{"email": user.email, "persona": user.persona}],
+                ":empty_list": []
+            }
+        )
+        
+        return {"success": True, "message": f"User {user.email} added to tenant"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/api/user/lookup")
 async def lookup_user(email: str):
-    """Lookup user tenant and persona from DynamoDB"""
+    """Lookup user tenant and persona for the RAG pipeline"""
     try:
-        # Scan for demo/QA - in production, use a Global Secondary Index (GSI) on Email
         response = table.scan()
         items = response.get("Items", [])
         
