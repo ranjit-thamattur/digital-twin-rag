@@ -237,7 +237,8 @@ async def search_knowledge_base(query: str, tenantId: str, limit: Optional[int] 
         formatted_results = []
         for res in search_result:
             text = res.payload.get("text", "No text found")
-            formatted_results.append(f"[Score: {res.score:.4f}] {text}")
+            source = res.payload.get("filename", "Unknown Source")
+            formatted_results.append(f"--- SOURCE: {source} ---\n{text}")
 
         return "\n\n".join(formatted_results) if formatted_results else "No relevant information found."
     except Exception as e:
@@ -288,7 +289,12 @@ async def generate_twin_response(
 {context}
 </knowledge_context>
 
-Based on the knowledge context provided above, please answer the following user query. If the answer is not in the context, use your general knowledge but prioritize the context.
+Based on the knowledge context provided above, please answer the user query. 
+
+Rules:
+1. Prioritize the provided context. 
+2. ALWAYS cite the source filename (e.g., [Source: filename.txt]) at the end of your answer if you used information from the context.
+3. If the answer is not in the context, state that and use your general knowledge, but do not make up facts about the company.
 
 User Query: {query}"""
         bedrock_messages.append({"role": "user", "content": [{"text": rag_prompt}]})

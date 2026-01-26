@@ -75,15 +75,24 @@ class Pipe:
         # 3. Fetch Prompt DNA (Tone, Company Name)
         dna = self.get_tenant_dna(tenant_id)
         if dna:
-            tenant_info = dna.get("tenant", {})
-            company = tenant_info.get("companyName", "Unknown Corp")
-            tone = tenant_info.get("tone", "professional")
-            industry = tenant_info.get("industry", "Business")
+            company = dna.get("companyName", "Unknown Corp")
+            tone = dna.get("tone", "professional")
+            industry = dna.get("industry", "Business")
+            instructions = dna.get("specialInstructions", "")
+            
+            # Fetch Persona Detail
+            personas = dna.get("personas", {})
+            persona_config = personas.get(persona_id, {"focus": "general", "style": "helpful"})
+            focus = persona_config.get("focus", "general")
+            style = persona_config.get("style", "professional")
             
             # 4. Construct the DYNAMIC SYSTEM PROMPT
-            system_prompt = f"You are the AI Twin of {company} in the {industry} industry. "
-            system_prompt += f"Your communication style is {tone}. "
-            system_prompt += "Use the provided knowledge context to answer accurately."
+            system_prompt = f"You are the AI Twin of the {persona_id} at {company} ({industry} industry). "
+            system_prompt += f"Your communication style is {tone} and your persona focus is {focus}. "
+            system_prompt += f"Adopt a {style} style of speaking. "
+            if instructions:
+                system_prompt += f"\nSpecial Guidelines: {instructions}"
+            system_prompt += "\nUse the provided knowledge context to answer accurately and cite your sources."
         else:
             system_prompt = "You are a helpful AI assistant."
 
