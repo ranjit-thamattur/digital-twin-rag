@@ -5,6 +5,8 @@ import boto3
 import time
 import random
 import uuid
+import hashlib
+import threading
 from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
@@ -25,7 +27,7 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
 # Try Titan V2 first as it's the modern standard, fallback to V1
 EMBEDDING_MODEL_ID = os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
-VECTOR_SIZE = 1024 # Default for Titan V2. Titan V1 is 1536.
+VECTOR_SIZE = 1024  # Default for Titan V2. Titan V1 is 1536.
 
 # Initialize FastMCP server
 mcp = FastMCP("CloneMind Knowledge Base")
@@ -35,17 +37,72 @@ app = FastAPI()
 
 # Initialize Clients
 qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
-def get_embedding(text: str) -> List[float]:
-    """Generate embedding using Bedrock Titan with exponential backoff."""
-    max_retries = 5
-    base_delay = 1 # second
+from botocore.config import Config
+bedrock_config = Config(
+    retries={
+        'max_attempts': 1,  # 1 attempt total = 0 retries. Let our custom loop handle it.
+        'mode': 'standard'
+    },
+    connect_timeout=15,
+    read_timeout=15
+)
+bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION, config=bedrock_config)
+
+# Rate Limiter Class
+class RateLimiter:
+    """Rate limiter to prevent overwhelming Bedrock API"""
+    def __init__(self, calls_per_second=2):
+        self.calls_per_second = calls_per_second
+        self.min_interval = 1.0 / calls_per_second
+        self.last_call = 0
+        self.lock = threading.Lock()
+    
+    def wait(self):
+        with self.lock:
+            elapsed = time.time() - self.last_call
+            if elapsed < self.min_interval:
+                sleep_time = self.min_interval - elapsed
+                time.sleep(sleep_time)
+            self.last_call = time.time()
+
+# Initialize rate limiter and cache
+embedding_rate_limiter = RateLimiter(calls_per_second=2)  # Conservative: 2 calls/sec
+embedding_cache = {}
+
+# Cost tracking
+cost_tracker = {
+    "embedding_calls": 0,
+    "haiku_calls": 0,
+    "sonnet_calls": 0,
+    "total_tokens": 0
+}
+
+def get_text_hash(text: str) -> str:
+    """Create a hash of the text for caching."""
+    return hashlib.sha256(text.encode()).hexdigest()
+
+def get_embedding(text: str, use_cache: bool = True) -> List[float]:
+    """Generate embedding using Bedrock Titan with rate limiting, caching, and improved backoff."""
+    
+    # Check cache first
+    if use_cache:
+        text_hash = get_text_hash(text)
+        if text_hash in embedding_cache:
+            print(f"✓ Using cached embedding for text hash: {text_hash[:8]}...")
+            return embedding_cache[text_hash]
+    
+    max_retries = 10
+    base_delay = 3  # Increased base delay
+    max_delay = 60  # Maximum delay cap
     
     current_model = EMBEDDING_MODEL_ID
     
     for attempt in range(max_retries):
         try:
+            # Rate limit BEFORE calling Bedrock
+            embedding_rate_limiter.wait()
+            
             print(f"Generating embedding (Attempt {attempt+1}/{max_retries}) for text (length: {len(text)}) using model {current_model}")
             
             # Ensure text is not too long for Titan
@@ -63,19 +120,22 @@ def get_embedding(text: str) -> List[float]:
                 )
             except Exception as e:
                 error_str = str(e).lower()
+                
                 # Handle model unavailability (Region/Account specific)
                 if "model is not available" in error_str and current_model == "amazon.titan-embed-text-v2:0":
-                    print("Titan V2 not available, failing back to V1...")
+                    print("Titan V2 not available, falling back to V1...")
                     current_model = "amazon.titan-embed-text-v1"
-                    continue # Retry immediately with V1
+                    continue  # Retry immediately with V1
                 
-                # Handle Throttling explicitly
+                # Handle Throttling with improved exponential backoff
                 if "throttling" in error_str or "too many requests" in error_str:
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt) # Exponential backoff
-                        delay += random.uniform(0, 1) # Add jitter
-                        print(f"Bedrock Throttled. Retrying in {delay:.2f} seconds...")
-                        time.sleep(delay)
+                        # More aggressive exponential backoff with jitter
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        jitter = random.uniform(0, delay * 0.3)  # 30% jitter
+                        total_delay = delay + jitter
+                        print(f"⚠ Bedrock Throttled. Retrying in {total_delay:.2f} seconds...")
+                        time.sleep(total_delay)
                         continue
                 raise
 
@@ -86,16 +146,26 @@ def get_embedding(text: str) -> List[float]:
                 print(f"Error: Bedrock returned empty embedding.")
                 raise Exception("Empty embedding returned from Bedrock")
             
-            print(f"Successfully generated embedding (size: {len(embedding)}) using {current_model}")
+            # Cache successful result
+            if use_cache:
+                text_hash = get_text_hash(text)
+                embedding_cache[text_hash] = embedding
+            
+            # Track costs
+            cost_tracker["embedding_calls"] += 1
+            
+            print(f"✓ Successfully generated embedding (size: {len(embedding)}) using {current_model}")
             return embedding
             
         except Exception as e:
             if attempt == max_retries - 1:
-                print(f"Final Bedrock Embedding Error: {str(e)}")
+                print(f"✗ Final Bedrock Embedding Error: {str(e)}")
                 raise
             else:
-                print(f"Transient Bedrock Error: {str(e)}. Retrying...")
-                time.sleep(base_delay * (attempt + 1))
+                # Fallback delay for non-throttling errors
+                delay = min(base_delay * (attempt + 1), max_delay)
+                print(f"⚠ Transient Bedrock Error: {str(e)}. Retrying in {delay:.2f}s...")
+                time.sleep(delay)
     
     raise Exception("Failed to get embedding after multiple retries")
 
@@ -176,13 +246,15 @@ async def generate_twin_response(
             # Claude 3.5 Sonnet works best with a Chain of Thought instruction for complex queries
             system_prompt += "\n\nFor complex queries, please reason through the knowledge context step-by-step before providing your final answer to ensure maximum accuracy."
             print(f"Routing to Smart Model: {selected_model}")
+            cost_tracker["sonnet_calls"] += 1
         else:
             print(f"Routing to Fast Model: {selected_model}")
+            cost_tracker["haiku_calls"] += 1
 
         # 3. Prepare Bedrock Call
         bedrock_messages = []
         if messages:
-            for msg in messages[-5:]: # Last 5 for context
+            for msg in messages[-5:]:  # Last 5 for context
                 role = "user" if msg.get("role") == "user" else "assistant"
                 content = msg.get("content", "")
                 if content:
@@ -212,6 +284,12 @@ User Query: {query}"""
         
         response_body = json.loads(response.get("body").read())
         answer = response_body["content"][0]["text"]
+        
+        # Track token usage if available
+        if "usage" in response_body:
+            cost_tracker["total_tokens"] += response_body["usage"].get("input_tokens", 0)
+            cost_tracker["total_tokens"] += response_body["usage"].get("output_tokens", 0)
+        
         return answer
 
     except Exception as e:
@@ -223,6 +301,9 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
     Ingest information into a tenant's private collection.
     """
     try:
+        # Add a small delay to space out rapid ingestion requests
+        await asyncio.sleep(0.5)
+        
         print(f"Ingesting knowledge for tenant: {tenantId}")
         collection_name = tenantId.replace("-", "_")
         
@@ -246,20 +327,73 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
             collection_name=collection_name,
             points=[models.PointStruct(id=point_id, vector=vector, payload=payload)]
         )
-        print(f"Successfully ingested information for {tenantId}.")
+        print(f"✓ Successfully ingested information for {tenantId}.")
         return f"Successfully ingested information for {tenantId}."
     except Exception as e:
-        print(f"Critical Ingestion Error: {str(e)}")
+        print(f"✗ Critical Ingestion Error: {str(e)}")
         return f"Error ingesting knowledge: {str(e)}"
+
+@mcp.tool()
+async def get_cost_stats() -> str:
+    """
+    Get current cost tracking statistics.
+    """
+    stats = f"""
+Cost Tracking Statistics:
+========================
+Embedding API Calls: {cost_tracker['embedding_calls']}
+Haiku Model Calls: {cost_tracker['haiku_calls']}
+Sonnet Model Calls: {cost_tracker['sonnet_calls']}
+Total Tokens Processed: {cost_tracker['total_tokens']}
+
+Estimated Costs:
+- Embeddings: ~${cost_tracker['embedding_calls'] * 0.0003:.4f}
+- Haiku Queries: ~${cost_tracker['haiku_calls'] * 0.0012:.4f}
+- Sonnet Queries: ~${cost_tracker['sonnet_calls'] * 0.006:.4f}
+- Total Estimated: ~${(cost_tracker['embedding_calls'] * 0.0003) + (cost_tracker['haiku_calls'] * 0.0012) + (cost_tracker['sonnet_calls'] * 0.006):.4f}
+
+Cache Hit Rate: {len(embedding_cache)} cached embeddings
+"""
+    return stats
+
+@mcp.tool()
+async def clear_embedding_cache() -> str:
+    """
+    Clear the embedding cache (useful for memory management).
+    """
+    cache_size = len(embedding_cache)
+    embedding_cache.clear()
+    return f"Cleared {cache_size} cached embeddings."
 
 # FastAPI HTTP Bridge for the Pipeline
 @app.get("/")
 async def health_check():
-    return JSONResponse({"status": "healthy", "service": "CloneMind MCP Server"})
+    return JSONResponse({
+        "status": "healthy", 
+        "service": "CloneMind MCP Server",
+        "version": "2.0",
+        "features": ["rate_limiting", "caching", "cost_tracking"]
+    })
 
 @app.get("/health")
 async def health():
     return JSONResponse({"status": "healthy"})
+
+@app.get("/stats")
+async def stats():
+    """Get cost and performance statistics"""
+    return JSONResponse({
+        "cost_tracker": cost_tracker,
+        "cache_size": len(embedding_cache),
+        "estimated_cost": {
+            "embeddings": round(cost_tracker['embedding_calls'] * 0.0003, 4),
+            "haiku": round(cost_tracker['haiku_calls'] * 0.0012, 4),
+            "sonnet": round(cost_tracker['sonnet_calls'] * 0.006, 4),
+            "total": round((cost_tracker['embedding_calls'] * 0.0003) + 
+                          (cost_tracker['haiku_calls'] * 0.0012) + 
+                          (cost_tracker['sonnet_calls'] * 0.006), 4)
+        }
+    })
 
 @app.post("/call/{tool_name}")
 async def call_tool_bridge(tool_name: str, request: Request):
@@ -273,6 +407,10 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await search_knowledge_base(**arguments)
         elif tool_name == "ingest_knowledge":
             result = await ingest_knowledge(**arguments)
+        elif tool_name == "get_cost_stats":
+            result = await get_cost_stats()
+        elif tool_name == "clear_embedding_cache":
+            result = await clear_embedding_cache()
         else:
             return JSONResponse(
                 {"error": f"Tool {tool_name} not found"}, 
@@ -287,9 +425,28 @@ if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     port = int(os.getenv("PORT", "3000"))
     
+    print(f"""
+╔══════════════════════════════════════════════════════════════╗
+║          CloneMind Knowledge Base MCP Server v2.0            ║
+╠══════════════════════════════════════════════════════════════╣
+║  Features:                                                   ║
+║  ✓ Rate Limiting (2 req/sec)                                ║
+║  ✓ Embedding Caching                                        ║
+║  ✓ Improved Exponential Backoff                             ║
+║  ✓ Cost Tracking                                            ║
+║  ✓ Smart Model Routing (Haiku/Sonnet)                       ║
+╠══════════════════════════════════════════════════════════════╣
+║  Region: {AWS_REGION:48} ║
+║  Embedding Model: {EMBEDDING_MODEL_ID:42} ║
+║  Transport: {transport:50} ║
+╚══════════════════════════════════════════════════════════════╝
+    """)
+    
     if transport == "sse":
         # Run FastAPI server for SSE/HTTP mode
+        print(f"Starting HTTP server on port {port}...")
         uvicorn.run(app, host="0.0.0.0", port=port)
     else:
         # Run MCP in stdio mode
+        print("Starting MCP in stdio mode...")
         mcp.run(transport="stdio")
