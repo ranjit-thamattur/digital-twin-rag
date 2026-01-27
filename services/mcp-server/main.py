@@ -221,26 +221,69 @@ def ensure_collection(collection_name: str, vector_size: int):
         raise
 
 @mcp.tool()
-async def search_knowledge_base(query: str, tenantId: str, limit: Optional[int] = 10) -> str:
-    """Search a tenant's specific collection for relevant document chunks."""
+async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[str] = None, limit: Optional[int] = 10) -> str:
+    """
+    Search a tenant's knowledge base. 
+    If personaId is provided, results are strictly filtered to that persona.
+    """
+    if not tenantId:
+        print("⚠ Search failed: No tenantId provided")
+        return ""
+        
     try:
+        # Normalize inputs
+        tenantId = tenantId.strip().lower()
         collection_name = tenantId.replace("-", "_")
-        print(f"🔍 Searching {collection_name} for: '{query}'")
+        
+        # Smart Query Expansion
+        search_query = query
+        if len(query.split()) <= 2:
+            search_query = f"What is the {query} and relevant metrics for {tenantId}"
+
+        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'Global'} | Query: {search_query}")
         
         # Generate Query Vector
-        vector = await get_embedding(query)
-        print(f"  - Query vector length: {len(vector)}")
+        vector = await get_embedding(search_query)
 
-        # Search Qdrant with higher limit and no strict threshold
+        # Build Persona Filter
+        query_filter = None
+        if personaId:
+            query_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="personaId",
+                        match=models.MatchValue(value=personaId)
+                    )
+                ]
+            )
+
+        # Search Qdrant with optional filter
         search_result = await asyncio.to_thread(
             lambda: qdrant_client.search(
                 collection_name=collection_name,
                 query_vector=vector,
                 limit=limit,
                 with_payload=True,
-                score_threshold=0.0  # Allow everything initially for debugging
+                query_filter=query_filter
             )
         )
+
+        formatted_results = []
+        for i, res in enumerate(search_result):
+            text = res.payload.get("text", "No text found")
+            source = res.payload.get("filename", "Unknown Source")
+            score = getattr(res, 'score', 0)
+            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] | Preview: {text[:50]}...")
+            formatted_results.append(f"DOCUMENT: {source}\nCONTENT: {text}\n---")
+
+        if not formatted_results:
+            print(f"⚠ [SEARCH] Zero results found in Qdrant for {collection_name}")
+            return ""
+
+        return "\n\n".join(formatted_results)
+    except Exception as e:
+        print(f"✗ [SEARCH] Error: {str(e)}")
+        return f"SEARCH_ERROR: {str(e)}"
 
         formatted_results = []
         for i, res in enumerate(search_result):
@@ -292,12 +335,13 @@ async def generate_twin_response(
     query: str, 
     tenantId: str, 
     system_prompt: str,
+    personaId: Optional[str] = None,
     messages: Optional[List[dict]] = None
 ) -> str:
-    """Full RAG Pipeline using OpenAI"""
+    """Full RAG Pipeline with Persona Isolation"""
     try:
-        # 1. Search Knowledge Base
-        context = await search_knowledge_base(query, tenantId)
+        # 1. Search Knowledge Base (filtered by persona)
+        context = await search_knowledge_base(query, tenantId, personaId=personaId)
         
         if openai_client is None:
             return "MCP Error: OpenAI API client not initialized. Check OPENAI_API_KEY."
@@ -323,40 +367,43 @@ async def generate_twin_response(
                     openai_messages.append({"role": role, "content": content})
         
         # Add current query with context
-        rag_prompt = f"""Use the following pieces of retrieved context to answer the question. 
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
+        rag_prompt = f"""You are a helpful AI Knowledge Assistant. Use the provided context to answer the user's question accurately.
 
-Retrieved Context:
+Context:
 {rag_context_block}
 
-User Question: {query}
+Question: {query}
 
 Instructions:
-1. Use ONLY the information in the 'Retrieved Context' to answer if possible.
-2. If the answer is found, cite the source clearly like this: [Source: filename.txt].
-3. If the context is empty or does not contain the answer, state that you don't have that information in your knowledge base and offer to help with general information based on your training data (but label it as general knowledge).
-4. Do NOT mention "retrieved context" or "search results" to the user. Just answer naturally.
+1. If the answer is in the context, provide it and cite the source like [Source: filename].
+2. If the context is empty or doesn't have the answer, state that "I don't have that specific information in my knowledge base" and then try to answer using your general knowledge, but clearly label it as general knowledge.
+3. Keep the tone professional and concise.
 """
         
         openai_messages.append({"role": "user", "content": rag_prompt})
 
-        # 4. Invoke OpenAI
-        response = await asyncio.to_thread(
-            lambda: openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=2048,
-                messages=openai_messages,
-                temperature=0.1
-            )
-        )
-        
-        answer = response.choices[0].message.content
-        
-        # Track token usage
-        if response.usage:
-            cost_tracker["total_tokens"] += response.usage.total_tokens
-        
-        return answer
+        # 4. Invoke OpenAI with retry logic
+        for attempt in range(2):
+            try:
+                response = await asyncio.to_thread(
+                    lambda: openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        max_tokens=2048,
+                        messages=openai_messages,
+                        temperature=0.1
+                    )
+                )
+                answer = response.choices[0].message.content
+                
+                # Track token usage
+                if response.usage:
+                    cost_tracker["total_tokens"] += response.usage.total_tokens
+                
+                return answer
+            except Exception as e:
+                if attempt == 1: raise
+                print(f"⚠ Chat completion attempt {attempt+1} failed: {str(e)}. Retrying...")
+                await asyncio.sleep(1)
 
     except Exception as e:
         print(f"✗ OpenAI error: {str(e)}")
