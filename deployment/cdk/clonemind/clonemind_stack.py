@@ -1,3 +1,4 @@
+import os
 from aws_cdk import (
     Stack,
     aws_lambda as _lambda,
@@ -9,6 +10,8 @@ from aws_cdk import (
     aws_efs as efs,
     aws_cognito as cognito,
     aws_s3_notifications as s3n,
+    aws_secretsmanager as secretsmanager,
+    SecretValue,
     RemovalPolicy,
     Duration,
     CfnOutput,
@@ -214,23 +217,66 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 8. MCP SERVER SERVICE  
+        # 8. MCP SERVER SERVICE - UPDATED FOR ANTHROPIC + VOYAGE
         # ===================================================================
+        
+        # ⚠️ SECURITY: REPLACE THESE PLACEHOLDER VALUES WITH YOUR ACTUAL API KEYS
+        # Option 1: Replace directly here (NOT RECOMMENDED for production)
+        # Option 2: Create secrets via AWS CLI first, then reference them (RECOMMENDED)
+        #
+        # To use Option 2:
+        # Run these commands BEFORE deploying:
+        # aws secretsmanager create-secret --name clonemind/anthropic-api-key --secret-string "YOUR_KEY" --region us-east-1
+        # aws secretsmanager create-secret --name clonemind/voyage-api-key --secret-string "YOUR_KEY" --region us-east-1
+        # Then uncomment the "from_secret_name_v2" lines below and comment out the Secret() constructors
+        
+        # Create API key secrets
+        anthropic_secret = secretsmanager.Secret(self, "AnthropicApiKey",
+            secret_name="clonemind/anthropic-api-key",
+            description="Anthropic API key for Claude",
+            # ⚠️ DO NOT HARDCODE KEYS HERE. Set them in your environment before deploying:
+            # export ANTHROPIC_API_KEY=sk-ant-api03-...
+            secret_string_value=SecretValue.unsafe_plain_text(os.getenv("ANTHROPIC_API_KEY", "REPLACE_ME"))
+        )
+        
+        voyage_secret = secretsmanager.Secret(self, "VoyageApiKey",
+            secret_name="clonemind/voyage-api-key",
+            description="Voyage AI API key for embeddings",
+            # ⚠️ DO NOT HARDCODE KEYS HERE. Set them in your environment before deploying:
+            # export VOYAGE_API_KEY=sk-ant-api03-...
+            secret_string_value=SecretValue.unsafe_plain_text(os.getenv("VOYAGE_API_KEY", "REPLACE_ME"))
+        )
+        
+        # OR use this if you created secrets via CLI (RECOMMENDED):
+        # anthropic_secret = secretsmanager.Secret.from_secret_name_v2(
+        #     self, "AnthropicApiKey",
+        #     "clonemind/anthropic-api-key"
+        # )
+        # voyage_secret = secretsmanager.Secret.from_secret_name_v2(
+        #     self, "VoyageApiKey",
+        #     "clonemind/voyage-api-key"
+        # )
+        
         mcp_task = ecs.Ec2TaskDefinition(self, "McpTask", 
             network_mode=ecs.NetworkMode.BRIDGE
         )
         
         mcp_container = mcp_task.add_container("McpContainer",
             image=ecs.ContainerImage.from_asset("../../services/mcp-server"),
-            memory_limit_mib=384,
-            cpu=128,
+            memory_limit_mib=512,  # Increased for better performance
+            cpu=256,               # Increased for better performance
             environment={
                 "QDRANT_HOST": "172.17.0.1",
                 "QDRANT_PORT": "6333",
                 "TENANT_TABLE": tenant_table.table_name,
                 "MCP_TRANSPORT": "sse",
                 "AWS_REGION": self.region,
-                "PORT": "3000"
+                "PORT": "3000",
+                "EMBEDDING_PROVIDER": "voyage"  # Using Voyage AI for embeddings
+            },
+            secrets={  # API keys injected as secrets
+                "ANTHROPIC_API_KEY": ecs.Secret.from_secrets_manager(anthropic_secret),
+                "VOYAGE_API_KEY": ecs.Secret.from_secrets_manager(voyage_secret)
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
         )
@@ -239,12 +285,14 @@ class CloneMindStack(Stack):
         )
         
         tenant_table.grant_read_write_data(mcp_task.task_role)
-        mcp_task.task_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["bedrock:InvokeModel"],
-                resources=["*"]
-            )
-        )
+        
+        # REMOVED: No longer using Bedrock
+        # mcp_task.task_role.add_to_policy(
+        #     iam.PolicyStatement(
+        #         actions=["bedrock:InvokeModel"],
+        #         resources=["*"]
+        #     )
+        # )
         
         mcp_service = ecs.Ec2Service(self, "McpService", 
             cluster=cluster, 
@@ -372,7 +420,7 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 11. S3 PROCESSOR LAMBDA - FIXED: REMOVED FROM VPC
+        # 11. S3 PROCESSOR LAMBDA
         # ===================================================================
         s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
             runtime=_lambda.Runtime.PYTHON_3_11,
@@ -406,7 +454,6 @@ def lambda_handler(event, context):
             
             print(f"Processing knowledge: s3://{bucket}/{key} for tenant: {tenant_id}")
             
-            # Download content from S3
             response = s3.get_object(Bucket=bucket, Key=key)
             content = response['Body'].read().decode('utf-8', errors='ignore')
             
@@ -414,8 +461,6 @@ def lambda_handler(event, context):
                 print(f"Warning: File {key} is empty")
                 continue
 
-            # Payload with actual text
-            # We send up to 250k chars now that MCP server handles chunking
             payload = {
                 "text": content[:250000], 
                 "tenantId": tenant_id,
@@ -436,7 +481,6 @@ def lambda_handler(event, context):
                 method='POST'
             )
             
-            # Extended timeout for large files (MCP server will chunk them)
             try:
                 with urllib.request.urlopen(req, timeout=110) as response:
                     resp_body = response.read().decode('utf-8')
@@ -457,7 +501,6 @@ def lambda_handler(event, context):
             memory_size=512
         )
         
-        # GRANT PERMISSION
         documents_bucket.grant_read(s3_processor)
         
         documents_bucket.add_event_notification(
@@ -502,3 +545,13 @@ def lambda_handler(event, context):
         CfnOutput(self, "WebUIClientId", value=webui_client.user_pool_client_id)
         CfnOutput(self, "AdminClientId", value=admin_client.user_pool_client_id)
         CfnOutput(self, "LambdaFunctionName", value=s3_processor.function_name)
+        
+        # New outputs for API secrets
+        CfnOutput(self, "AnthropicSecretArn",
+            value=anthropic_secret.secret_arn,
+            description="ARN of Anthropic API Key secret"
+        )
+        CfnOutput(self, "VoyageSecretArn",
+            value=voyage_secret.secret_arn,
+            description="ARN of Voyage API Key secret"
+        )

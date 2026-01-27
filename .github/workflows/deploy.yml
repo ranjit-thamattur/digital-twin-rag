@@ -37,3 +37,6 @@ jobs:
         run: |
           cd deployment/cdk
           cdk deploy --require-approval never
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}

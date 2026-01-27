@@ -1,8 +1,20 @@
-mcp>=0.1.0
-qdrant-client
-boto3
-pydantic
-python-dotenv
+# Core dependencies
+fastmcp
 fastapi
-uvicorn[standard]
-requests
+uvicorn
+qdrant-client
+python-dotenv
+
+# Anthropic Claude for chat (YOU ALREADY HAVE CREDITS!)
+anthropic==0.18.1
+
+# Embeddings - Choose ONE of these:
+
+# Option 1: Voyage AI (RECOMMENDED - FREE 30M tokens!)
+voyageai==0.2.1
+
+# Option 2: OpenAI (if you prefer)
+# openai==1.12.0
+
+# Option 3: Cohere (has free tier)
+# cohere==4.37.0

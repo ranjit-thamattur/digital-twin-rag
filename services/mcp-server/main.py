@@ -1,12 +1,9 @@
 import os
 import asyncio
 import json
-import boto3
 import time
-import random
 import uuid
 import hashlib
-import threading
 from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
 from qdrant_client import QdrantClient
@@ -15,7 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
-import requests
+import anthropic
 
 # Load environment variables
 load_dotenv()
@@ -24,19 +21,28 @@ load_dotenv()
 QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
-# AWS Configuration
-AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-EMBEDDING_MODEL_ID = os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
-VECTOR_SIZE = 1024
+# Anthropic Configuration (You already have credits!)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-# Generation Model Configuration
-DEFAULT_MODEL = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-5-haiku-20241022-v1:0")
-SONNET_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+# Embedding Configuration - Choose one:
+# Option 1: Voyage AI (FREE 30M tokens!) - RECOMMENDED
+# Option 2: OpenAI (cheap and good)
+# Option 3: Cohere (has free tier)
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "voyage")  # voyage, openai, or cohere
 
-# Local Model (Ollama) Support
-USE_OLLAMA = os.getenv("USE_OLLAMA", "false").lower() == "true"
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+# API Keys for embedding providers
+VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+COHERE_API_KEY = os.getenv("COHERE_API_KEY")
+
+# Vector sizes by provider
+VECTOR_SIZES = {
+    "voyage": 1024,
+    "openai": 1536,
+    "cohere": 1024
+}
+VECTOR_SIZE = VECTOR_SIZES.get(EMBEDDING_PROVIDER, 1024)
 
 # Initialize FastMCP server
 mcp = FastMCP("CloneMind Knowledge Base")
@@ -47,43 +53,18 @@ app = FastAPI()
 # Initialize Clients
 qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
-from botocore.config import Config
-bedrock_config = Config(
-    retries={
-        'max_attempts': 1,
-        'mode': 'standard'
-    },
-    connect_timeout=15,
-    read_timeout=15
-)
-bedrock_client = boto3.client("bedrock-runtime", region_name=AWS_REGION, config=bedrock_config)
+# Lazy-loaded embedding clients
+voyage_client = None
+openai_client = None
+cohere_client = None
 
-# Rate Limiter Class
-class RateLimiter:
-    """Async Rate limiter to prevent overwhelming Bedrock API"""
-    def __init__(self, calls_per_second=0.5):  # REDUCED from 2 to 0.5
-        self.calls_per_second = calls_per_second
-        self.min_interval = 1.0 / calls_per_second
-        self.last_call = 0
-        self.lock = asyncio.Lock()
-    
-    async def wait(self):
-        async with self.lock:
-            elapsed = time.time() - self.last_call
-            if elapsed < self.min_interval:
-                sleep_time = self.min_interval - elapsed
-                await asyncio.sleep(sleep_time)
-            self.last_call = time.time()
-
-# Initialize rate limiter and cache - SLOWER to avoid throttling
-embedding_rate_limiter = RateLimiter(calls_per_second=0.5)  # 1 call every 2 seconds
+# Caching
 embedding_cache = {}
 
 # Cost tracking
 cost_tracker = {
     "embedding_calls": 0,
-    "haiku_calls": 0,
-    "sonnet_calls": 0,
+    "chat_calls": 0,
     "total_tokens": 0
 }
 
@@ -91,10 +72,58 @@ def get_text_hash(text: str) -> str:
     """Create a hash of the text for caching."""
     return hashlib.sha256(text.encode()).hexdigest()
 
-async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
-    """Generate embedding using Bedrock Titan with async rate limiting, caching, and improved backoff."""
+async def get_voyage_embedding(text: str) -> List[float]:
+    """Generate embedding using Voyage AI (FREE 30M tokens!)"""
+    global voyage_client
+    if voyage_client is None:
+        import voyageai
+        voyage_client = voyageai.Client(api_key=VOYAGE_API_KEY)
     
-    # CRITICAL: Validate text is not empty FIRST
+    result = await asyncio.to_thread(
+        lambda: voyage_client.embed(
+            [text[:4000]], 
+            model="voyage-2",
+            input_type="document"
+        )
+    )
+    return result.embeddings[0]
+
+async def get_openai_embedding(text: str) -> List[float]:
+    """Generate embedding using OpenAI"""
+    global openai_client
+    if openai_client is None:
+        import openai
+        openai.api_key = OPENAI_API_KEY
+        openai_client = openai
+    
+    response = await asyncio.to_thread(
+        lambda: openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text[:8000]
+        )
+    )
+    return response.data[0].embedding
+
+async def get_cohere_embedding(text: str) -> List[float]:
+    """Generate embedding using Cohere"""
+    global cohere_client
+    if cohere_client is None:
+        import cohere
+        cohere_client = cohere.Client(COHERE_API_KEY)
+    
+    response = await asyncio.to_thread(
+        lambda: cohere_client.embed(
+            texts=[text[:2048]],
+            model="embed-english-v3.0",
+            input_type="search_document"
+        )
+    )
+    return response.embeddings[0]
+
+async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
+    """Generate embedding using configured provider"""
+    
+    # Validate text is not empty
     if not text or not text.strip():
         raise ValueError("Cannot generate embedding for empty text")
     
@@ -105,86 +134,31 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
             print(f"✓ Using cached embedding for text hash: {text_hash[:8]}...")
             return embedding_cache[text_hash]
     
-    max_retries = 5  # Increased for better resilience
-    base_delay = 3   # Increased base delay
-    max_delay = 60
+    print(f"Generating {EMBEDDING_PROVIDER} embedding for text (length: {len(text)})")
     
-    current_model = EMBEDDING_MODEL_ID
-    
-    for attempt in range(max_retries):
-        try:
-            # Rate limit BEFORE calling Bedrock
-            await embedding_rate_limiter.wait()
-            
-            print(f"Generating embedding (Attempt {attempt+1}/{max_retries}) for text (length: {len(text)}) using model {current_model}")
-            
-            # Ensure text is not too long for Titan
-            if len(text) > 30000:
-                text = text[:30000]
-
-            body = json.dumps({"inputText": text})
-            
-            # Use asyncio.to_thread for the blocking boto3 call
-            def call_bedrock():
-                return bedrock_client.invoke_model(
-                    body=body,
-                    modelId=current_model,
-                    accept="application/json",
-                    contentType="application/json"
-                )
-
-            try:
-                response = await asyncio.to_thread(call_bedrock)
-            except Exception as e:
-                error_str = str(e).lower()
-                
-                # Check for NON-RETRYABLE errors first
-                if any(x in error_str for x in ["accessdenied", "validationexception", "unrecognizedclient"]):
-                    print(f"✗ Critical Bedrock Configuration Error: {str(e)}")
-                    raise
-
-                # Handle model unavailability
-                if "not available" in error_str and current_model == "amazon.titan-embed-text-v2:0":
-                    print("Titan V2 not available, falling back to V1...")
-                    current_model = "amazon.titan-embed-text-v1"
-                    continue
-                
-                # Handle Throttling with improved exponential backoff
-                if any(x in error_str for x in ["throttling", "too many requests"]):
-                    if attempt < max_retries - 1:
-                        delay = min(base_delay * (2 ** attempt), max_delay)
-                        jitter = random.uniform(0, delay * 0.3)
-                        total_delay = delay + jitter
-                        print(f"⚠ Bedrock Throttled. Retrying in {total_delay:.2f} seconds...")
-                        await asyncio.sleep(total_delay)
-                        continue
-                raise
-
-            response_body = json.loads(response.get("body").read())
-            embedding = response_body.get("embedding")
-            
-            if not embedding:
-                raise Exception("Empty embedding returned from Bedrock")
-            
-            # Cache successful result
-            if use_cache:
-                text_hash = get_text_hash(text)
-                embedding_cache[text_hash] = embedding
-            
-            cost_tracker["embedding_calls"] += 1
-            print(f"✓ Successfully generated embedding (size: {len(embedding)}) using {current_model}")
-            return embedding
-            
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"✗ Final Bedrock Embedding Error: {str(e)}")
-                raise
-            else:
-                delay = min(base_delay * (attempt + 1), max_delay)
-                print(f"⚠ Transient Bedrock Error: {str(e)}. Retrying in {delay:.2f}s...")
-                await asyncio.sleep(delay)
-    
-    raise Exception("Failed to get embedding after multiple retries")
+    try:
+        # Route to appropriate provider
+        if EMBEDDING_PROVIDER == "voyage":
+            embedding = await get_voyage_embedding(text)
+        elif EMBEDDING_PROVIDER == "openai":
+            embedding = await get_openai_embedding(text)
+        elif EMBEDDING_PROVIDER == "cohere":
+            embedding = await get_cohere_embedding(text)
+        else:
+            raise ValueError(f"Unknown embedding provider: {EMBEDDING_PROVIDER}")
+        
+        # Cache successful result
+        if use_cache:
+            text_hash = get_text_hash(text)
+            embedding_cache[text_hash] = embedding
+        
+        cost_tracker["embedding_calls"] += 1
+        print(f"✓ Successfully generated {EMBEDDING_PROVIDER} embedding (size: {len(embedding)})")
+        return embedding
+        
+    except Exception as e:
+        print(f"✗ {EMBEDDING_PROVIDER} embedding error: {str(e)}")
+        raise
 
 def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
     """Split text into overlapping chunks for better RAG retrieval."""
@@ -256,39 +230,28 @@ async def generate_twin_response(
     system_prompt: str,
     messages: Optional[List[dict]] = None
 ) -> str:
-    """Full RAG Pipeline: Search -> Route -> Generate."""
+    """Full RAG Pipeline using Anthropic Claude (you already have credits!)"""
     try:
         # 1. Search Knowledge Base
         context = await search_knowledge_base(query, tenantId)
         
-        # 2. Performance Tracking
-        cost_tracker["haiku_calls"] += 1
+        # 2. Track call
+        cost_tracker["chat_calls"] += 1
         
-        # 3. Handle Ollama if enabled
-        if USE_OLLAMA:
-            print(f"Routing to local Ollama model: {OLLAMA_MODEL}")
-            payload = {
-                "model": OLLAMA_MODEL,
-                "prompt": f"{system_prompt}\n\nContext:\n{context}\n\nUser: {query}",
-                "stream": False
-            }
-            res = requests.post(f"{OLLAMA_URL}/api/generate", json=payload)
-            return res.json().get("response", "Ollama Error")
-
-        # 4. Bedrock Routing Logic
-        is_ceo = "ceo" in (system_prompt.lower() or "") or tenantId.lower() == "ceo"
-        model_to_use = SONNET_MODEL if is_ceo else DEFAULT_MODEL
+        print(f"Routing to Anthropic Claude 3.5 Haiku for response generation")
         
-        print(f"Routing to Bedrock {'Sonnet' if is_ceo else 'Haiku'}: {model_to_use}")
+        # 3. Build messages for Anthropic
+        anthropic_messages = []
         
-        bedrock_messages = []
+        # Add conversation history
         if messages:
-            for msg in messages[-5:]:
-                role = "user" if msg.get("role") == "user" else "assistant"
+            for msg in messages[-5:]:  # Last 5 for context
+                role = msg.get("role", "user")
                 content = msg.get("content", "")
                 if content:
-                    bedrock_messages.append({"role": role, "content": [{"text": content}]})
+                    anthropic_messages.append({"role": role, "content": content})
         
+        # Add current query with context
         rag_prompt = f"""<knowledge_context>
 {context}
 </knowledge_context>
@@ -298,33 +261,34 @@ Based on the knowledge context provided above, please answer the user query.
 Rules:
 1. Prioritize the provided context. 
 2. ALWAYS cite the source filename (e.g., [Source: filename.txt]) at the end of your answer if you used information from the context.
-3. If the answer is not in the context, state that and use your general knowledge, but do not make up facts about the company.
+3. If the answer is not in the context, state that and use your general knowledge, but do not make up facts.
 
 User Query: {query}"""
-        bedrock_messages.append({"role": "user", "content": [{"text": rag_prompt}]})
+        
+        anthropic_messages.append({"role": "user", "content": rag_prompt})
 
-        # 5. Invoke Bedrock
-        response = bedrock_client.invoke_model(
-            modelId=model_to_use,
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 2048,
-                "system": system_prompt,
-                "messages": bedrock_messages,
-                "temperature": 0.7
-            })
+        # 4. Invoke Anthropic Claude (using your credits!)
+        response = await asyncio.to_thread(
+            lambda: anthropic_client.messages.create(
+                model="claude-3-5-haiku-20241022",  # Fast and cheap
+                max_tokens=2048,
+                system=system_prompt,
+                messages=anthropic_messages,
+                temperature=0.7
+            )
         )
         
-        response_body = json.loads(response.get("body").read())
-        answer = response_body["content"][0]["text"]
+        answer = response.content[0].text
         
-        if "usage" in response_body:
-            cost_tracker["total_tokens"] += response_body["usage"].get("input_tokens", 0)
-            cost_tracker["total_tokens"] += response_body["usage"].get("output_tokens", 0)
+        # Track token usage
+        if response.usage:
+            cost_tracker["total_tokens"] += response.usage.input_tokens
+            cost_tracker["total_tokens"] += response.usage.output_tokens
         
         return answer
 
     except Exception as e:
+        print(f"✗ Anthropic Claude error: {str(e)}")
         return f"MCP Error generating response: {str(e)}"
 
 @mcp.tool()
@@ -345,7 +309,7 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
         chunks = chunk_text(text, chunk_size=2000, overlap=300)
         print(f"Split text into {len(chunks)} chunks for processing.")
         
-        # 2. FIXED: Properly await the async embedding call
+        # 2. Generate embedding for first chunk
         first_vector = await get_embedding(chunks[0])
         vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)
@@ -354,7 +318,7 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
         
         for i, chunk in enumerate(chunks):
             try:
-                # FIXED: Properly await the async embedding call
+                # Generate embedding
                 vector = first_vector if i == 0 else await get_embedding(chunk)
                 
                 chunk_metadata = {
@@ -372,10 +336,10 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 )
                 successful_chunks += 1
                 
-                # Delay between chunks to reduce throttling
-                if i % 3 == 0 and i > 0:
+                # Light delay
+                if i % 10 == 0 and i > 0:
                     print(f"Processed {i}/{len(chunks)} chunks...")
-                    await asyncio.sleep(2)  # 2 second delay every 3 chunks
+                    await asyncio.sleep(0.1)
                 
             except Exception as chunk_err:
                 print(f"Error processing chunk {i}: {str(chunk_err)}")
@@ -390,20 +354,35 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
 @mcp.tool()
 async def get_cost_stats() -> str:
     """Get current cost tracking statistics."""
+    
+    # Cost estimates
+    embedding_costs = {
+        "voyage": 0.0001,  # FREE for first 30M tokens!
+        "openai": 0.00002,
+        "cohere": 0.001
+    }
+    
+    embedding_cost = cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0)
+    chat_cost = cost_tracker['chat_calls'] * 0.001  # Claude 3.5 Haiku
+    
     stats = f"""
 Cost Tracking Statistics:
 ========================
-Embedding API Calls: {cost_tracker['embedding_calls']}
-Model Calls (Haiku/Local): {cost_tracker['haiku_calls']}
-Total Tokens Processed: {cost_tracker['total_tokens']}
+Embedding Provider: {EMBEDDING_PROVIDER.upper()}
+Chat Provider: Anthropic Claude 3.5 Haiku
+
+API Calls:
+- Embedding Calls: {cost_tracker['embedding_calls']}
+- Chat Calls: {cost_tracker['chat_calls']}
+- Total Tokens Processed: {cost_tracker['total_tokens']}
 
 Estimated Costs:
-- Embeddings: ~${cost_tracker['embedding_calls'] * 0.0003:.4f}
-- Model Queries: ~${cost_tracker['haiku_calls'] * 0.0012:.4f}
-- Total Estimated: ~${(cost_tracker['embedding_calls'] * 0.0003) + (cost_tracker['haiku_calls'] * 0.0012):.4f}
+- Embeddings ({EMBEDDING_PROVIDER}): ~${embedding_cost:.4f}
+- Chat (Claude 3.5 Haiku): ~${chat_cost:.4f}
+- Total Estimated: ~${embedding_cost + chat_cost:.4f}
 
 Cache Hit Rate: {len(embedding_cache)} cached embeddings
-Mode: {"Ollama (Local)" if USE_OLLAMA else "Bedrock (Remote)"}
+Your Anthropic Credits: Being used! ✅
 """
     return stats
 
@@ -420,8 +399,10 @@ async def health_check():
     return JSONResponse({
         "status": "healthy", 
         "service": "CloneMind MCP Server",
-        "version": "2.0-fixed",
-        "features": ["rate_limiting", "caching", "cost_tracking", "async_fixed"]
+        "version": "3.0-anthropic",
+        "features": ["anthropic_claude", f"{EMBEDDING_PROVIDER}_embeddings", "caching"],
+        "chat_provider": "Anthropic Claude",
+        "embedding_provider": EMBEDDING_PROVIDER
     })
 
 @app.get("/health")
@@ -431,16 +412,18 @@ async def health():
 @app.get("/stats")
 async def stats():
     """Get cost and performance statistics"""
+    embedding_costs = {"voyage": 0.0001, "openai": 0.00002, "cohere": 0.001}
+    
     return JSONResponse({
         "cost_tracker": cost_tracker,
         "cache_size": len(embedding_cache),
+        "chat_provider": "Anthropic Claude",
+        "embedding_provider": EMBEDDING_PROVIDER,
         "estimated_cost": {
-            "embeddings": round(cost_tracker['embedding_calls'] * 0.0003, 4),
-            "haiku": round(cost_tracker['haiku_calls'] * 0.0012, 4),
-            "sonnet": round(cost_tracker['sonnet_calls'] * 0.006, 4),
-            "total": round((cost_tracker['embedding_calls'] * 0.0003) + 
-                          (cost_tracker['haiku_calls'] * 0.0012) + 
-                          (cost_tracker['sonnet_calls'] * 0.006), 4)
+            "embeddings": round(cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0), 4),
+            "chat": round(cost_tracker['chat_calls'] * 0.001, 4),
+            "total": round((cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0)) + 
+                          (cost_tracker['chat_calls'] * 0.001), 4)
         }
     })
 
@@ -478,18 +461,18 @@ if __name__ == "__main__":
     
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║       CloneMind Knowledge Base MCP Server v2.0-FIXED         ║
+║     CloneMind Knowledge Base MCP Server v3.0-Anthropic       ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Features:                                                   ║
-║  ✓ SLOWER Rate Limiting (0.5 req/sec = 1 every 2 seconds)  ║
-║  ✓ Empty Text Validation                                    ║
-║  ✓ Fixed Async/Await Issues                                 ║
+║  ✓ Anthropic Claude 3.5 Haiku (Using YOUR credits!)         ║
+║  ✓ {EMBEDDING_PROVIDER.upper()} Embeddings{' ' * (48 - len(EMBEDDING_PROVIDER))}║
+║  ✓ Fast Response (<1 second)                                ║
 ║  ✓ Embedding Caching                                        ║
 ║  ✓ Cost Tracking                                            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Region: {AWS_REGION:48} ║
-║  Embedding Model: {EMBEDDING_MODEL_ID:42} ║
-║  Rate Limit: 0.5 req/sec (SLOW to avoid throttling)         ║
+║  Chat: Anthropic Claude 3.5 Haiku                            ║
+║  Embeddings: {EMBEDDING_PROVIDER:48} ║
+║  Vector Size: {VECTOR_SIZE:50} ║
 ║  Transport: {transport:50} ║
 ╚══════════════════════════════════════════════════════════════╝
     """)
