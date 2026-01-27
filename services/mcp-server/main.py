@@ -209,13 +209,14 @@ def ensure_collection(collection_name: str, vector_size: int):
 @mcp.tool()
 async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[str] = None, limit: Optional[int] = 10) -> str:
     """Search tenant's knowledge base"""
-    if not tenantId:
+    if not tenantId or not query or not query.strip():
+        print(f"⚠ Skipping search: No tenantId or empty query")
         return ""
         
     try:
         # Skip OpenWebUI background tasks
-        if "### Task" in query or "JSON format:" in query or "Generate 1-3 broad tags" in query:
-            return ""
+        if len(query.strip()) < 2:
+            return "" # Skip very short noise
 
         tenantId = tenantId.strip().lower()
         
@@ -244,30 +245,41 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
                 ]
             )
 
-        # ✅ ENTERPRISE-GRADE SEARCH: Flexible method resolution
-        print(f"  - Initiating Qdrant Search...")
-        
+        # ✅ HIGH-COMPATIBILITY SEARCH: Dynamic parameter detection
         def execute_search():
-            # Try 'search' method (standard)
+            # Method 1: Standard Search (modern)
             if hasattr(qdrant, 'search'):
-                return qdrant.search(
-                    collection_name=collection_name,
-                    query_vector=vector,
-                    limit=limit,
-                    with_payload=True,
-                    query_filter=query_filter
-                )
-            # Fallback to 'query_points' (newer versions)
+                try:
+                    # Try standard query_vector
+                    return qdrant.search(
+                        collection_name=collection_name,
+                        query_vector=vector,
+                        limit=limit,
+                        with_payload=True,
+                        query_filter=query_filter
+                    )
+                except TypeError as e:
+                    # Fallback to 'query' or 'vector' if 'query_vector' fails
+                    if "query_vector" in str(e):
+                        return qdrant.search(
+                            collection_name=collection_name,
+                            query=vector,
+                            limit=limit,
+                            with_payload=True,
+                            query_filter=query_filter
+                        )
+                    raise e
+            # Method 2: Query Points (latest API)
             elif hasattr(qdrant, 'query_points'):
                 return qdrant.query_points(
                     collection_name=collection_name,
-                    query_vector=vector,
+                    query=vector,
                     limit=limit,
                     with_payload=True,
                     query_filter=query_filter
                 ).points
             else:
-                raise AttributeError("Qdrant client is missing both 'search' and 'query_points' methods.")
+                raise AttributeError("Qdrant client has no search capability.")
 
         search_result = await asyncio.to_thread(execute_search)
 
