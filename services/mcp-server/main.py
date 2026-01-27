@@ -175,7 +175,7 @@ def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[st
     return chunks
 
 def ensure_collection(collection_name: str, vector_size: int):
-    """Ensure a Qdrant collection exists for the tenant."""
+    """Ensure a Qdrant collection exists for the tenant. Recreates if dimensions mismatch."""
     try:
         if not qdrant_client.collection_exists(collection_name):
             print(f"Creating collection: {collection_name} with vector size {vector_size}")
@@ -187,7 +187,13 @@ def ensure_collection(collection_name: str, vector_size: int):
             col_info = qdrant_client.get_collection(collection_name)
             existing_size = col_info.config.params.vectors.size
             if existing_size != vector_size:
-                print(f"WARNING: Collection {collection_name} has size {existing_size}, but we want {vector_size}!")
+                print(f"DIMENSION MISMATCH: Collection {collection_name} has size {existing_size}, but we want {vector_size}.")
+                print(f"Recreating collection {collection_name} to match new provider...")
+                qdrant_client.delete_collection(collection_name)
+                qdrant_client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
+                )
     except Exception as e:
         print(f"Qdrant ensure_collection error: {str(e)}")
         raise
@@ -261,7 +267,8 @@ Based on the knowledge context provided above, please answer the user query.
 Rules:
 1. Prioritize the provided context. 
 2. ALWAYS cite the source filename (e.g., [Source: filename.txt]) at the end of your answer if you used information from the context.
-3. If the answer is not in the context, state that and use your general knowledge, but do not make up facts.
+3. Be attentive to shorthand or typos in financial data (e.g., "Net h" often refers to "Net Profit").
+4. If the answer is not in the context, state that clearly, but do not make up facts.
 
 User Query: {query}"""
         
@@ -273,7 +280,7 @@ User Query: {query}"""
                 model="gpt-4o-mini",
                 max_tokens=2048,
                 messages=openai_messages,
-                temperature=0.7
+                temperature=0.1
             )
         )
         
