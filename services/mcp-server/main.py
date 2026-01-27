@@ -50,7 +50,7 @@ mcp = FastMCP("CloneMind Knowledge Base")
 app = FastAPI()
 
 # Initialize Clients
-qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # Lazy-loaded embedding clients
 voyage_client = None
@@ -199,20 +199,20 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[st
 def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists for the tenant. Recreates if dimensions mismatch."""
     try:
-        if not qdrant_client.collection_exists(collection_name):
+        if not qdrant.collection_exists(collection_name):
             print(f"Creating collection: {collection_name} with vector size {vector_size}")
-            qdrant_client.create_collection(
+            qdrant.create_collection(
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
             )
         else:
-            col_info = qdrant_client.get_collection(collection_name)
+            col_info = qdrant.get_collection(collection_name)
             existing_size = col_info.config.params.vectors.size
             if existing_size != vector_size:
                 print(f"DIMENSION MISMATCH: Collection {collection_name} has size {existing_size}, but we want {vector_size}.")
                 print(f"Recreating collection {collection_name} to match new provider...")
-                qdrant_client.delete_collection(collection_name)
-                qdrant_client.create_collection(
+                qdrant.delete_collection(collection_name)
+                qdrant.create_collection(
                     collection_name=collection_name,
                     vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
                 )
@@ -233,24 +233,24 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
     try:
         # Normalize inputs
         tenantId = tenantId.strip().lower()
-        personaId = personaId.strip() if (personaId and str(personaId).strip()) else None
+        # Strictly normalize personaId to lowercase for matching
+        personaId = personaId.strip().lower() if (personaId and str(personaId).strip()) else None
         
         collection_name = tenantId.replace("-", "_")
         
-        # Smart Query Expansion: If the query is just 1-2 words, expand it
+        # Smart Query Expansion: Focus on the subject, NOT the IDs
         search_query = query
         if len(query.split()) <= 4:
-            search_query = f"{query} financial metrics revenue performance {tenantId}"
+            search_query = f"{query} summary and key metrics"
 
-        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'Global/Any'} | Query: {search_query}")
+        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'ANY'} | Query: {search_query}")
         
         # Generate Query Vector
         vector = await get_embedding(search_query)
 
-        # Build Persona Filter (if personaId is specifically provided)
+        # Build Persona Filter
         query_filter = None
         if personaId:
-            # We filter for the specific persona OR global documents (if any)
             query_filter = models.Filter(
                 must=[
                     models.FieldCondition(
@@ -262,7 +262,7 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
 
         # Search Qdrant
         search_result = await asyncio.to_thread(
-            lambda: qdrant_client.search(
+            lambda: qdrant.search(
                 collection_name=collection_name,
                 query_vector=vector,
                 limit=limit,
@@ -294,13 +294,14 @@ async def inspect_tenant_knowledge(tenantId: str) -> str:
     """Diagnostic tool to check the status of a tenant's knowledge base."""
     try:
         collection_name = tenantId.replace("-", "_")
-        exists = qdrant_client.collection_exists(collection_name)
+        exists = qdrant.collection_exists(collection_name)
         
         if not exists:
             return f"Collection '{collection_name}' does not exist."
             
-        info = qdrant_client.get_collection(collection_name)
-        count = qdrant_client.count(collection_name).count
+        info = qdrant.get_collection(collection_name)
+        count = qdrant.count(
+collection_name).count
         
         return f"""
 Knowledge Base Inspection: {tenantId}
@@ -433,7 +434,7 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 
                 chunk_metadata = {
                     "text": chunk,
-                    "tenantId": tenantId,
+                    "tenantId": tenantId.lower(),
                     "chunk_index": i,
                     "total_chunks": len(chunks),
                     "full_text_hash": get_text_hash(text)[:16],
@@ -441,13 +442,15 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 }
                 
                 # Force ID normalization in metadata
-                chunk_metadata["tenantId"] = tenantId
+                chunk_metadata["tenantId"] = tenantId.lower()
                 if "personaId" in chunk_metadata and chunk_metadata["personaId"]:
-                    chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip()
+                    chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip().lower()
+                elif personaId: # Fallback if passed but not in metadata dict
+                    chunk_metadata["personaId"] = personaId.strip().lower()
                 
                 point_id = str(uuid.uuid4())
                 await asyncio.to_thread(
-                    lambda: qdrant_client.upsert(
+                    lambda: qdrant.upsert(
                         collection_name=collection_name,
                         points=[models.PointStruct(id=point_id, vector=vector, payload=chunk_metadata)]
                     )
