@@ -231,36 +231,43 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         return ""
         
     try:
-        # Normalize inputs
+        # 1. Skip OpenWebUI background tasks (Title/Tag generation)
+        if "### Task" in query or "JSON format:" in query or "Generate 1-3 broad tags" in query:
+            return ""
+
+        # 2. Normalize inputs
         tenantId = tenantId.strip().lower()
-        # Strictly normalize personaId to lowercase for matching
-        personaId = personaId.strip().lower() if (personaId and str(personaId).strip()) else None
+        
+        # Strictly normalize personaId. If "ANY" or similar, treat as None (search all)
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        persona_raw = str(personaId).strip().lower() if personaId else None
+        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else None
         
         collection_name = tenantId.replace("-", "_")
         
-        # Smart Query Expansion: Focus on the subject, NOT the IDs
+        # 3. Smart Query Expansion (Keep it focused on the core topic)
         search_query = query
         if len(query.split()) <= 4:
-            search_query = f"{query} summary and key metrics"
+            search_query = f"The {query} and key metrics or performance data"
 
-        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'ANY'} | Query: {search_query}")
+        print(f"🔍 [SEARCH] Tenant: {tenantId} | Filter Persona: {active_persona or 'OFF'} | Query: '{search_query[:50]}...'")
         
         # Generate Query Vector
         vector = await get_embedding(search_query)
 
-        # Build Persona Filter
+        # 4. Build Filter
         query_filter = None
-        if personaId:
+        if active_persona:
             query_filter = models.Filter(
                 must=[
                     models.FieldCondition(
                         key="personaId",
-                        match=models.MatchValue(value=personaId)
+                        match=models.MatchValue(value=active_persona)
                     )
                 ]
             )
 
-        # Search Qdrant
+        # 5. Search Qdrant
         search_result = await asyncio.to_thread(
             lambda: qdrant.search(
                 collection_name=collection_name,
@@ -270,6 +277,7 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
                 query_filter=query_filter
             )
         )
+
 
         formatted_results = []
         for i, res in enumerate(search_result):
