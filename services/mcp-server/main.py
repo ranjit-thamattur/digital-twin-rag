@@ -233,21 +233,24 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
     try:
         # Normalize inputs
         tenantId = tenantId.strip().lower()
+        personaId = personaId.strip() if (personaId and str(personaId).strip()) else None
+        
         collection_name = tenantId.replace("-", "_")
         
-        # Smart Query Expansion
+        # Smart Query Expansion: If the query is just 1-2 words, expand it
         search_query = query
-        if len(query.split()) <= 2:
-            search_query = f"What is the {query} and relevant metrics for {tenantId}"
+        if len(query.split()) <= 4:
+            search_query = f"{query} financial metrics revenue performance {tenantId}"
 
-        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'Global'} | Query: {search_query}")
+        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {personaId or 'Global/Any'} | Query: {search_query}")
         
         # Generate Query Vector
         vector = await get_embedding(search_query)
 
-        # Build Persona Filter
+        # Build Persona Filter (if personaId is specifically provided)
         query_filter = None
         if personaId:
+            # We filter for the specific persona OR global documents (if any)
             query_filter = models.Filter(
                 must=[
                     models.FieldCondition(
@@ -257,7 +260,7 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
                 ]
             )
 
-        # Search Qdrant with optional filter
+        # Search Qdrant
         search_result = await asyncio.to_thread(
             lambda: qdrant_client.search(
                 collection_name=collection_name,
@@ -273,36 +276,16 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             text = res.payload.get("text", "No text found")
             source = res.payload.get("filename", "Unknown Source")
             score = getattr(res, 'score', 0)
-            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] | Preview: {text[:50]}...")
+            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] | Preview: {text[:60].replace('\n', ' ')}...")
             formatted_results.append(f"DOCUMENT: {source}\nCONTENT: {text}\n---")
 
         if not formatted_results:
-            print(f"⚠ [SEARCH] Zero results found in Qdrant for {collection_name}")
+            print(f"⚠ [SEARCH] Zero results found in collection {collection_name} for query: {search_query}")
             return ""
 
         return "\n\n".join(formatted_results)
     except Exception as e:
         print(f"✗ [SEARCH] Error: {str(e)}")
-        return f"SEARCH_ERROR: {str(e)}"
-
-        formatted_results = []
-        for i, res in enumerate(search_result):
-            text = res.payload.get("text", "No text found")
-            source = res.payload.get("filename", "Unknown Source")
-            score = getattr(res, 'score', 0)
-            print(f"  - Match {i+1}: {source} (Score: {score:.4f})")
-            
-            # Only include reasonably good matches to avoid noise
-            if score > 0.1:
-                formatted_results.append(f"SOURCE_FILE: {source}\nCONTENT: {text}\n---")
-
-        if not formatted_results:
-            print(f"⚠ No matches > 0.1 score found for query: {query}")
-            return ""
-
-        return "\n\n".join(formatted_results)
-    except Exception as e:
-        print(f"✗ Search error: {str(e)}")
         return f"SEARCH_ERROR: {str(e)}"
 
 @mcp.tool()
@@ -426,6 +409,8 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
             print("Warning: Received empty text for ingestion")
             return "Error: Text content is empty."
 
+        # Normalize tenantId
+        tenantId = tenantId.strip().lower()
         print(f"Ingesting knowledge for tenant: {tenantId} (Length: {len(text)})")
         collection_name = tenantId.replace("-", "_")
         
@@ -453,6 +438,11 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                     "full_text_hash": get_text_hash(text)[:16],
                     **(metadata or {})
                 }
+                
+                # Force ID normalization in metadata
+                chunk_metadata["tenantId"] = tenantId
+                if "personaId" in chunk_metadata and chunk_metadata["personaId"]:
+                    chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip()
                 
                 point_id = str(uuid.uuid4())
                 await asyncio.to_thread(
