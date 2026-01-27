@@ -107,6 +107,7 @@ class Pipe:
             payload = {
                 "query": user_message,
                 "tenantId": tenant_id,
+                "personaId": persona_id,
                 "system_prompt": system_prompt,
                 "messages": body.get("messages", [])[:-1] # History
             }

@@ -1,0 +1,17 @@
+APEX ENERGY SOLUTIONS: RIG OPERATIONS & SAFETY REPOPRT
+Monthly Status: January 2026
+Author: Sarah Riggs (Operations Manager)
+
+1. RIG PERFORMANCE METRICS
+- Rig X-45: Operating at 98.4% efficiency. Current output: 85,000 barrels/day.
+- Rig Z-12: Maintenance scheduled for Feb 10th. Output currently capped at 60,000 barrels/day.
+- Solaris Alpha (Experimental): Testing hydrogen-blend power systems.
+
+2. SAFETY & INCIDENTS (HSE)
+- Zero Lost Time Injuries (LTI) reported in January.
+- 1,200 consecutive safe working days achieved on Rig X-45.
+- Near-miss reported on Rig Z-12 during heavy weather on Jan 14th; revised tie-down procedures implemented.
+
+3. LOGISTICS & SUPPLY CHAIN
+- Supply ships on schedule. 
+- Inventory for Rig X-45 drill bits has been replenished for the next 6 months.

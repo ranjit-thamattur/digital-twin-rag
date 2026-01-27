@@ -234,13 +234,35 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         
         vector = await get_embedding(search_query)
 
-        query_filter = None
+        # 4. Build Filter (STRICT ISOLATION)
+        # We search for documents matching the active persona OR 'global' documents
+        filter_conditions = []
         if active_persona:
+            filter_conditions.append(
+                models.FieldCondition(
+                    key="personaId",
+                    match=models.MatchValue(value=active_persona)
+                )
+            )
+        
+        # Always allow 'global' documents (shared knowledge)
+        # Using 'should' if we have an active persona, or 'must' if we don't
+        if active_persona:
+            query_filter = models.Filter(
+                should=filter_conditions + [
+                    models.FieldCondition(
+                        key="personaId",
+                        match=models.MatchValue(value="global") # Allow shared docs
+                    )
+                ]
+            )
+        else:
+            # If no persona, ONLY allow global/tenant-wide documents
             query_filter = models.Filter(
                 must=[
                     models.FieldCondition(
                         key="personaId",
-                        match=models.MatchValue(value=active_persona)
+                        match=models.MatchValue(value="global")
                     )
                 ]
             )
@@ -416,6 +438,9 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 
                 if "personaId" in chunk_metadata and chunk_metadata["personaId"]:
                     chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip().lower()
+                else:
+                    # Default to 'global' if no persona tagged, making it safely shared
+                    chunk_metadata["personaId"] = "global"
                 
                 point_id = str(uuid.uuid4())
                 
