@@ -235,37 +235,25 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         vector = await get_embedding(search_query)
 
         # 4. Build Filter (STRICT ISOLATION)
-        # We search for documents matching the active persona OR 'global' documents
-        filter_conditions = []
+        # Only search for documents matching the active persona. 
+        # If no persona is active, search will return zero results (Strict Mode).
+        query_filter = None
         if active_persona:
-            filter_conditions.append(
-                models.FieldCondition(
-                    key="personaId",
-                    match=models.MatchValue(value=active_persona)
-                )
-            )
-        
-        # Always allow 'global' documents (shared knowledge)
-        # Using 'should' if we have an active persona, or 'must' if we don't
-        if active_persona:
-            query_filter = models.Filter(
-                should=filter_conditions + [
-                    models.FieldCondition(
-                        key="personaId",
-                        match=models.MatchValue(value="global") # Allow shared docs
-                    )
-                ]
-            )
-        else:
-            # If no persona, ONLY allow global/tenant-wide documents
             query_filter = models.Filter(
                 must=[
                     models.FieldCondition(
                         key="personaId",
-                        match=models.MatchValue(value="global")
+                        match=models.MatchValue(value=active_persona.lower())
                     )
                 ]
             )
+        else:
+            print(f"  - No active persona identified. Search will likely return no results.")
+        
+        print(f"  - Active Filter: {active_persona or 'NONE (Strict Mode)'}")
+    # 
+        
+        print(f"  - Active Filter: {active_persona or 'Global-Only'}")
 
         # ✅ HIGH-COMPATIBILITY SEARCH: Dynamic parameter detection
         def execute_search():
@@ -309,9 +297,13 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         for i, res in enumerate(search_result):
             text = res.payload.get("text", "No text found")
             source = res.payload.get("filename", "Unknown Source")
+            hit_persona = res.payload.get("personaId", "None")
             score = getattr(res, 'score', 0)
-            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}]")
-            formatted_results.append(f"DOCUMENT: {source}\nCONTENT: {text}\n---")
+            
+            # Diagnostic print
+            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] [Tag: {hit_persona}]")
+            
+            formatted_results.append(f"DOCUMENT: {source} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
         if not formatted_results:
             print(f"⚠ [SEARCH] Zero results found")
@@ -404,6 +396,19 @@ Rules:
         return f"MCP Error: {str(e)}"
 
 @mcp.tool()
+async def clear_tenant_knowledge(tenantId: str) -> str:
+    """Wipe all knowledge for a specific tenant (irreversible)."""
+    try:
+        tenantId = tenantId.strip().lower()
+        collection_name = tenantId.replace("-", "_")
+        if qdrant.collection_exists(collection_name):
+            qdrant.delete_collection(collection_name)
+            return f"Successfully wiped knowledge for tenant: {tenantId}"
+        return f"Tenant collection {tenantId} did not exist."
+    except Exception as e:
+        return f"Wipe Error: {str(e)}"
+
+@mcp.tool()
 async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = None) -> str:
     """Ingest knowledge"""
     try:
@@ -439,8 +444,8 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 if "personaId" in chunk_metadata and chunk_metadata["personaId"]:
                     chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip().lower()
                 else:
-                    # Default to 'global' if no persona tagged, making it safely shared
-                    chunk_metadata["personaId"] = "global"
+                    # Mark as unassigned if no persona tagged
+                    chunk_metadata["personaId"] = "unassigned"
                 
                 point_id = str(uuid.uuid4())
                 
