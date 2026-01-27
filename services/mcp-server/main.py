@@ -92,14 +92,21 @@ async def get_voyage_embedding(text: str) -> List[float]:
     return result.embeddings[0]
 
 async def get_openai_embedding(text: str) -> List[float]:
-    """Generate embedding using OpenAI"""
-    response = await asyncio.to_thread(
-        lambda: openai_client.embeddings.create(
-            model="text-embedding-3-small",
-            input=text[:8000]
-        )
-    )
-    return response.data[0].embedding
+    """Generate embedding using OpenAI with retry logic."""
+    for attempt in range(3):
+        try:
+            response = await asyncio.to_thread(
+                lambda: openai_client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=text[:8000]
+                )
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            if attempt == 2: raise
+            wait_time = (attempt + 1) * 2
+            print(f"⚠ OpenAI embedding attempt {attempt+1} failed: {str(e)}. Retrying in {wait_time}s...")
+            await asyncio.sleep(wait_time)
 
 async def get_cohere_embedding(text: str) -> List[float]:
     """Generate embedding using Cohere"""
@@ -153,25 +160,40 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
             embedding_cache[text_hash] = embedding
         
         cost_tracker["embedding_calls"] += 1
-        print(f"✓ Successfully generated {EMBEDDING_PROVIDER} embedding (size: {len(embedding)})")
         return embedding
         
     except Exception as e:
         print(f"✗ {EMBEDDING_PROVIDER} embedding error: {str(e)}")
+        # If it's a provider error, we want to know
         raise
 
-def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 200) -> List[str]:
-    """Split text into overlapping chunks for better RAG retrieval."""
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[str]:
+    """
+    Split text into chunks while trying to preserve line breaks and word boundaries.
+    """
     if len(text) <= chunk_size:
         return [text]
     
+    # Split by lines first to avoid cutting through sentences
+    lines = text.split('\n')
     chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start += (chunk_size - overlap)
+    current_chunk = []
+    current_length = 0
     
+    for line in lines:
+        if current_length + len(line) > chunk_size and current_chunk:
+            chunks.append('\n'.join(current_chunk))
+            # Keep a few lines for overlap
+            overlap_lines = current_chunk[-2:] if len(current_chunk) > 2 else current_chunk[-1:]
+            current_chunk = overlap_lines + [line]
+            current_length = sum(len(l) for l in current_chunk)
+        else:
+            current_chunk.append(line)
+            current_length += len(line)
+            
+    if current_chunk:
+        chunks.append('\n'.join(current_chunk))
+        
     return chunks
 
 def ensure_collection(collection_name: str, vector_size: int):
@@ -199,35 +221,71 @@ def ensure_collection(collection_name: str, vector_size: int):
         raise
 
 @mcp.tool()
-async def search_knowledge_base(query: str, tenantId: str, limit: Optional[int] = 5) -> str:
+async def search_knowledge_base(query: str, tenantId: str, limit: Optional[int] = 10) -> str:
     """Search a tenant's specific collection for relevant document chunks."""
     try:
         collection_name = tenantId.replace("-", "_")
+        print(f"🔍 Searching {collection_name} for: '{query}'")
         
         # Generate Query Vector
         vector = await get_embedding(query)
+        print(f"  - Query vector length: {len(vector)}")
 
-        # Check if collection exists
-        if not qdrant_client.collection_exists(collection_name):
-            return "Knowledge base for this tenant has not been initialized yet."
-
-        # Search Qdrant
-        search_result = qdrant_client.search(
-            collection_name=collection_name,
-            query_vector=vector,
-            limit=limit,
-            with_payload=True
+        # Search Qdrant with higher limit and no strict threshold
+        search_result = await asyncio.to_thread(
+            lambda: qdrant_client.search(
+                collection_name=collection_name,
+                query_vector=vector,
+                limit=limit,
+                with_payload=True,
+                score_threshold=0.0  # Allow everything initially for debugging
+            )
         )
 
         formatted_results = []
-        for res in search_result:
+        for i, res in enumerate(search_result):
             text = res.payload.get("text", "No text found")
             source = res.payload.get("filename", "Unknown Source")
-            formatted_results.append(f"--- SOURCE: {source} ---\n{text}")
+            score = getattr(res, 'score', 0)
+            print(f"  - Match {i+1}: {source} (Score: {score:.4f})")
+            
+            # Only include reasonably good matches to avoid noise
+            if score > 0.1:
+                formatted_results.append(f"SOURCE_FILE: {source}\nCONTENT: {text}\n---")
 
-        return "\n\n".join(formatted_results) if formatted_results else "No relevant information found."
+        if not formatted_results:
+            print(f"⚠ No matches > 0.1 score found for query: {query}")
+            return ""
+
+        return "\n\n".join(formatted_results)
     except Exception as e:
-        return f"Error: {str(e)}"
+        print(f"✗ Search error: {str(e)}")
+        return f"SEARCH_ERROR: {str(e)}"
+
+@mcp.tool()
+async def inspect_tenant_knowledge(tenantId: str) -> str:
+    """Diagnostic tool to check the status of a tenant's knowledge base."""
+    try:
+        collection_name = tenantId.replace("-", "_")
+        exists = qdrant_client.collection_exists(collection_name)
+        
+        if not exists:
+            return f"Collection '{collection_name}' does not exist."
+            
+        info = qdrant_client.get_collection(collection_name)
+        count = qdrant_client.count(collection_name).count
+        
+        return f"""
+Knowledge Base Inspection: {tenantId}
+====================================
+Collection Name: {collection_name}
+Vector Size: {info.config.params.vectors.size}
+Distance Metric: {info.config.params.vectors.distance}
+Total Document Chunks: {count}
+Status: {'Empty' if count == 0 else 'Active'}
+"""
+    except Exception as e:
+        return f"Inspection Error: {str(e)}"
 
 @mcp.tool()
 async def generate_twin_response(
@@ -246,7 +304,14 @@ async def generate_twin_response(
 
         print(f"Routing to OpenAI GPT-4o-mini for response generation")
         
-        # 3. Build messages for OpenAI
+        # 3. Formulate the RAG prompt with strict instructions
+        if context.startswith("SEARCH_ERROR"):
+            rag_context_block = f"Note: There was a technical error retrieving data: {context}"
+        elif not context:
+            rag_context_block = "Note: No relevant documents were found in the knowledge base for this specific query."
+        else:
+            rag_context_block = context
+
         openai_messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history
@@ -258,19 +323,20 @@ async def generate_twin_response(
                     openai_messages.append({"role": role, "content": content})
         
         # Add current query with context
-        rag_prompt = f"""<knowledge_context>
-{context}
-</knowledge_context>
+        rag_prompt = f"""Use the following pieces of retrieved context to answer the question. 
+If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
-Based on the knowledge context provided above, please answer the user query. 
+Retrieved Context:
+{rag_context_block}
 
-Rules:
-1. Prioritize the provided context. 
-2. ALWAYS cite the source filename (e.g., [Source: filename.txt]) at the end of your answer if you used information from the context.
-3. Be attentive to shorthand or typos in financial data (e.g., "Net h" often refers to "Net Profit").
-4. If the answer is not in the context, state that clearly, but do not make up facts.
+User Question: {query}
 
-User Query: {query}"""
+Instructions:
+1. Use ONLY the information in the 'Retrieved Context' to answer if possible.
+2. If the answer is found, cite the source clearly like this: [Source: filename.txt].
+3. If the context is empty or does not contain the answer, state that you don't have that information in your knowledge base and offer to help with general information based on your training data (but label it as general knowledge).
+4. Do NOT mention "retrieved context" or "search results" to the user. Just answer naturally.
+"""
         
         openai_messages.append({"role": "user", "content": rag_prompt})
 
@@ -324,30 +390,30 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
         for i, chunk in enumerate(chunks):
             try:
                 # Generate embedding
-                vector = first_vector if i == 0 else await get_embedding(chunk)
+                vector = await get_embedding(chunk)
                 
                 chunk_metadata = {
                     "text": chunk,
                     "tenantId": tenantId,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
+                    "full_text_hash": get_text_hash(text)[:16],
                     **(metadata or {})
                 }
                 
                 point_id = str(uuid.uuid4())
-                qdrant_client.upsert(
-                    collection_name=collection_name,
-                    points=[models.PointStruct(id=point_id, vector=vector, payload=chunk_metadata)]
+                await asyncio.to_thread(
+                    lambda: qdrant_client.upsert(
+                        collection_name=collection_name,
+                        points=[models.PointStruct(id=point_id, vector=vector, payload=chunk_metadata)]
+                    )
                 )
                 successful_chunks += 1
                 
-                # Light delay
-                if i % 10 == 0 and i > 0:
-                    print(f"Processed {i}/{len(chunks)} chunks...")
-                    await asyncio.sleep(0.1)
-                
+                if i % 5 == 0 and i > 0:
+                    print(f"  - Ingested {i}/{len(chunks)} chunks...")
             except Exception as chunk_err:
-                print(f"Error processing chunk {i}: {str(chunk_err)}")
+                print(f"  - Error processing chunk {i}: {str(chunk_err)}")
                 continue
         
         print(f"✓ Successfully ingested {successful_chunks}/{len(chunks)} chunks for {tenantId}.")
