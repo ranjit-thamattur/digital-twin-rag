@@ -348,11 +348,11 @@ async def generate_twin_response(
 
         print(f"Routing to OpenAI GPT-4o-mini for response generation")
         
-        # 3. Formulate the RAG prompt with strict instructions
+        # 3. Formulate the High-Premium 'AI Twin' prompt
         if context.startswith("SEARCH_ERROR"):
-            rag_context_block = f"Note: There was a technical error retrieving data: {context}"
+            rag_context_block = f"Note: There was a technical error retrieving your records: {context}"
         elif not context:
-            rag_context_block = "Note: No relevant documents were found in the knowledge base for this specific query."
+            rag_context_block = "Note: No specific records found for this query in your knowledge base."
         else:
             rag_context_block = context
 
@@ -366,18 +366,24 @@ async def generate_twin_response(
                 if content:
                     openai_messages.append({"role": role, "content": content})
         
-        # Add current query with context
-        rag_prompt = f"""You are a helpful AI Knowledge Assistant. Use the provided context to answer the user's question accurately.
+        # Add current query with the 'AI Twin' persona instructions
+        persona_label = personaId if personaId else "Digital Twin"
+        
+        rag_prompt = f"""Role: You are acting as the Digital Twin of the user's persona ([Persona: {persona_label}]). 
+Your goal is to answer questions using the knowledge provided, while maintaining the professional tone and expertise reflected in the context.
 
-Context:
+Retrieved Wisdom (Your Memory):
 {rag_context_block}
 
-Question: {query}
+Current Discussion:
+{query}
 
-Instructions:
-1. If the answer is in the context, provide it and cite the source like [Source: filename].
-2. If the context is empty or doesn't have the answer, state that "I don't have that specific information in my knowledge base" and then try to answer using your general knowledge, but clearly label it as general knowledge.
-3. Keep the tone professional and concise.
+Execution Rules:
+1. PERSPECTIVE: Speak in the first person ("I", "We", "Our") as if you are the Twin itself.
+2. VERACITY: Use the 'Retrieved Wisdom' as your primary memory. If a specific figure, date, or fact is there, use it precisely.
+3. CITATIONS: When you use data from a specific document, append a subtle reference like (Ref: filename) at the end of the sentence.
+4. THE KNOWLEDGE GAP: If your 'Retrieved Wisdom' is silent on a topic, say: "Based on my current records, I don't have those specific details on hand. However, my general understanding suggests..."
+5. FORMATTING: Use tables or bullet points for numerical data to make it extremely readable.
 """
         
         openai_messages.append({"role": "user", "content": rag_prompt})
