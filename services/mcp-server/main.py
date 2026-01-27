@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
-import anthropic
+import openai
 
 # Load environment variables
 load_dotenv()
@@ -21,15 +21,14 @@ load_dotenv()
 QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 
-# Anthropic Configuration (You already have credits!)
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Embedding Configuration - Choose one:
 # Option 1: Voyage AI (FREE 30M tokens!) - RECOMMENDED
 # Option 2: OpenAI (cheap and good)
 # Option 3: Cohere (has free tier)
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "voyage")  # voyage, openai, or cohere
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "openai")  # voyage, openai, or cohere
 
 # API Keys for embedding providers
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")
@@ -55,8 +54,12 @@ qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # Lazy-loaded embedding clients
 voyage_client = None
-openai_client = None
 cohere_client = None
+
+# OpenAI Client (Initialized if key present)
+openai_client = None
+if OPENAI_API_KEY:
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Caching
 embedding_cache = {}
@@ -90,12 +93,6 @@ async def get_voyage_embedding(text: str) -> List[float]:
 
 async def get_openai_embedding(text: str) -> List[float]:
     """Generate embedding using OpenAI"""
-    global openai_client
-    if openai_client is None:
-        import openai
-        openai.api_key = OPENAI_API_KEY
-        openai_client = openai
-    
     response = await asyncio.to_thread(
         lambda: openai_client.embeddings.create(
             model="text-embedding-3-small",
@@ -137,6 +134,9 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
     print(f"Generating {EMBEDDING_PROVIDER} embedding for text (length: {len(text)})")
     
     try:
+        if EMBEDDING_PROVIDER == "openai" and openai_client is None:
+            raise ValueError("OpenAI API Key not configured")
+            
         # Route to appropriate provider
         if EMBEDDING_PROVIDER == "voyage":
             embedding = await get_voyage_embedding(text)
@@ -230,18 +230,18 @@ async def generate_twin_response(
     system_prompt: str,
     messages: Optional[List[dict]] = None
 ) -> str:
-    """Full RAG Pipeline using Anthropic Claude (you already have credits!)"""
+    """Full RAG Pipeline using OpenAI"""
     try:
         # 1. Search Knowledge Base
         context = await search_knowledge_base(query, tenantId)
         
-        # 2. Track call
-        cost_tracker["chat_calls"] += 1
+        if openai_client is None:
+            return "MCP Error: OpenAI API client not initialized. Check OPENAI_API_KEY."
+
+        print(f"Routing to OpenAI GPT-4o-mini for response generation")
         
-        print(f"Routing to Anthropic Claude 3.5 Haiku for response generation")
-        
-        # 3. Build messages for Anthropic
-        anthropic_messages = []
+        # 3. Build messages for OpenAI
+        openai_messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history
         if messages:
@@ -249,7 +249,7 @@ async def generate_twin_response(
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 if content:
-                    anthropic_messages.append({"role": role, "content": content})
+                    openai_messages.append({"role": role, "content": content})
         
         # Add current query with context
         rag_prompt = f"""<knowledge_context>
@@ -265,30 +265,28 @@ Rules:
 
 User Query: {query}"""
         
-        anthropic_messages.append({"role": "user", "content": rag_prompt})
+        openai_messages.append({"role": "user", "content": rag_prompt})
 
-        # 4. Invoke Anthropic Claude (using your credits!)
+        # 4. Invoke OpenAI
         response = await asyncio.to_thread(
-            lambda: anthropic_client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Fast and cheap
+            lambda: openai_client.chat.completions.create(
+                model="gpt-4o-mini",
                 max_tokens=2048,
-                system=system_prompt,
-                messages=anthropic_messages,
+                messages=openai_messages,
                 temperature=0.7
             )
         )
         
-        answer = response.content[0].text
+        answer = response.choices[0].message.content
         
         # Track token usage
         if response.usage:
-            cost_tracker["total_tokens"] += response.usage.input_tokens
-            cost_tracker["total_tokens"] += response.usage.output_tokens
+            cost_tracker["total_tokens"] += response.usage.total_tokens
         
         return answer
 
     except Exception as e:
-        print(f"✗ Anthropic Claude error: {str(e)}")
+        print(f"✗ OpenAI error: {str(e)}")
         return f"MCP Error generating response: {str(e)}"
 
 @mcp.tool()
@@ -369,7 +367,7 @@ async def get_cost_stats() -> str:
 Cost Tracking Statistics:
 ========================
 Embedding Provider: {EMBEDDING_PROVIDER.upper()}
-Chat Provider: Anthropic Claude 3.5 Haiku
+Chat Provider: OpenAI GPT-4o-mini
 
 API Calls:
 - Embedding Calls: {cost_tracker['embedding_calls']}
@@ -378,11 +376,11 @@ API Calls:
 
 Estimated Costs:
 - Embeddings ({EMBEDDING_PROVIDER}): ~${embedding_cost:.4f}
-- Chat (Claude 3.5 Haiku): ~${chat_cost:.4f}
+- Chat (GPT-4o-mini): ~${chat_cost:.4f}
 - Total Estimated: ~${embedding_cost + chat_cost:.4f}
 
 Cache Hit Rate: {len(embedding_cache)} cached embeddings
-Your Anthropic Credits: Being used! ✅
+Your OpenAI Credits: Being used! ✅
 """
     return stats
 
@@ -399,9 +397,9 @@ async def health_check():
     return JSONResponse({
         "status": "healthy", 
         "service": "CloneMind MCP Server",
-        "version": "3.0-anthropic",
-        "features": ["anthropic_claude", f"{EMBEDDING_PROVIDER}_embeddings", "caching"],
-        "chat_provider": "Anthropic Claude",
+        "version": "3.1-openai",
+        "features": ["openai_gpt4o_mini", f"{EMBEDDING_PROVIDER}_embeddings", "caching"],
+        "chat_provider": "OpenAI GPT-4o-mini",
         "embedding_provider": EMBEDDING_PROVIDER
     })
 
@@ -417,13 +415,13 @@ async def stats():
     return JSONResponse({
         "cost_tracker": cost_tracker,
         "cache_size": len(embedding_cache),
-        "chat_provider": "Anthropic Claude",
+        "chat_provider": "OpenAI GPT-4o-mini",
         "embedding_provider": EMBEDDING_PROVIDER,
         "estimated_cost": {
             "embeddings": round(cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0), 4),
-            "chat": round(cost_tracker['chat_calls'] * 0.001, 4),
+            "chat": round(cost_tracker['chat_calls'] * 0.00015, 4), # GPT-4o-mini is cheaper
             "total": round((cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0)) + 
-                          (cost_tracker['chat_calls'] * 0.001), 4)
+                          (cost_tracker['chat_calls'] * 0.00015), 4)
         }
     })
 
@@ -461,16 +459,16 @@ if __name__ == "__main__":
     
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║     CloneMind Knowledge Base MCP Server v3.0-Anthropic       ║
+║     CloneMind Knowledge Base MCP Server v3.0-OpenAI          ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Features:                                                   ║
-║  ✓ Anthropic Claude 3.5 Haiku (Using YOUR credits!)         ║
+║  ✓ OpenAI GPT-4o-mini (Chat)                                ║
 ║  ✓ {EMBEDDING_PROVIDER.upper()} Embeddings{' ' * (48 - len(EMBEDDING_PROVIDER))}║
 ║  ✓ Fast Response (<1 second)                                ║
 ║  ✓ Embedding Caching                                        ║
 ║  ✓ Cost Tracking                                            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Chat: Anthropic Claude 3.5 Haiku                            ║
+║  Chat: OpenAI GPT-4o-mini                                    ║
 ║  Embeddings: {EMBEDDING_PROVIDER:48} ║
 ║  Vector Size: {VECTOR_SIZE:50} ║
 ║  Transport: {transport:50} ║

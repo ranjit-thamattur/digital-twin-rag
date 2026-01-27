@@ -11,6 +11,7 @@ from aws_cdk import (
     aws_cognito as cognito,
     aws_s3_notifications as s3n,
     aws_secretsmanager as secretsmanager,
+    aws_ssm as ssm,
     SecretValue,
     RemovalPolicy,
     Duration,
@@ -217,45 +218,20 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 8. MCP SERVER SERVICE - UPDATED FOR ANTHROPIC + VOYAGE
+        # 8. MCP SERVER SERVICE - UPDATED FOR OPENAI
         # ===================================================================
         
-        # ⚠️ SECURITY: REPLACE THESE PLACEHOLDER VALUES WITH YOUR ACTUAL API KEYS
-        # Option 1: Replace directly here (NOT RECOMMENDED for production)
-        # Option 2: Create secrets via AWS CLI first, then reference them (RECOMMENDED)
-        #
-        # To use Option 2:
-        # Run these commands BEFORE deploying:
-        # aws secretsmanager create-secret --name clonemind/anthropic-api-key --secret-string "YOUR_KEY" --region us-east-1
-        # aws secretsmanager create-secret --name clonemind/voyage-api-key --secret-string "YOUR_KEY" --region us-east-1
-        # Then uncomment the "from_secret_name_v2" lines below and comment out the Secret() constructors
-        
-        # Create API key secrets
-        anthropic_secret = secretsmanager.Secret(self, "AnthropicApiKey",
-            secret_name="clonemind/anthropic-api-key",
-            description="Anthropic API key for Claude",
-            # ⚠️ DO NOT HARDCODE KEYS HERE. Set them in your environment before deploying:
-            # export ANTHROPIC_API_KEY=sk-ant-api03-...
-            secret_string_value=SecretValue.unsafe_plain_text(os.getenv("ANTHROPIC_API_KEY", "REPLACE_ME"))
-        )
-        
-        voyage_secret = secretsmanager.Secret(self, "VoyageApiKey",
-            secret_name="clonemind/voyage-api-key",
-            description="Voyage AI API key for embeddings",
-            # ⚠️ DO NOT HARDCODE KEYS HERE. Set them in your environment before deploying:
-            # export VOYAGE_API_KEY=sk-ant-api03-...
-            secret_string_value=SecretValue.unsafe_plain_text(os.getenv("VOYAGE_API_KEY", "REPLACE_ME"))
-        )
-        
-        # OR use this if you created secrets via CLI (RECOMMENDED):
-        # anthropic_secret = secretsmanager.Secret.from_secret_name_v2(
-        #     self, "AnthropicApiKey",
-        #     "clonemind/anthropic-api-key"
-        # )
-        # voyage_secret = secretsmanager.Secret.from_secret_name_v2(
-        #     self, "VoyageApiKey",
-        #     "clonemind/voyage-api-key"
-        # )
+        # Environment variables for MCP
+        mcp_env = {
+            "QDRANT_HOST": "172.17.0.1",
+            "QDRANT_PORT": "6333",
+            "TENANT_TABLE": tenant_table.table_name,
+            "MCP_TRANSPORT": "sse",
+            "AWS_REGION": self.region,
+            "PORT": "3000",
+            "EMBEDDING_PROVIDER": "openai",
+            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")
+        }
         
         mcp_task = ecs.Ec2TaskDefinition(self, "McpTask", 
             network_mode=ecs.NetworkMode.BRIDGE
@@ -265,19 +241,7 @@ class CloneMindStack(Stack):
             image=ecs.ContainerImage.from_asset("../../services/mcp-server"),
             memory_limit_mib=512,  # Increased for better performance
             cpu=256,               # Increased for better performance
-            environment={
-                "QDRANT_HOST": "172.17.0.1",
-                "QDRANT_PORT": "6333",
-                "TENANT_TABLE": tenant_table.table_name,
-                "MCP_TRANSPORT": "sse",
-                "AWS_REGION": self.region,
-                "PORT": "3000",
-                "EMBEDDING_PROVIDER": "voyage"  # Using Voyage AI for embeddings
-            },
-            secrets={  # API keys injected as secrets
-                "ANTHROPIC_API_KEY": ecs.Secret.from_secrets_manager(anthropic_secret),
-                "VOYAGE_API_KEY": ecs.Secret.from_secrets_manager(voyage_secret)
-            },
+            environment=mcp_env,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
         )
         mcp_container.add_port_mappings(
@@ -546,12 +510,8 @@ def lambda_handler(event, context):
         CfnOutput(self, "AdminClientId", value=admin_client.user_pool_client_id)
         CfnOutput(self, "LambdaFunctionName", value=s3_processor.function_name)
         
-        # New outputs for API secrets
-        CfnOutput(self, "AnthropicSecretArn",
-            value=anthropic_secret.secret_arn,
-            description="ARN of Anthropic API Key secret"
-        )
-        CfnOutput(self, "VoyageSecretArn",
-            value=voyage_secret.secret_arn,
-            description="ARN of Voyage API Key secret"
+        # New output for OpenAI setup
+        CfnOutput(self, "OpenAiProvider",
+            value="Active (via Environment Variable)",
+            description="Status of OpenAI Provider"
         )
