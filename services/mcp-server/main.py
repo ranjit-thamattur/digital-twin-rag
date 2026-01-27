@@ -6,7 +6,7 @@ import uuid
 import hashlib
 from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
-from qdrant_client import QdrantClient
+import qdrant_client
 from qdrant_client.http import models
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -46,7 +46,12 @@ mcp = FastMCP("CloneMind Knowledge Base")
 app = FastAPI()
 
 # Initialize Clients
-qdrant = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+qdrant = qdrant_client.QdrantClient(
+    host=QDRANT_HOST, 
+    port=QDRANT_PORT,
+    timeout=30,
+    prefer_grpc=False # Use HTTP for better compatibility in ECS bridges
+)
 
 # Lazy-loaded embedding clients
 voyage_client = None
@@ -239,14 +244,32 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
                 ]
             )
 
-        # ✅ FIXED: Direct call, no asyncio.to_thread
-        search_result = qdrant.search(
-            collection_name=collection_name,
-            query_vector=vector,
-            limit=limit,
-            with_payload=True,
-            query_filter=query_filter
-        )
+        # ✅ ENTERPRISE-GRADE SEARCH: Flexible method resolution
+        print(f"  - Initiating Qdrant Search...")
+        
+        def execute_search():
+            # Try 'search' method (standard)
+            if hasattr(qdrant, 'search'):
+                return qdrant.search(
+                    collection_name=collection_name,
+                    query_vector=vector,
+                    limit=limit,
+                    with_payload=True,
+                    query_filter=query_filter
+                )
+            # Fallback to 'query_points' (newer versions)
+            elif hasattr(qdrant, 'query_points'):
+                return qdrant.query_points(
+                    collection_name=collection_name,
+                    query_vector=vector,
+                    limit=limit,
+                    with_payload=True,
+                    query_filter=query_filter
+                ).points
+            else:
+                raise AttributeError("Qdrant client is missing both 'search' and 'query_points' methods.")
+
+        search_result = await asyncio.to_thread(execute_search)
 
         formatted_results = []
         for i, res in enumerate(search_result):
