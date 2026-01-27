@@ -276,7 +276,8 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             text = res.payload.get("text", "No text found")
             source = res.payload.get("filename", "Unknown Source")
             score = getattr(res, 'score', 0)
-            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] | Preview: {text[:60].replace('\n', ' ')}...")
+            preview = text[:60].replace('\n', ' ')
+            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] | Preview: {preview}...")
             formatted_results.append(f"DOCUMENT: {source}\nCONTENT: {text}\n---")
 
         if not formatted_results:
