@@ -6,7 +6,7 @@ qdrant-client
 python-dotenv
 
 # Anthropic Claude for chat (YOU ALREADY HAVE CREDITS!)
-anthropic==0.18.1
+anthropic>=0.40.0
 
 # Embeddings - Choose ONE of these:
 
