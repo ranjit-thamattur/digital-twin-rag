@@ -23,7 +23,7 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 REDIS_HOST = os.getenv("REDIS_HOST", "172.17.0.1")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-CACHE_COLLECTION = "semantic_cache"
+# CACHE_COLLECTION = "semantic_cache" # Deleted in favor of dynamic persona-based cache collections
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -214,26 +214,24 @@ def ensure_collection(collection_name: str, vector_size: int):
         raise
 
 async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
-    """Check if a semantically similar question exists in the cache."""
+    """Check if a semantically similar question exists in the persona-specific cache."""
     try:
+        tenantId = tenantId.strip().lower()
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        persona_raw = str(personaId).strip().lower() if personaId else None
+        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
+        
+        # ✅ PERSONA-BASED CACHE COLLECTION
+        cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
+        
         vector = await get_embedding(query)
-        ensure_collection(CACHE_COLLECTION, len(vector))
+        ensure_collection(cache_collection, len(vector))
         
-        # Build strict filter
-        must_filters = [
-            models.FieldCondition(key="tenantId", match=models.MatchValue(value=tenantId.lower()))
-        ]
-        if personaId:
-            must_filters.append(models.FieldCondition(key="personaId", match=models.MatchValue(value=personaId.lower())))
-        
-        query_filter = models.Filter(must=must_filters)
-        
-        # Search for similar questions
+        # Search for similar questions (Strict Isolation by Collection Name)
         results = await asyncio.to_thread(
             lambda: qdrant.search(
-                collection_name=CACHE_COLLECTION,
+                collection_name=cache_collection,
                 query_vector=vector,
-                query_filter=query_filter,
                 limit=1,
                 score_threshold=0.95
             )
@@ -244,7 +242,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             if cache_id:
                 response = redis_client.get(f"cache:{cache_id}")
                 if response:
-                    print(f"🚀 [CACHE HIT] Similarity: {results[0].score:.4f} | ID: {cache_id}")
+                    print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {results[0].score:.4f}")
                     return response
         
         return None
@@ -253,55 +251,58 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         return None
 
 async def save_to_semantic_cache(query: str, answer: str, tenantId: str, personaId: Optional[str] = None):
-    """Store question vector and answer in cache."""
+    """Store question vector and answer in persona-specific cache."""
     try:
+        tenantId = tenantId.strip().lower()
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        persona_raw = str(personaId).strip().lower() if personaId else None
+        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
+        
+        # ✅ PERSONA-BASED CACHE COLLECTION
+        cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
+        
         vector = await get_embedding(query)
+        ensure_collection(cache_collection, len(vector))
+        
         cache_id = str(uuid.uuid4())
         
         # Store metadata in Qdrant
         payload = {
             "query": query,
             "tenantId": tenantId.lower(),
-            "personaId": (personaId or "user").lower(),
+            "personaId": active_persona,
             "cache_id": cache_id,
             "created_at": time.time()
         }
         
         qdrant.upsert(
-            collection_name=CACHE_COLLECTION,
+            collection_name=cache_collection,
             points=[models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=payload)]
         )
         
         # Store full answer in Redis (TTL: 24 hours)
         redis_client.setex(f"cache:{cache_id}", 86400, answer)
-        print(f"💾 [CACHE SAVE] ID: {cache_id}")
+        print(f"💾 [CACHE SAVE] Collection: {cache_collection}")
     except Exception as e:
         print(f"⚠ Cache save error: {str(e)}")
 
 async def clear_semantic_cache_for_tenant(tenantId: str):
-    """Wipe all semantic cache entries for a specific tenant."""
+    """Wipe all semantic cache collections for a specific tenant."""
     try:
         tenantId = tenantId.strip().lower()
-        print(f"🧹 Clearing semantic cache for tenant: {tenantId}")
+        prefix = tenantId.replace("-", "_")
         
-        # 1. Delete from Qdrant
-        await asyncio.to_thread(
-            lambda: qdrant.delete(
-                collection_name=CACHE_COLLECTION,
-                points_selector=models.FilterSelector(
-                    filter=models.Filter(
-                        must=[
-                            models.FieldCondition(
-                                key="tenantId",
-                                match=models.MatchValue(value=tenantId)
-                            )
-                        ]
-                    )
-                )
-            )
-        )
+        # Get all collections
+        collections_response = qdrant.get_collections()
+        deleted_count = 0
         
-        # Note: Redis entries will naturally expire as they are no longer reachable via Qdrant
+        for col in collections_response.collections:
+            name = col.name
+            if name.startswith(f"{prefix}_") and name.endswith("_cache"):
+                print(f"🧹 Deleting cache collection: {name}")
+                qdrant.delete_collection(name)
+                deleted_count += 1
+        
         return True
     except Exception as e:
         print(f"⚠ Cache clear error: {str(e)}")
