@@ -95,6 +95,9 @@ cost_tracker = {
     "cache_hits": 0
 }
 
+# Global debug log for cache operations
+cache_debug_log = []
+
 def get_text_hash(text: str) -> str:
     """Create a hash of the text for caching."""
     return hashlib.sha256(text.encode()).hexdigest()
@@ -262,21 +265,41 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             cache_id = results[0].payload.get("cache_id")
             print(f"🔎 [CACHE SEARCH] Found potential match with score {score:.4f}")
             
+            response = None
             if cache_id:
                 try:
                     response = redis_client.get(f"cache:{cache_id}")
                     if response:
                         print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {score:.4f}")
                         cost_tracker["cache_hits"] += 1
-                        return response
                     else:
                         print(f"⚠️ [CACHE MISS] Match found in Qdrant but Redis key 'cache:{cache_id}' is missing/expired")
                 except Exception as redis_err:
                     print(f"❌ [CACHE ERROR] Redis lookup failed: {redis_err}")
-            else:
-                print(f"⚠️ [CACHE MISS] Match found in Qdrant but 'cache_id' is missing from payload")
+            
+            # Log for debugging
+            cache_debug_log.append({
+                "query": clean_query,
+                "collection": cache_collection,
+                "score": round(score, 4),
+                "hit": bool(response),
+                "timestamp": time.time(),
+                "reason": "Redis miss" if (cache_id and not response) else ("No cache_id" if not cache_id else "OK")
+            })
+            if response: return response
         else:
             print(f"🔎 [CACHE MISS] No match found in Qdrant above threshold 0.88")
+            cache_debug_log.append({
+                "query": clean_query,
+                "collection": cache_collection,
+                "score": 0,
+                "hit": False,
+                "timestamp": time.time(),
+                "reason": "Threshold miss"
+            })
+        
+        # Keep debug log small
+        if len(cache_debug_log) > 20: cache_debug_log.pop(0)
         
         return None
     except Exception as e:
@@ -703,16 +726,14 @@ async def health():
 
 @app.get("/stats")
 async def stats():
-    embedding_costs = {"voyage": 0.0001, "openai": 0.00002, "cohere": 0.001}
-    
     return JSONResponse({
         "cost_tracker": cost_tracker,
+        "cache_debug": cache_debug_log,
         "cache_size": len(embedding_cache),
         "estimated_cost": {
-            "embeddings": round(cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0), 4),
-            "chat": round(cost_tracker['chat_calls'] * 0.00015, 4),
-            "total": round((cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0)) + 
-                          (cost_tracker['chat_calls'] * 0.00015), 4)
+            "embeddings": round(cost_tracker["embedding_calls"] * 0.00002, 4),
+            "chat": round(cost_tracker["total_tokens"] * (0.0002 / 1000), 4),
+            "total": round((cost_tracker["embedding_calls"] * 0.00002) + (cost_tracker["total_tokens"] * (0.0002 / 1000)), 4)
         }
     })
 
