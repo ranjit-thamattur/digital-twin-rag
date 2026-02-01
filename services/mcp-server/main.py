@@ -221,10 +221,14 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         persona_raw = str(personaId).strip().lower() if personaId else None
         active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
+        # Clean query: strip markdown noise (* and _) and whitespace for better matching
+        clean_query = query.strip().strip('*').strip('_').strip()
+        if not clean_query: clean_query = query
+        
         # ✅ PERSONA-BASED CACHE COLLECTION
         cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
         
-        vector = await get_embedding(query)
+        vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
         
         # Search for similar questions (Strict Isolation by Collection Name)
@@ -233,7 +237,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
                 collection_name=cache_collection,
                 query_vector=vector,
                 limit=1,
-                score_threshold=0.95
+                score_threshold=0.88
             )
         )
         
@@ -258,10 +262,14 @@ async def save_to_semantic_cache(query: str, answer: str, tenantId: str, persona
         persona_raw = str(personaId).strip().lower() if personaId else None
         active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
+        # Clean query: strip markdown noise (* and _) and whitespace for better matching
+        clean_query = query.strip().strip('*').strip('_').strip()
+        if not clean_query: clean_query = query
+        
         # ✅ PERSONA-BASED CACHE COLLECTION
         cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
         
-        vector = await get_embedding(query)
+        vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
         
         cache_id = str(uuid.uuid4())
