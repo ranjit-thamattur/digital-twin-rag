@@ -234,6 +234,7 @@ def ensure_collection(collection_name: str, vector_size: int):
 
 async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
     """Check if a semantically similar question exists in the persona-specific cache."""
+    cache_debug_log.append({"event": "enter_cache", "query": query, "time": time.time()})
     try:
         tenantId = tenantId.strip().lower()
         ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
