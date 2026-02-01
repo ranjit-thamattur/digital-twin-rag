@@ -209,6 +209,45 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[st
         
     return chunks
 
+def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, score_threshold: float = None, query_filter: any = None):
+    """Helper to perform search across different Qdrant client versions."""
+    try:
+        # Method 1: Modern search()
+        if hasattr(qdrant, 'search'):
+            return qdrant.search(
+                collection_name=collection_name,
+                query_vector=vector,
+                limit=limit,
+                query_filter=query_filter,
+                score_threshold=score_threshold,
+                with_payload=True
+            )
+        # Method 2: query_points() (Latest API)
+        elif hasattr(qdrant, 'query_points'):
+            response = qdrant.query_points(
+                collection_name=collection_name,
+                query=vector,
+                limit=limit,
+                query_filter=query_filter,
+                score_threshold=score_threshold,
+                with_payload=True
+            )
+            return response.points
+        else:
+            raise AttributeError("Qdrant client has no search or query_points method")
+    except TypeError as e:
+        # If query_vector fails, try 'query' (older versions)
+        if "query_vector" in str(e) and hasattr(qdrant, 'search'):
+            return qdrant.search(
+                collection_name=collection_name,
+                query=vector,
+                limit=limit,
+                query_filter=query_filter,
+                score_threshold=score_threshold,
+                with_payload=True
+            )
+        raise e
+
 def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists"""
     try:
@@ -252,12 +291,11 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         
         # Search for similar questions (Strict Isolation by Collection Name)
         results = await asyncio.to_thread(
-            lambda: qdrant.search(
-                collection_name=cache_collection,
-                query_vector=vector,
-                limit=1,
-                score_threshold=0.88
-            )
+            robust_qdrant_search,
+            collection_name=cache_collection,
+            vector=vector,
+            limit=1,
+            score_threshold=0.88
         )
         
         log_entry = {
@@ -407,43 +445,14 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             ]
         )
 
-        # ✅ HIGH-COMPATIBILITY SEARCH: Dynamic parameter detection
-        def execute_search():
-            # Method 1: Standard Search (modern)
-            if hasattr(qdrant, 'search'):
-                try:
-                    # Try standard query_vector
-                    return qdrant.search(
-                        collection_name=collection_name,
-                        query_vector=vector,
-                        limit=limit,
-                        with_payload=True,
-                        query_filter=query_filter
-                    )
-                except TypeError as e:
-                    # Fallback to 'query' or 'vector' if 'query_vector' fails
-                    if "query_vector" in str(e):
-                        return qdrant.search(
-                            collection_name=collection_name,
-                            query=vector,
-                            limit=limit,
-                            with_payload=True,
-                            query_filter=query_filter
-                        )
-                    raise e
-            # Method 2: Query Points (latest API)
-            elif hasattr(qdrant, 'query_points'):
-                return qdrant.query_points(
-                    collection_name=collection_name,
-                    query=vector,
-                    limit=limit,
-                    with_payload=True,
-                    query_filter=query_filter
-                ).points
-            else:
-                raise AttributeError("Qdrant client has no search capability.")
-
-        search_result = await asyncio.to_thread(execute_search)
+        # ✅ HIGH-COMPATIBILITY SEARCH: Using robust helper
+        search_result = await asyncio.to_thread(
+            robust_qdrant_search,
+            collection_name=collection_name,
+            vector=vector,
+            limit=limit,
+            query_filter=query_filter
+        )
 
         formatted_results = []
         for i, res in enumerate(search_result):
