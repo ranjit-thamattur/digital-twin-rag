@@ -234,7 +234,6 @@ def ensure_collection(collection_name: str, vector_size: int):
 
 async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
     """Check if a semantically similar question exists in the persona-specific cache."""
-    cache_debug_log.append({"event": "enter_cache", "query": query, "time": time.time()})
     try:
         tenantId = tenantId.strip().lower()
         ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
@@ -261,49 +260,48 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             )
         )
         
+        log_entry = {
+            "query": clean_query[:50] + "...",
+            "collection": cache_collection,
+            "timestamp": time.time(),
+            "hit": False
+        }
+
         if results:
             score = results[0].score
             cache_id = results[0].payload.get("cache_id")
-            print(f"🔎 [CACHE SEARCH] Found potential match with score {score:.4f}")
+            log_entry["score"] = round(score, 4)
             
-            response = None
             if cache_id:
                 try:
                     response = redis_client.get(f"cache:{cache_id}")
                     if response:
-                        print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {score:.4f}")
+                        log_entry["hit"] = True
+                        log_entry["reason"] = "OK"
+                        cache_debug_log.append(log_entry)
                         cost_tracker["cache_hits"] += 1
+                        return response
                     else:
-                        print(f"⚠️ [CACHE MISS] Match found in Qdrant but Redis key 'cache:{cache_id}' is missing/expired")
+                        log_entry["reason"] = "Redis key missing/expired"
                 except Exception as redis_err:
-                    print(f"❌ [CACHE ERROR] Redis lookup failed: {redis_err}")
-            
-            # Log for debugging
-            cache_debug_log.append({
-                "query": clean_query,
-                "collection": cache_collection,
-                "score": round(score, 4),
-                "hit": bool(response),
-                "timestamp": time.time(),
-                "reason": "Redis miss" if (cache_id and not response) else ("No cache_id" if not cache_id else "OK")
-            })
-            if response: return response
+                    log_entry["reason"] = f"Redis error: {str(redis_err)}"
+            else:
+                log_entry["reason"] = "No cache_id in vector payload"
         else:
-            print(f"🔎 [CACHE MISS] No match found in Qdrant above threshold 0.88")
-            cache_debug_log.append({
-                "query": clean_query,
-                "collection": cache_collection,
-                "score": 0,
-                "hit": False,
-                "timestamp": time.time(),
-                "reason": "Threshold miss"
-            })
+            log_entry["score"] = 0
+            log_entry["reason"] = "No match above 0.88"
         
-        # Keep debug log small
+        cache_debug_log.append(log_entry)
         if len(cache_debug_log) > 20: cache_debug_log.pop(0)
-        
         return None
+
     except Exception as e:
+        cache_debug_log.append({
+            "event": "error",
+            "error": str(e),
+            "query": query[:50],
+            "timestamp": time.time()
+        })
         print(f"⚠ Cache lookup error: {str(e)}")
         return None
 
