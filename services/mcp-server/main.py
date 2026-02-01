@@ -67,7 +67,22 @@ if OPENAI_API_KEY:
     openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # Redis Client for Semantic Cache values
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+print(f"📡 Connecting to Redis at {REDIS_HOST}:{REDIS_PORT}...")
+redis_client = redis.Redis(
+    host=REDIS_HOST, 
+    port=REDIS_PORT, 
+    decode_responses=True,
+    socket_timeout=2.0,
+    socket_connect_timeout=2.0,
+    retry_on_timeout=True
+)
+
+try:
+    # Quick check
+    redis_client.ping()
+    print("✅ Redis connection successful")
+except Exception as e:
+    print(f"❌ Redis connection failed: {e}")
 
 # Caching
 embedding_cache = {}
@@ -242,12 +257,24 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         )
         
         if results:
+            score = results[0].score
             cache_id = results[0].payload.get("cache_id")
+            print(f"🔎 [CACHE SEARCH] Found potential match with score {score:.4f}")
+            
             if cache_id:
-                response = redis_client.get(f"cache:{cache_id}")
-                if response:
-                    print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {results[0].score:.4f}")
-                    return response
+                try:
+                    response = redis_client.get(f"cache:{cache_id}")
+                    if response:
+                        print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {score:.4f}")
+                        return response
+                    else:
+                        print(f"⚠️ [CACHE MISS] Match found in Qdrant but Redis key 'cache:{cache_id}' is missing/expired")
+                except Exception as redis_err:
+                    print(f"❌ [CACHE ERROR] Redis lookup failed: {redis_err}")
+            else:
+                print(f"⚠️ [CACHE MISS] Match found in Qdrant but 'cache_id' is missing from payload")
+        else:
+            print(f"🔎 [CACHE MISS] No match found in Qdrant above threshold 0.88")
         
         return None
     except Exception as e:
@@ -665,7 +692,12 @@ async def health_check():
 
 @app.get("/health")
 async def health():
-    return JSONResponse({"status": "healthy"})
+    redis_up = False
+    try:
+        redis_up = redis_client.ping()
+    except:
+        pass
+    return JSONResponse({"status": "healthy", "redis": redis_up})
 
 @app.get("/stats")
 async def stats():
