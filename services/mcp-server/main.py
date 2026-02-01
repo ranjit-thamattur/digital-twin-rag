@@ -91,7 +91,8 @@ embedding_cache = {}
 cost_tracker = {
     "embedding_calls": 0,
     "chat_calls": 0,
-    "total_tokens": 0
+    "total_tokens": 0,
+    "cache_hits": 0
 }
 
 def get_text_hash(text: str) -> str:
@@ -266,6 +267,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
                     response = redis_client.get(f"cache:{cache_id}")
                     if response:
                         print(f"🚀 [CACHE HIT] Collection: {cache_collection} | Similarity: {score:.4f}")
+                        cost_tracker["cache_hits"] += 1
                         return response
                     else:
                         print(f"⚠️ [CACHE MISS] Match found in Qdrant but Redis key 'cache:{cache_id}' is missing/expired")
