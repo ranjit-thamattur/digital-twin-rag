@@ -389,7 +389,10 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         formatted_results = []
         for i, res in enumerate(search_result):
             text = res.payload.get("text", "No text found")
-            source = res.payload.get("filename", "Unknown Source")
+            
+            # ✅ ROBUST SOURCE DETECTION: Handle different casing/keys
+            source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Unknown Document"
+            
             hit_persona = res.payload.get("personaId", "None")
             score = getattr(res, 'score', 0)
             
@@ -460,7 +463,7 @@ Current Discussion:
 Rules:
 1. Speak in first person ("I", "We", "Our")
 2. Use Retrieved Wisdom precisely
-3. Cite sources: (Ref: filename)
+3. Cite sources using the exact name after 'DOCUMENT:', e.g.: (Ref: filename.txt)
 4. If no data: "Based on my records, I don't have those details..."
 5. Format data with tables/bullets
 """
