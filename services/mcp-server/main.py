@@ -407,6 +407,12 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
 
         return "\n\n".join(formatted_results)
     except Exception as e:
+        # Graceful handling for missing collections or temporary issues
+        error_msg = str(e).lower()
+        if "not found" in error_msg or "does not exist" in error_msg:
+            print(f"⚠ [SEARCH] Collection '{collection_name}' not found. Returning empty results.")
+            return ""
+        
         print(f"✗ [SEARCH] Error: {str(e)}")
         import traceback
         print(traceback.format_exc())
@@ -435,9 +441,10 @@ async def generate_twin_response(
         print(f"Routing to OpenAI GPT-4o-mini")
         
         if context.startswith("SEARCH_ERROR"):
-            rag_context_block = f"Note: Error retrieving records: {context}"
+            # Don't pass technical details to the AI
+            rag_context_block = "Note: A temporary search error occurred. Please answer using your general knowledge but mention that specific records are currently unavailable."
         elif not context:
-            rag_context_block = "Note: No specific records found in your knowledge base."
+            rag_context_block = "Note: No specific records found in the knowledge base for this query."
         else:
             rag_context_block = context
 
@@ -525,11 +532,21 @@ async def clear_tenant_knowledge(tenantId: str) -> str:
         return f"Wipe Error: {str(e)}"
 
 @mcp.tool()
-async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = None) -> str:
-    """Ingest knowledge"""
+async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = None, **kwargs) -> str:
+    """Ingest knowledge with explicit metadata handling."""
     try:
         if not text or not text.strip():
             return "Error: Text is empty"
+        
+        # Ensure metadata is a dict and capture top-level filename info
+        if metadata is None:
+            metadata = {}
+        
+        # Capture filename if passed at top level (common in n8n/webhooks)
+        fname = kwargs.get("fileName") or kwargs.get("filename") or metadata.get("fileName") or metadata.get("filename")
+        if fname:
+            metadata["filename"] = fname
+            print(f"📎 Found filename in request: {fname}")
 
         tenantId = tenantId.strip().lower()
         
