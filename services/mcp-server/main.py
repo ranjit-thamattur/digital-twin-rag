@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
 import openai
+import redis
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +21,9 @@ load_dotenv()
 # Configuration
 QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+REDIS_HOST = os.getenv("REDIS_HOST", "172.17.0.1")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+CACHE_COLLECTION = "semantic_cache"
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -61,6 +65,9 @@ cohere_client = None
 openai_client = None
 if OPENAI_API_KEY:
     openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+# Redis Client for Semantic Cache values
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
 # Caching
 embedding_cache = {}
@@ -206,6 +213,100 @@ def ensure_collection(collection_name: str, vector_size: int):
         print(f"Qdrant error: {str(e)}")
         raise
 
+async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
+    """Check if a semantically similar question exists in the cache."""
+    try:
+        vector = await get_embedding(query)
+        ensure_collection(CACHE_COLLECTION, len(vector))
+        
+        # Build strict filter
+        must_filters = [
+            models.FieldCondition(key="tenantId", match=models.MatchValue(value=tenantId.lower()))
+        ]
+        if personaId:
+            must_filters.append(models.FieldCondition(key="personaId", match=models.MatchValue(value=personaId.lower())))
+        
+        query_filter = models.Filter(must=must_filters)
+        
+        # Search for similar questions
+        results = await asyncio.to_thread(
+            lambda: qdrant.search(
+                collection_name=CACHE_COLLECTION,
+                query_vector=vector,
+                query_filter=query_filter,
+                limit=1,
+                score_threshold=0.95
+            )
+        )
+        
+        if results:
+            cache_id = results[0].payload.get("cache_id")
+            if cache_id:
+                response = redis_client.get(f"cache:{cache_id}")
+                if response:
+                    print(f"🚀 [CACHE HIT] Similarity: {results[0].score:.4f} | ID: {cache_id}")
+                    return response
+        
+        return None
+    except Exception as e:
+        print(f"⚠ Cache lookup error: {str(e)}")
+        return None
+
+async def save_to_semantic_cache(query: str, answer: str, tenantId: str, personaId: Optional[str] = None):
+    """Store question vector and answer in cache."""
+    try:
+        vector = await get_embedding(query)
+        cache_id = str(uuid.uuid4())
+        
+        # Store metadata in Qdrant
+        payload = {
+            "query": query,
+            "tenantId": tenantId.lower(),
+            "personaId": (personaId or "user").lower(),
+            "cache_id": cache_id,
+            "created_at": time.time()
+        }
+        
+        qdrant.upsert(
+            collection_name=CACHE_COLLECTION,
+            points=[models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=payload)]
+        )
+        
+        # Store full answer in Redis (TTL: 24 hours)
+        redis_client.setex(f"cache:{cache_id}", 86400, answer)
+        print(f"💾 [CACHE SAVE] ID: {cache_id}")
+    except Exception as e:
+        print(f"⚠ Cache save error: {str(e)}")
+
+async def clear_semantic_cache_for_tenant(tenantId: str):
+    """Wipe all semantic cache entries for a specific tenant."""
+    try:
+        tenantId = tenantId.strip().lower()
+        print(f"🧹 Clearing semantic cache for tenant: {tenantId}")
+        
+        # 1. Delete from Qdrant
+        await asyncio.to_thread(
+            lambda: qdrant.delete(
+                collection_name=CACHE_COLLECTION,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="tenantId",
+                                match=models.MatchValue(value=tenantId)
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+        
+        # Note: Redis entries will naturally expire as they are no longer reachable via Qdrant
+        return True
+    except Exception as e:
+        print(f"⚠ Cache clear error: {str(e)}")
+        return False
+
 @mcp.tool()
 async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[str] = None, limit: Optional[int] = 10) -> str:
     """Search tenant's knowledge base"""
@@ -326,6 +427,11 @@ async def generate_twin_response(
 ) -> str:
     """Full RAG Pipeline"""
     try:
+        # 1. Check Semantic Cache
+        cached_answer = await get_semantic_cache(query, tenantId, personaId)
+        if cached_answer:
+            return f"{cached_answer}\n\n(Source: Semantic Cache 🚀)"
+
         context = await search_knowledge_base(query, tenantId, personaId=personaId)
         
         if openai_client is None:
@@ -385,6 +491,9 @@ Rules:
                     cost_tracker["total_tokens"] += response.usage.total_tokens
                     cost_tracker["chat_calls"] += 1
                 
+                # 4. Save to Cache
+                await save_to_semantic_cache(query, answer, tenantId, personaId)
+                
                 return answer
             except Exception as e:
                 if attempt == 1: raise
@@ -403,7 +512,9 @@ async def clear_tenant_knowledge(tenantId: str) -> str:
         collection_name = tenantId.replace("-", "_")
         if qdrant.collection_exists(collection_name):
             qdrant.delete_collection(collection_name)
-            return f"Successfully wiped knowledge for tenant: {tenantId}"
+            # Also clear cache
+            await clear_semantic_cache_for_tenant(tenantId)
+            return f"Successfully wiped knowledge and cache for tenant: {tenantId}"
         return f"Tenant collection {tenantId} did not exist."
     except Exception as e:
         return f"Wipe Error: {str(e)}"
@@ -447,7 +558,9 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                     # Mark as unassigned if no persona tagged
                     chunk_metadata["personaId"] = "unassigned"
                 
-                point_id = str(uuid.uuid4())
+                # ✅ DETERMINISTIC ID: Use hash of content + tenantId to prevent duplicates
+                id_seed = f"{tenantId.lower()}:{chunk}".encode()
+                point_id = hashlib.sha256(id_seed).hexdigest()[:32]
                 
                 # ✅ FIXED: Direct call, no asyncio.to_thread
                 qdrant.upsert(
@@ -464,7 +577,12 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 print(f"  - Error chunk {i}: {str(chunk_err)}")
                 continue
         
+        
         print(f"✓ Ingested {successful_chunks}/{len(chunks)} chunks")
+        
+        # ✅ CACHE INVALIDATION: Clear cache after adding new knowledge
+        await clear_semantic_cache_for_tenant(tenantId)
+        
         return f"Successfully ingested {successful_chunks}/{len(chunks)} chunks"
     except Exception as e:
         print(f"✗ Ingestion error: {str(e)}")

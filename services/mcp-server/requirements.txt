@@ -5,6 +5,7 @@ uvicorn
 qdrant-client
 python-dotenv
 httpx
+redis
 
 # OpenAI for chat and embeddings
 openai>=1.0.0
