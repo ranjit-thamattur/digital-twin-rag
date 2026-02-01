@@ -323,38 +323,29 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         
         ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
         persona_raw = str(personaId).strip().lower() if personaId else None
-        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else None
+        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
-        collection_name = tenantId.replace("-", "_")
+        # ✅ PERSONA-BASED COLLECTION: tenant_id + persona_id
+        collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
         
         search_query = query
         if len(query.split()) <= 4:
             search_query = f"The {query} and key metrics or performance data"
 
-        print(f"🔍 [SEARCH] Tenant: {tenantId} | Persona: {active_persona or 'OFF'} | Query: '{search_query[:50]}...'")
+        print(f"🔍 [SEARCH] Collection: {collection_name} | Persona: {active_persona} | Query: '{search_query[:50]}...'")
         
         vector = await get_embedding(search_query)
 
         # 4. Build Filter (STRICT ISOLATION)
-        # Only search for documents matching the active persona. 
-        # If no persona is active, search will return zero results (Strict Mode).
-        query_filter = None
-        if active_persona:
-            query_filter = models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="personaId",
-                        match=models.MatchValue(value=active_persona.lower())
-                    )
-                ]
-            )
-        else:
-            print(f"  - No active persona identified. Search will likely return no results.")
-        
-        print(f"  - Active Filter: {active_persona or 'NONE (Strict Mode)'}")
-    # 
-        
-        print(f"  - Active Filter: {active_persona or 'Global-Only'}")
+        # Even with persona collections, we keep the filter for double-safety
+        query_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="personaId",
+                    match=models.MatchValue(value=active_persona.lower())
+                )
+            ]
+        )
 
         # ✅ HIGH-COMPATIBILITY SEARCH: Dynamic parameter detection
         def execute_search():
@@ -506,16 +497,26 @@ Rules:
 
 @mcp.tool()
 async def clear_tenant_knowledge(tenantId: str) -> str:
-    """Wipe all knowledge for a specific tenant (irreversible)."""
+    """Wipe all knowledge for a specific tenant (all personas)."""
     try:
         tenantId = tenantId.strip().lower()
-        collection_name = tenantId.replace("-", "_")
-        if qdrant.collection_exists(collection_name):
-            qdrant.delete_collection(collection_name)
-            # Also clear cache
-            await clear_semantic_cache_for_tenant(tenantId)
-            return f"Successfully wiped knowledge and cache for tenant: {tenantId}"
-        return f"Tenant collection {tenantId} did not exist."
+        prefix = tenantId.replace("-", "_")
+        
+        # Get all collections
+        collections_response = qdrant.get_collections()
+        deleted_count = 0
+        
+        for col in collections_response.collections:
+            name = col.name
+            if name == prefix or name.startswith(f"{prefix}_"):
+                print(f"🗑 Deleting collection: {name}")
+                qdrant.delete_collection(name)
+                deleted_count += 1
+        
+        # Also clear cache
+        await clear_semantic_cache_for_tenant(tenantId)
+        
+        return f"Successfully wiped {deleted_count} collections and cache for tenant: {tenantId}"
     except Exception as e:
         return f"Wipe Error: {str(e)}"
 
@@ -527,8 +528,15 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
             return "Error: Text is empty"
 
         tenantId = tenantId.strip().lower()
-        print(f"Ingesting for {tenantId} ({len(text)} chars)")
-        collection_name = tenantId.replace("-", "_")
+        
+        # ✅ PERSONA-BASED COLLECTION: Extract persona for naming
+        persona_raw = metadata.get("personaId") if metadata else "global"
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        active_persona = str(persona_raw).strip().lower() if (persona_raw and str(persona_raw).strip().lower() not in ignored_personas) else "global"
+        
+        collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
+        
+        print(f"Ingesting for {tenantId} | Persona: {active_persona} | Collection: {collection_name} ({len(text)} chars)")
         
         chunks = chunk_text(text, chunk_size=2000, overlap=300)
         print(f"Split into {len(chunks)} chunks")
@@ -544,19 +552,14 @@ async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = 
                 vector = await get_embedding(chunk)
                 
                 chunk_metadata = {
+                    **(metadata or {}),
                     "text": chunk,
                     "tenantId": tenantId.lower(),
+                    "personaId": active_persona,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
-                    "full_text_hash": get_text_hash(text)[:16],
-                    **(metadata or {})
+                    "full_text_hash": get_text_hash(text)[:16]
                 }
-                
-                if "personaId" in chunk_metadata and chunk_metadata["personaId"]:
-                    chunk_metadata["personaId"] = str(chunk_metadata["personaId"]).strip().lower()
-                else:
-                    # Mark as unassigned if no persona tagged
-                    chunk_metadata["personaId"] = "unassigned"
                 
                 # ✅ DETERMINISTIC ID: Use hash of content + tenantId to prevent duplicates
                 id_seed = f"{tenantId.lower()}:{chunk}".encode()
