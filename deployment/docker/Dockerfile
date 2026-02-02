@@ -16,7 +16,7 @@ COPY peak_logo.png /app/build/logo.png
 COPY peak_logo.png /app/build/favicon.ico
 
 # Force image rebuild
-RUN echo "Peak Branding v3.0-final" > /app/branding_version.txt
+RUN echo "Peak Branding v3.1-genuine-png" > /app/branding_version.txt
 
 
 
