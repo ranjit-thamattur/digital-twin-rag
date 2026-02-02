@@ -11,9 +11,9 @@ RUN mkdir -p /app/backend/pipelines
 COPY peak_logo.png /app/peak_logo.png
 
 # Overwrite ALL standard logos found in the image
-RUN find /app -name "favicon.png" -exec cp /app/peak_logo.png {} +
-RUN find /app -name "logo.png" -exec cp /app/peak_logo.png {} +
-RUN find /app -name "favicon.ico" -exec cp /app/peak_logo.png {} +
+RUN find /app -name "favicon.png" -exec cp /app/peak_logo.png {} \;
+RUN find /app -name "logo.png" -exec cp /app/peak_logo.png {} \;
+RUN find /app -name "favicon.ico" -exec cp /app/peak_logo.png {} \;
 
 # Ensure static folders exist and contain the logo
 RUN mkdir -p /app/backend/static /app/build/static
