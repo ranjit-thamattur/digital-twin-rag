@@ -325,7 +325,7 @@ class CloneMindStack(Stack):
         )
         
         webui_container = webui_task.add_container("WebUI",
-            image=ecs.ContainerImage.from_asset("../../docker"),
+            image=ecs.ContainerImage.from_asset("../docker"),
             memory_limit_mib=1536,
             cpu=256,
             environment={
