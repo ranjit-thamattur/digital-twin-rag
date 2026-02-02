@@ -275,7 +275,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
     """Check if a semantically similar question exists in the persona-specific cache."""
     try:
         tenantId = tenantId.strip().lower()
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
         persona_raw = str(personaId).strip().lower() if personaId else None
         active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
@@ -347,7 +347,7 @@ async def save_to_semantic_cache(query: str, answer: str, tenantId: str, persona
     """Store question vector and answer in persona-specific cache."""
     try:
         tenantId = tenantId.strip().lower()
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
         persona_raw = str(personaId).strip().lower() if personaId else None
         active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
@@ -419,7 +419,7 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
 
         tenantId = tenantId.strip().lower()
         
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
+        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
         persona_raw = str(personaId).strip().lower() if personaId else None
         active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
         
@@ -469,8 +469,27 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             
             formatted_results.append(f"DOCUMENT: {source} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
+        if not formatted_results and active_persona != "global":
+            print(f"⚠ [SEARCH] No results in '{collection_name}'. Falling back to global.")
+            global_collection = f"{tenantId.replace('-', '_')}_global"
+            if qdrant.collection_exists(global_collection):
+                global_filter = models.Filter(
+                    must=[models.FieldCondition(key="personaId", match=models.MatchValue(value="global"))]
+                )
+                search_result = await asyncio.to_thread(
+                    robust_qdrant_search,
+                    collection_name=global_collection,
+                    vector=vector,
+                    limit=limit,
+                    query_filter=global_filter
+                )
+                for i, res in enumerate(search_result):
+                    text = res.payload.get("text", "No text found")
+                    source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Global Document"
+                    formatted_results.append(f"DOCUMENT: {source} (Global)\nCONTENT: {text}\n---")
+
         if not formatted_results:
-            print(f"⚠ [SEARCH] Zero results found")
+            print(f"⚠ [SEARCH] Zero results found in all target collections")
             return ""
 
         return "\n\n".join(formatted_results)
