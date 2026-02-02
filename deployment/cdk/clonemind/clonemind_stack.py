@@ -329,7 +329,7 @@ class CloneMindStack(Stack):
             memory_limit_mib=1536,
             cpu=256,
             environment={
-                "WEBUI_NAME": "CloneMind AI",
+                "WEBUI_NAME": "Peak AI 1.0",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
                 "ENABLE_SIGNUP": "true",

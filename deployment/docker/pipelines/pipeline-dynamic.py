@@ -1,6 +1,6 @@
 """
-title: CloneMind Dynamic Identity Pipeline
-author: CloneMind AI
+title: Peak AI 1.0 Dynamic Identity Pipeline
+author: Peak AI 1.0
 version: 1.0.0
 requirements: requests
 """
@@ -23,8 +23,8 @@ class Pipe:
 
     def __init__(self):
         self.type = "manifold"
-        self.id = "clonemind_proxy"
-        self.name = "CloneMind: "
+        self.id = "peak_ai_proxy"
+        self.name = "Peak AI 1.0: "
         self.valves = self.Valves()
 
     def pipes(self) -> List[dict]:

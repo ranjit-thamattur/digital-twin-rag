@@ -44,7 +44,7 @@ VECTOR_SIZES = {
 VECTOR_SIZE = VECTOR_SIZES.get(EMBEDDING_PROVIDER, 1536)
 
 # Initialize FastMCP server
-mcp = FastMCP("CloneMind Knowledge Base")
+mcp = FastMCP("Peak AI 1.0 Knowledge Base")
 
 # Initialize FastAPI for HTTP endpoints
 app = FastAPI()
@@ -718,7 +718,7 @@ async def clear_embedding_cache() -> str:
 async def health_check():
     return JSONResponse({
         "status": "healthy",
-        "service": "CloneMind MCP",
+        "service": "Peak AI 1.0 MCP",
         "version": "3.2-fixed",
         "provider": EMBEDDING_PROVIDER
     })
@@ -776,7 +776,7 @@ if __name__ == "__main__":
     
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║       CloneMind MCP Server v3.2-FIXED                        ║
+║       Peak AI 1.0 MCP Server v3.2-FIXED                      ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  ✓ OpenAI GPT-4o-mini (Chat)                                ║
 ║  ✓ {EMBEDDING_PROVIDER.upper()} Embeddings                  ║
