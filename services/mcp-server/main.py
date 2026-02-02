@@ -400,6 +400,10 @@ async def clear_semantic_cache_for_tenant(tenantId: str):
                 qdrant.delete_collection(name)
                 deleted_count += 1
         
+        # Also clear in-memory embedding cache
+        embedding_cache.clear()
+        print("🧼 Flushing in-memory vector cache")
+        
         return True
     except Exception as e:
         print(f"⚠ Cache clear error: {str(e)}")
@@ -580,8 +584,16 @@ Rules:
                     cost_tracker["total_tokens"] += response.usage.total_tokens
                     cost_tracker["chat_calls"] += 1
                 
-                # 4. Save to Cache
-                await save_to_semantic_cache(query, answer, tenantId, personaId)
+                
+                # 4. Save to Cache ONLY if we found actual data
+                # Don't cache "I don't have those details" to allow for future knowledge updates
+                negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
+                is_negative = any(trigger in answer.lower() for trigger in negative_triggers)
+                
+                if not is_negative:
+                    await save_to_semantic_cache(query, answer, tenantId, personaId)
+                else:
+                    print("ℹ Skipping cache save for 'No Data' response.")
                 
                 return answer
             except Exception as e:
