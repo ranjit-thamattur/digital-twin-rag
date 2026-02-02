@@ -340,6 +340,8 @@ class CloneMindStack(Stack):
                 "OAUTH_CLIENT_SECRET": webui_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
                 "REDIRECT_URI": "http://localhost:8080/oauth/oidc/callback",
+                "WEBUI_FAVICON_URL": "/static/favicon.png",
+                "WEBUI_LOGO_URL": "/static/logo.png",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )

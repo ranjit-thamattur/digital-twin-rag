@@ -16,6 +16,8 @@ services:
       GLOBAL_LOG_LEVEL: DEBUG
       BYPASS_MODEL_ACCESS_CONTROL: "true"
       WEBUI_URL: ${WEBUI_URL:-http://localhost:3000}
+      WEBUI_FAVICON_URL: "/static/favicon.png"
+      WEBUI_LOGO_URL: "/static/logo.png"
       # Cognito OIDC Authentication (Matches CloneMindStack)
       ENABLE_OAUTH_SIGNUP: "true"
       OAUTH_PROVIDER_NAME: "Cognito"
@@ -31,6 +33,9 @@ services:
       - ./pipelines:/app/backend/pipelines
       - ./peak-logo.jpg:/app/backend/static/favicon.png
       - ./peak-logo.jpg:/app/backend/static/logo.png
+      - ./peak-logo.jpg:/app/build/favicon.png
+      - ./peak-logo.jpg:/app/build/logo.png
+      - ./peak-logo.jpg:/app/build/favicon.ico
     networks:
       - ai_net
     depends_on:

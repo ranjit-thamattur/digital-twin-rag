@@ -10,6 +10,9 @@ RUN mkdir -p /app/backend/pipelines
 # Set the custom Peak AI logo
 COPY peak-logo.jpg /app/backend/static/favicon.png
 COPY peak-logo.jpg /app/backend/static/logo.png
+COPY peak-logo.jpg /app/build/favicon.png
+COPY peak-logo.jpg /app/build/logo.png
+COPY peak-logo.jpg /app/build/favicon.ico
 
 
 
