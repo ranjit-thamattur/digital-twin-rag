@@ -780,6 +780,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await get_cost_stats()
         elif tool_name == "clear_embedding_cache":
             result = await clear_embedding_cache()
+        elif tool_name == "clear_semantic_cache":
+            result = await clear_semantic_cache_for_tenant(**arguments)
         else:
             return JSONResponse({"error": f"Tool not found"}, status_code=404)
         
