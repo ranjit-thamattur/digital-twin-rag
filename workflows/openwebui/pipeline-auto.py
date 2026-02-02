@@ -24,7 +24,7 @@ class Pipeline:
         
     def __init__(self):
         self.type = "filter"
-        self.name = "Peak AI 1.0: "
+        self.name = "Peak AI 1.0: Your Digital Twin"
         self.valves = self.Valves()
         
     async def on_startup(self):

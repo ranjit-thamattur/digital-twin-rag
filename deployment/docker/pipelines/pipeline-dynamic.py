@@ -28,7 +28,7 @@ class Pipe:
         self.valves = self.Valves()
 
     def pipes(self) -> List[dict]:
-        return [{"id": "twin", "name": "AI Twin Mode"}]
+        return [{"id": "twin", "name": "Your Digital Twin"}]
 
     def get_tenant_dna(self, tenant_id: str):
         """Fetch the prompt DNA (tone, industry, etc.) from Tenant Service"""
