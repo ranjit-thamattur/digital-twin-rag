@@ -265,6 +265,7 @@
                 <div class="form-group">
                     <label>Tone</label>
                     <select name="tone">
+                        <option value="Authoritative">Authoritative (Peak Default)</option>
                         <option value="professional">Professional</option>
                         <option value="professional and technical">Professional and Technical</option>
                         <option value="strategic and executive-focused">Strategic and Executive</option>
@@ -352,6 +353,51 @@
         </div>
     </div>
 
+    <!-- Edit Tenant Modal -->
+    <div id="editTenantModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2 id="editModalTitle" style="margin-bottom: 25px;">Edit Tenant Configuration</h2>
+            <form id="editTenantForm" onsubmit="editTenant(event)">
+                <input type="hidden" id="editTenantId" name="tenant_id">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Company Name</label>
+                        <input type="text" id="editCompanyName" name="company_name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Industry</label>
+                        <input type="text" id="editIndustry" name="industry" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Tone (Voice of the AI)</label>
+                    <select id="editTone" name="tone">
+                        <option value="Authoritative">Authoritative (Peak Default)</option>
+                        <option value="Professional">Professional</option>
+                        <option value="Strategic and executive-focused">Strategic & Executive</option>
+                        <option value="Clear and demonstration-focused">Clear & Demo-friendly</option>
+                        <option value="Casual and friendly">Casual & Friendly</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Special Instructions (Detailed guidance for responses)</label>
+                    <textarea id="editSpecialInstructions" name="special_instructions" style="min-height: 150px;"
+                        placeholder="e.g., Focus on exploration stats, safety standards, and rig performance."></textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 25px;">
+                    <button type="submit" class="btn" style="flex: 2;">💾 Save Changes</button>
+                    <button type="button" class="btn btn-secondary" style="flex: 1;"
+                        onclick="closeEditTenantModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API_URL = '/api';
 
@@ -405,9 +451,10 @@
                     <div class="tenant-info"><strong>Tone:</strong> ${tenant.tone}</div>
                     <div class="tenant-info"><strong>Created:</strong> ${createdDate}</div>
                     <div class="tenant-actions">
-                        <button class="btn btn-small" onclick="openAddUserModal('${tenant.tenantId}', '${tenant.companyName}')">➕ Add User</button>
-                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenantId}')">👁️ View Details</button>
-                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenantId}', ${!tenant.isActive})">${tenant.isActive ? '🔒 Deactivate' : '✅ Activate'}</button>
+                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenantId}')">👁️ Details</button>
+                        <button class="btn btn-small" onclick="openEditTenantModal('${tenant.tenantId}')">✏️ Edit</button>
+                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenantId}', ${!tenant.isActive})">${tenant.isActive ? '🔒 Disable' : '✅ Enable'}</button>
+                        <button class="btn btn-small" style="background:#4ade80" onclick="openAddUserModal('${tenant.tenantId}', '${tenant.companyName}')">👤 +User</button>
                     </div>
                 </div>
             `;
@@ -446,10 +493,17 @@
                 const tenant = await response.json();
 
                 let usersList = tenant.users.map(u =>
-                    `${u.email} (${u.persona})`
+                    `- ${u.email} [${u.persona}]`
                 ).join('\n');
 
-                alert(`Tenant: ${tenant.companyName}\n\nUsers:\n${usersList || 'No users yet'}\n\nPersonas Available:\n- CEO\n- manager\n- analyst`);
+                alert(`🏢 Tenant: ${tenant.companyName}\n` +
+                    `----------------------------\n` +
+                    `🆔 ID: ${tenant.tenantId}\n` +
+                    `🏭 Industry: ${tenant.industry || 'N/A'}\n` +
+                    `🎭 Tone: ${tenant.tone}\n` +
+                    `📝 Instructions: ${tenant.specialInstructions || 'None'}\n\n` +
+                    `👥 Registered Users:\n${usersList || 'No users yet'}\n\n` +
+                    `🤖 Personas Available: CEO, manager, analyst`);
             } catch (error) {
                 console.error(error);
                 alert('Error loading tenant details');
@@ -521,6 +575,56 @@
                 }
             } catch (error) {
                 showMessage(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function openEditTenantModal(tenantId) {
+            try {
+                const response = await fetch(`${API_URL}/tenants/${tenantId}`);
+                const tenant = await response.json();
+
+                document.getElementById('editTenantId').value = tenant.tenantId;
+                document.getElementById('editModalTitle').textContent = `Edit ${tenant.companyName}`;
+                document.getElementById('editCompanyName').value = tenant.companyName;
+                document.getElementById('editIndustry').value = tenant.industry || '';
+                document.getElementById('editTone').value = tenant.tone || 'Authoritative';
+                document.getElementById('editSpecialInstructions').value = tenant.specialInstructions || '';
+
+                document.getElementById('editTenantModal').classList.add('active');
+            } catch (error) {
+                alert('Error fetching tenant details: ' + error.message);
+            }
+        }
+
+        function closeEditTenantModal() {
+            document.getElementById('editTenantModal').classList.remove('active');
+            document.getElementById('editTenantForm').reset();
+        }
+
+        async function editTenant(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const tenantId = formData.get('tenant_id');
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch(`${API_URL}/tenants/${tenantId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    showMessage(`✅ Tenant updated successfully!`, 'success');
+                    closeEditTenantModal();
+                    loadTenants();
+                } else {
+                    const error = await response.json();
+                    showMessage(`❌ Error: ${error.detail}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Error updating tenant: ${error.message}`, 'error');
             }
         }
 

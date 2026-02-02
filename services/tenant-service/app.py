@@ -46,6 +46,13 @@ class UserCreate(BaseModel):
     last_name: str
     persona: str
 
+class TenantUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    tone: Optional[str] = None
+    special_instructions: Optional[str] = None
+    industry: Optional[str] = None
+    company_name: Optional[str] = None
+
 class StatusUpdate(BaseModel):
     is_active: bool
 
@@ -175,15 +182,39 @@ async def get_tenant(tenant_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/tenants/{tenant_id}")
-async def update_tenant_status(tenant_id: str, status: StatusUpdate):
-    """Toggle tenant active status"""
+async def update_tenant(tenant_id: str, update: TenantUpdate):
+    """Update tenant configuration or status"""
     try:
+        update_expr = "SET "
+        attr_values = {}
+        
+        if update.is_active is not None:
+            update_expr += "isActive = :act, "
+            attr_values[":act"] = update.is_active
+        if update.tone is not None:
+            update_expr += "tone = :tone, "
+            attr_values[":tone"] = update.tone
+        if update.special_instructions is not None:
+            update_expr += "specialInstructions = :inst, "
+            attr_values[":inst"] = update.special_instructions
+        if update.industry is not None:
+            update_expr += "industry = :ind, "
+            attr_values[":ind"] = update.industry
+        if update.company_name is not None:
+            update_expr += "companyName = :cname, "
+            attr_values[":cname"] = update.company_name
+            
+        if not attr_values:
+            return {"success": True, "message": "No changes requested"}
+            
+        update_expr = update_expr.rstrip(", ")
+        
         table.update_item(
             Key={"tenantId": tenant_id},
-            UpdateExpression="SET isActive = :val",
-            ExpressionAttributeValues={":val": status.is_active}
+            UpdateExpression=update_expr,
+            ExpressionAttributeValues=attr_values
         )
-        return {"success": True}
+        return {"success": True, "message": "Tenant updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -233,7 +264,8 @@ async def lookup_user(email: str):
                         "tenantId": tenant["tenantId"],
                         "personaId": user.get("persona", "user"),
                         "companyName": tenant.get("companyName", "Unknown Corp"),
-                        "tone": tenant.get("tone", "professional")
+                        "tone": tenant.get("tone", "professional"),
+                        "specialInstructions": tenant.get("specialInstructions", "")
                     }
         
         return {"found": False, "tenantId": "default", "personaId": "user"}
