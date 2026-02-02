@@ -8,7 +8,7 @@ import boto3
 from datetime import datetime
 import uuid
 
-app = FastAPI(title="CloneMind Tenant Management API")
+app = FastAPI(title="Peak AI 1.0 Tenant Management API")
 
 # CORS
 app.add_middleware(

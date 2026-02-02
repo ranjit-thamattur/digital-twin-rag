@@ -1,6 +1,6 @@
 """
-title: Digital Twin RAG Pipeline (Multi-tenant)
-author: open-webui
+title: Peak AI 1.0 Pipeline (Multi-tenant)
+author: Peak AI 1.0
 date: 2024-01-13
 version: 2.0
 license: MIT
@@ -24,7 +24,7 @@ class Pipeline:
         
     def __init__(self):
         self.type = "filter"
-        self.name = "Digital Twin RAG (Multi-tenant)"
+        self.name = "Peak AI 1.0: "
         self.valves = self.Valves()
         
     async def on_startup(self):
