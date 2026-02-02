@@ -342,7 +342,7 @@ class CloneMindStack(Stack):
                 "REDIRECT_URI": "http://localhost:8080/oauth/oidc/callback",
                 "WEBUI_FAVICON_URL": "/static/peak-v1.jpg",
                 "WEBUI_LOGO_URL": "/static/peak-v1.jpg",
-                "DEPLOYMENT_ID": "v1-peak-branding",
+                "DEPLOYMENT_ID": "v3-exhaustive-branding",
                 "DEPLOY_TIMESTAMP": "2026-02-02-1445",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
