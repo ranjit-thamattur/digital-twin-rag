@@ -31,12 +31,12 @@ services:
     volumes:
       - openwebui_dt_data:/app/backend/data
       - ./pipelines:/app/backend/pipelines
-      - ./peak-v1.jpg:/app/backend/static/favicon.png
-      - ./peak-v1.jpg:/app/backend/static/logo.png
-      - ./peak-v1.jpg:/app/backend/static/peak-v1.jpg
-      - ./peak-v1.jpg:/app/build/favicon.png
-      - ./peak-v1.jpg:/app/build/logo.png
-      - ./peak-v1.jpg:/app/build/favicon.ico
+      - ./peak_logo.png:/app/backend/static/favicon.png
+      - ./peak_logo.png:/app/backend/static/logo.png
+      - ./peak_logo.png:/app/backend/static/peak_logo.png
+      - ./peak_logo.png:/app/build/favicon.png
+      - ./peak_logo.png:/app/build/logo.png
+      - ./peak_logo.png:/app/build/favicon.ico
     networks:
       - ai_net
     depends_on:

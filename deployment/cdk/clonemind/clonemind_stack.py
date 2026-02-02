@@ -340,10 +340,10 @@ class CloneMindStack(Stack):
                 "OAUTH_CLIENT_SECRET": webui_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
                 "REDIRECT_URI": "http://localhost:8080/oauth/oidc/callback",
-                "WEBUI_FAVICON_URL": "/static/peak-v1.jpg",
-                "WEBUI_LOGO_URL": "/static/peak-v1.jpg",
-                "DEPLOYMENT_ID": "v3-exhaustive-branding",
-                "DEPLOY_TIMESTAMP": "2026-02-02-1445",
+                "WEBUI_FAVICON_URL": "/static/peak_logo.png",
+                "WEBUI_LOGO_URL": "/static/peak_logo.png",
+                "DEPLOYMENT_ID": "v4-png-fix",
+                "DEPLOY_TIMESTAMP": "2026-02-02-1545",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
