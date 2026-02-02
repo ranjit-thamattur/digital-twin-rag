@@ -29,6 +29,8 @@ services:
     volumes:
       - openwebui_dt_data:/app/backend/data
       - ./pipelines:/app/backend/pipelines
+      - ./peak-logo.jpg:/app/backend/static/favicon.png
+      - ./peak-logo.jpg:/app/backend/static/logo.png
     networks:
       - ai_net
     depends_on:

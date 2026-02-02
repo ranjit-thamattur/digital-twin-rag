@@ -7,5 +7,9 @@ RUN pip install --no-cache-dir requests pydantic
 # Create pipelines folder
 RUN mkdir -p /app/backend/pipelines
 
+# Set the custom Peak AI logo
+COPY peak-logo.jpg /app/backend/static/favicon.png
+COPY peak-logo.jpg /app/backend/static/logo.png
+
 
 
