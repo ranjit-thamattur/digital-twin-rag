@@ -9,7 +9,7 @@ from clonemind.clonemind_stack import CloneMindStack
 app = cdk.App()
 CloneMindStack(app, "CloneMindStackV2",
     env=cdk.Environment(
-        account=os.getenv('CDK_DEFAULT_ACCOUNT'), 
+        account=os.getenv('CDK_DEFAULT_ACCOUNT', '543187302175'),
         region=os.getenv('CDK_DEFAULT_REGION', 'us-east-1')
     ),
 )

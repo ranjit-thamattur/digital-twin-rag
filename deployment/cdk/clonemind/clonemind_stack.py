@@ -12,6 +12,10 @@ from aws_cdk import (
     aws_s3_notifications as s3n,
     aws_secretsmanager as secretsmanager,
     aws_ssm as ssm,
+    aws_route53 as route53,
+    aws_route53_targets as targets,
+    aws_certificatemanager as acm,
+    aws_elasticloadbalancingv2 as elbv2,
     SecretValue,
     RemovalPolicy,
     Duration,
@@ -28,7 +32,7 @@ class CloneMindStack(Stack):
         # 1. NETWORK INFRASTRUCTURE - SINGLE AZ
         # ===================================================================
         vpc = ec2.Vpc(self, "CloneMindVPCV2", 
-            max_azs=1,
+            max_azs=2, # Internet-facing ALB requires at least 2 AZs
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -104,7 +108,9 @@ class CloneMindStack(Stack):
                 ],
                 callback_urls=[
                     "http://localhost:8080/oauth/callback",
-                    "http://localhost:8080/oauth/oidc/callback"
+                    "http://localhost:8080/oauth/oidc/callback",
+                    "https://ai.peakpa.com/oauth/callback",
+                    "https://ai.peakpa.com/oauth/oidc/callback"
                 ]
             ),
             generate_secret=True
@@ -339,7 +345,7 @@ class CloneMindStack(Stack):
                 "OAUTH_CLIENT_ID": webui_client.user_pool_client_id,
                 "OAUTH_CLIENT_SECRET": webui_client.user_pool_client_secret.unsafe_unwrap(),
                 "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
-                "REDIRECT_URI": "http://localhost:8080/oauth/oidc/callback",
+                "REDIRECT_URI": "https://ai.peakpa.com/oauth/oidc/callback",
                 "WEBUI_FAVICON_URL": "/static/peak_logo.png",
                 "WEBUI_LOGO_URL": "/static/peak_logo.png",
                 "DEPLOYMENT_ID": "v6-nuclear-branding",
@@ -477,34 +483,88 @@ def lambda_handler(event, context):
         )
 
         # ===================================================================
-        # 12. SECURITY GROUPS
+        # 12. PRODUCTION ACCESS: ALB + HTTPS
+        #     Domain: ai.peakpa.com  |  DNS managed externally (Hostinger/GoDaddy)
+        #     Certificate: ACM (us-east-1), validated via CNAME in DNS provider
+        # ===================================================================
+        
+        # 1. Import pre-existing ACM Certificate by ARN
+        #    Certificate covers ai.peakpa.com, validated in us-east-1.
+        cert = acm.Certificate.from_certificate_arn(
+            self, "SiteCert",
+            certificate_arn="arn:aws:acm:us-east-1:543187302175:certificate/4eb8dea0-7bb1-4711-8bb5-ecd8acc68cab"
+        )
+        
+        # 2. Application Load Balancer
+        lb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB",
+            vpc=vpc,
+            internet_facing=True,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+        )
+        
+        # 3. HTTP Listener -> Redirect to HTTPS
+        lb.add_listener("HttpListener",
+            port=80,
+            default_action=elbv2.ListenerAction.redirect(
+                protocol="HTTPS",
+                port="443",
+                permanent=True
+            )
+        )
+        
+        # 4. HTTPS Listener with imported certificate
+        https_listener = lb.add_listener("HttpsListener",
+            port=443,
+            certificates=[cert],
+            open=True
+        )
+        
+        # 5. Target: WebUI Service
+        https_listener.add_targets("WebUITarget",
+            port=8080,
+            targets=[webui_service],
+            health_check=elbv2.HealthCheck(
+                path="/",
+                interval=Duration.seconds(60)
+            )
+        )
+        
+        # Note: No Route53 Alias Record created.
+        # DNS is managed in Hostinger:
+        # Add a CNAME record:  ai  ->  <LoadBalancerDNS output>
+
+        # ===================================================================
+        # 13. SECURITY GROUPS
+
         # ===================================================================
         instance_sg = asg.connections.security_groups[0]
         
-        for port in [8080, 3000, 8000, 6333, 6334, 6379]:
-            instance_sg.add_ingress_rule(
-                ec2.Peer.any_ipv4(),
-                ec2.Port.tcp(port),
-                f"Public Access Port {port}"
-            )
+        # Allow traffic only from ALB to instances
+        instance_sg.connections.allow_from(
+            lb, 
+            ec2.Port.tcp(8080), 
+            "Allow WebUI Access from ALB"
+        )
+        # If other services need to be accessed via ALB, add them here.
+        # But initially we are only exposing WebUI at root.
         
         file_system.connections.allow_default_port_from(instance_sg)
 
         # ===================================================================
         # 13. OUTPUTS
         # ===================================================================
-        CfnOutput(self, "EC2InstanceInfo",
-            value="aws ec2 describe-instances --filters 'Name=tag:aws:autoscaling:groupName,Values=*FinalCapacity*' --query 'Reservations[0].Instances[0].PublicIpAddress' --output text",
-            description="Command to get EC2 Public IP"
+        CfnOutput(self, "ProductionURL",
+            value="https://ai.peakpa.com",
+            description="Production URL (after updating Hostinger CNAME)"
         )
         
-        CfnOutput(self, "ServiceEndpoints",
-            value="WebUI=http://EC2_IP:8080, Qdrant=http://EC2_IP:6333, MCP=http://EC2_IP:3000, Tenant=http://EC2_IP:8000",
-            description="Service Access URLs"
+        CfnOutput(self, "LoadBalancerDNS",
+            value=lb.load_balancer_dns_name,
+            description="ALB DNS Name"
         )
         
         CfnOutput(self, "PostDeploymentSteps",
-            value="1. Get EC2 IP. 2. Update Cognito callback to http://EC2_IP:8080/oauth/callback. 3. Update Lambda MCP_URL to http://EC2_IP:3000",
+            value="1. Verify https://ai.peakpa.com works. 2. Update Auth Callbacks if needed.",
             description="Manual steps after deployment"
         )
         
