@@ -33,6 +33,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: CDK Bootstrap
+        run: |
+          cd deployment/cdk
+          cdk bootstrap aws://543187302175/us-east-1
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
       - name: CDK Deploy
         run: |
           cd deployment/cdk
