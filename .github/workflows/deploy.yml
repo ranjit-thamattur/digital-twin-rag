@@ -1,4 +1,4 @@
-name: Deploy CloneMind QA
+name: Deploy CloneMind Production
 
 on:
   workflow_dispatch:
@@ -31,13 +31,11 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1 # Change to your preferred region
+          aws-region: us-east-1
 
       - name: CDK Deploy
         run: |
           cd deployment/cdk
           cdk deploy --require-approval never
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
