@@ -373,6 +373,8 @@ class CloneMindStack(Stack):
                 "DEPLOYMENT_ID": "v6-nuclear-branding",
                 "DEPLOY_TIMESTAMP": "2026-02-02-1545",
                 "OAUTH_PROVIDER_NAME": "Peak AI",
+                # Fix Cognito logout: Cognito needs client_id in the logout URL
+                "OAUTH_LOGOUT_REDIRECT_URL": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
