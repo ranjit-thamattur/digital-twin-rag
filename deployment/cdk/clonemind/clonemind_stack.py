@@ -372,6 +372,7 @@ class CloneMindStack(Stack):
                 "WEBUI_LOGO_URL": "/static/peak_logo.png",
                 "DEPLOYMENT_ID": "v6-nuclear-branding",
                 "DEPLOY_TIMESTAMP": "2026-02-02-1545",
+                "OAUTH_PROVIDER_NAME": "Peak AI",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
