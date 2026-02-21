@@ -492,6 +492,7 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed all records')}
 """),
             environment={
+                # Uses the static Elastic IP - will never change even if EC2 is replaced
                 "MCP_URL": f"http://{eip.attr_public_ip}:3000"
             },
             timeout=Duration.seconds(180),
