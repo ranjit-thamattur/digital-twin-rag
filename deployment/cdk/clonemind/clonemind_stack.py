@@ -468,7 +468,7 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed all records')}
 """),
             environment={
-                "MCP_URL": ""  # Update after deployment: http://EC2_IP:3000
+                "MCP_URL": "http://13.220.149.152:3000"
             },
             timeout=Duration.seconds(180),
             memory_size=512
@@ -543,6 +543,12 @@ def lambda_handler(event, context):
             lb, 
             ec2.Port.tcp(8080), 
             "Allow WebUI Access from ALB"
+        )
+        # Allow Lambda (outside VPC) to reach MCP server
+        instance_sg.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(3000),
+            "Allow MCP Server access from Lambda"
         )
         # If other services need to be accessed via ALB, add them here.
         # But initially we are only exposing WebUI at root.
