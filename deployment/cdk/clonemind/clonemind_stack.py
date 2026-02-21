@@ -77,6 +77,25 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
+        # 2b. ELASTIC IP - Static IP for EC2 (so Lambda MCP_URL never changes)
+        # ===================================================================
+        eip = ec2.CfnEIP(self, "CloneMindEIP", domain="vpc")
+
+        # Auto-associate EIP on instance startup via user data
+        asg.add_user_data(
+            "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+            f"aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id {eip.attr_allocation_id} --region $REGION --allow-reassociation"
+        )
+
+        # Grant permission to associate the EIP
+        asg.role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ec2:AssociateAddress"],
+                resources=["*"]
+            )
+        )
+        # ===================================================================
         # 3. COGNITO USER POOL
         # ===================================================================
         user_pool = cognito.UserPool(self, "UserPool",
@@ -468,7 +487,7 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps('Processed all records')}
 """),
             environment={
-                "MCP_URL": "http://13.220.149.152:3000"
+                "MCP_URL": f"http://{eip.attr_public_ip}:3000"
             },
             timeout=Duration.seconds(180),
             memory_size=512
@@ -578,6 +597,10 @@ def lambda_handler(event, context):
         CfnOutput(self, "WebUIClientId", value=webui_client.user_pool_client_id)
         CfnOutput(self, "AdminClientId", value=admin_client.user_pool_client_id)
         CfnOutput(self, "LambdaFunctionName", value=s3_processor.function_name)
+        CfnOutput(self, "ElasticIP",
+            value=eip.attr_public_ip,
+            description="Static Elastic IP for EC2 instance (used in Lambda MCP_URL)"
+        )
         
         # New output for OpenAI setup
         CfnOutput(self, "OpenAiProvider",
