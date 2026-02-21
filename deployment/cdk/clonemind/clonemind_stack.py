@@ -491,7 +491,7 @@ def lambda_handler(event, context):
         #    Certificate covers ai.peakpa.com, validated in us-east-1.
         cert = acm.Certificate.from_certificate_arn(
             self, "SiteCert",
-            certificate_arn="arn:aws:acm:us-east-1:543187302175:certificate/4eb8dea0-7bb1-4711-8bb5-ecd8acc68cab"
+            certificate_arn="arn:aws:acm:us-east-1:543187302175:certificate/f79ec0e6-6486-4d3e-b37f-e3e72dedcc94"
         )
         
         # 2. Application Load Balancer
