@@ -23,12 +23,12 @@ class Pipe:
 
     def __init__(self):
         self.type = "manifold"
-        self.id = "peak_ai_proxy"
+        self.id = "peak_ai"
         self.name = "Peak AI 1.0: "
         self.valves = self.Valves()
 
     def pipes(self) -> List[dict]:
-        return [{"id": "twin", "name": "Your Digital Twin"}]
+        return [{"id": "digital_twin", "name": "Your Digital Twin"}]
 
     def get_tenant_dna(self, tenant_id: str):
         """Fetch the prompt DNA (tone, industry, etc.) from Tenant Service"""
