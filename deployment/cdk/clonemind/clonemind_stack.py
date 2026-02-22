@@ -191,6 +191,7 @@ class CloneMindStack(Stack):
             )
 
         webui_ap = create_access_point("WebUIAP", "/openwebui")
+        qdrant_ap = create_access_point("QdrantAP", "/qdrant")
 
         # ===================================================================
         # 6. REDIS SERVICE
@@ -224,7 +225,20 @@ class CloneMindStack(Stack):
         qdrant_task = ecs.Ec2TaskDefinition(self, "QdrantTask", 
             network_mode=ecs.NetworkMode.BRIDGE
         )
-        
+
+        # Mount EFS so Qdrant vector data persists across instance replacements
+        qdrant_task.add_volume(
+            name="QdrantStorage",
+            efs_volume_configuration=ecs.EfsVolumeConfiguration(
+                file_system_id=file_system.file_system_id,
+                transit_encryption="ENABLED",
+                authorization_config=ecs.AuthorizationConfig(
+                    access_point_id=qdrant_ap.access_point_id,
+                    iam="ENABLED"
+                )
+            )
+        )
+
         qdrant_container = qdrant_task.add_container("QdrantContainer",
             image=ecs.ContainerImage.from_registry("qdrant/qdrant:latest"),
             memory_limit_mib=768,
@@ -235,7 +249,16 @@ class CloneMindStack(Stack):
             ecs.PortMapping(container_port=6333, host_port=6333),
             ecs.PortMapping(container_port=6334, host_port=6334)
         )
-        
+        qdrant_container.add_mount_points(
+            ecs.MountPoint(
+                container_path="/qdrant/storage",
+                source_volume="QdrantStorage",
+                read_only=False
+            )
+        )
+
+        file_system.grant_root_access(qdrant_task.task_role)
+
         qdrant_service = ecs.Ec2Service(self, "QdrantService", 
             cluster=cluster, 
             task_definition=qdrant_task,
