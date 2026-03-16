@@ -98,6 +98,48 @@ cost_tracker = {
 # Global debug log for cache operations
 cache_debug_log = []
 
+# ─────────────────────────────────────────────
+# BASIC PLAN: Off-topic / Casual Chat Guardrail
+# ─────────────────────────────────────────────
+OFF_TOPIC_PATTERNS = [
+    "tell me a joke", "write a poem", "write a story", "what is 2+2",
+    "who is your favourite", "what's the weather", "weather today",
+    "hello there", "what can you do", "write an email to my friend",
+    "translate this", "play a game", "what are your hobbies",
+    "who are you", "what are you", "do you like", "can you sing",
+    "give me a recipe", "what is the meaning of life", "tell me something fun",
+    "entertain me", "make me laugh", "write a rap", "write a poem"
+]
+
+BUSINESS_KEYWORDS = [
+    "revenue", "strategy", "client", "pipeline", "kpi", "report",
+    "growth", "forecast", "budget", "market", "product", "team",
+    "project", "risk", "compliance", "customer", "sales", "performance",
+    "invoice", "contract", "partner", "roadmap", "target", "objective",
+    "stakeholder", "quarter", "annual", "profit", "cost", "headcount",
+    "hiring", "onboard", "workflow", "process", "sla", "metrics", "data",
+    "analysis", "insight", "dashboard", "document", "policy", "procedure"
+]
+
+BASIC_GUARDRAIL_RESPONSE = (
+    "I'm your business AI Twin and I'm focused on helping you with "
+    "work-related queries. Please ask me something related to your "
+    "company, strategy, clients, or knowledge base. 💼"
+)
+
+def is_off_topic(query: str) -> bool:
+    """Returns True if the query is casual/off-topic for a Basic plan tenant."""
+    q = query.lower().strip()
+    # Block explicit casual patterns
+    if any(p in q for p in OFF_TOPIC_PATTERNS):
+        return True
+    # Very short query with no business keywords → likely casual
+    if len(q.split()) <= 5 and not any(k in q for k in BUSINESS_KEYWORDS):
+        return True
+    return False
+# ─────────────────────────────────────────────
+
+
 def get_text_hash(text: str) -> str:
     """Create a hash of the text for caching."""
     return hashlib.sha256(text.encode()).hexdigest()
@@ -515,16 +557,26 @@ async def generate_twin_response(
     tenantId: str, 
     system_prompt: str,
     personaId: Optional[str] = None,
-    messages: Optional[List[dict]] = None
+    messages: Optional[List[dict]] = None,
+    plan: Optional[str] = "basic"  # "basic" or "premium"
 ) -> str:
     """Full RAG Pipeline"""
     try:
+        # ── Basic Plan: Off-topic Guardrail (zero LLM cost) ──
+        if plan == "basic" and is_off_topic(query):
+            print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
+            return BASIC_GUARDRAIL_RESPONSE
+
+        # ── Per-plan limits ──
+        rag_limit   = 3    if plan == "basic" else 10
+        max_tokens  = 512  if plan == "basic" else 2048
+        history_len = 3    if plan == "basic" else 5
         # 1. Check Semantic Cache
         cached_answer = await get_semantic_cache(query, tenantId, personaId)
         if cached_answer:
             return f"{cached_answer}\n\n(Source: Semantic Cache 🚀)"
 
-        context = await search_knowledge_base(query, tenantId, personaId=personaId)
+        context = await search_knowledge_base(query, tenantId, personaId=personaId, limit=rag_limit)
         
         if openai_client is None:
             return "MCP Error: OpenAI API client not initialized."
@@ -542,7 +594,7 @@ async def generate_twin_response(
         openai_messages = [{"role": "system", "content": system_prompt}]
         
         if messages:
-            for msg in messages[-5:]:
+            for msg in messages[-history_len:]:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 if content:
@@ -573,7 +625,7 @@ Rules:
                 response = await asyncio.to_thread(
                     lambda: openai_client.chat.completions.create(
                         model="gpt-4o-mini",
-                        max_tokens=2048,
+                        max_tokens=max_tokens,
                         messages=openai_messages,
                         temperature=0.1
                     )

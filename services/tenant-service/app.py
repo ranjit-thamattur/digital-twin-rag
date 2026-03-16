@@ -38,6 +38,7 @@ class TenantCreate(BaseModel):
     special_instructions: str = ""
     admin_email: str
     admin_password: str
+    plan: str = "basic"  # "basic" or "premium"
 
 class UserCreate(BaseModel):
     email: str
@@ -52,6 +53,7 @@ class TenantUpdate(BaseModel):
     special_instructions: Optional[str] = None
     industry: Optional[str] = None
     company_name: Optional[str] = None
+    plan: Optional[str] = None  # "basic" or "premium"
 
 class StatusUpdate(BaseModel):
     is_active: bool
@@ -143,6 +145,7 @@ async def create_tenant(tenant: TenantCreate):
                 "specialInstructions": tenant.special_instructions,
                 "adminEmail": tenant.admin_email,
                 "isActive": True,
+                "plan": tenant.plan,  # "basic" or "premium"
                 "createdAt": datetime.now().isoformat(),
                 "users": [
                     {"email": tenant.admin_email, "persona": "CEO"}
@@ -203,16 +206,25 @@ async def update_tenant(tenant_id: str, update: TenantUpdate):
         if update.company_name is not None:
             update_expr += "companyName = :cname, "
             attr_values[":cname"] = update.company_name
+        if update.plan is not None:
+            update_expr += "#pl = :plan, "
+            attr_values[":plan"] = update.plan
             
         if not attr_values:
             return {"success": True, "message": "No changes requested"}
             
         update_expr = update_expr.rstrip(", ")
+
+        # Use ExpressionAttributeNames to handle reserved word 'plan'
+        expr_names = {}
+        if update.plan is not None:
+            expr_names["#pl"] = "plan"
         
         table.update_item(
             Key={"tenantId": tenant_id},
             UpdateExpression=update_expr,
-            ExpressionAttributeValues=attr_values
+            ExpressionAttributeValues=attr_values,
+            **(({"ExpressionAttributeNames": expr_names}) if expr_names else {})
         )
         return {"success": True, "message": "Tenant updated successfully"}
     except Exception as e:
@@ -265,7 +277,8 @@ async def lookup_user(email: str):
                         "personaId": user.get("persona", "user"),
                         "companyName": tenant.get("companyName", "Unknown Corp"),
                         "tone": tenant.get("tone", "professional"),
-                        "specialInstructions": tenant.get("specialInstructions", "")
+                        "specialInstructions": tenant.get("specialInstructions", ""),
+                        "plan": tenant.get("plan", "basic")  # default to basic
                     }
         
         return {"found": False, "tenantId": "default", "personaId": "user"}

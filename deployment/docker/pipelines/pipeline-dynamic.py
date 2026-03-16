@@ -68,6 +68,7 @@ class Pipe:
 
         tenant_id = lookup.get("tenantId", "default")
         persona_id = lookup.get("personaId", "user")
+        plan = lookup.get("plan", "basic")  # Default to basic for all pilot tenants
         
         # 3. Fetch Prompt DNA (Tone, Company Name)
         dna = self.get_tenant_dna(tenant_id)
@@ -90,6 +91,10 @@ class Pipe:
             if instructions:
                 system_prompt += f"\nSpecial Guidelines: {instructions}"
             system_prompt += "\nUse the provided knowledge context to answer accurately and cite your sources."
+            
+            # Basic plan: truncate system prompt to ~500 tokens (1500 chars)
+            if plan == "basic" and len(system_prompt) > 1500:
+                system_prompt = system_prompt[:1500] + "..."
         else:
             system_prompt = "You are a helpful AI assistant representing a professional organization. Use the provided context to answer questions accurately."
 
@@ -106,7 +111,8 @@ class Pipe:
                 "tenantId": tenant_id,
                 "personaId": persona_id,
                 "system_prompt": system_prompt,
-                "messages": body.get("messages", [])[:-1] # History
+                "messages": body.get("messages", [])[:-1], # History
+                "plan": plan  # Pass plan so MCP can enforce limits
             }
             
             response = requests.post(mcp_chat_url, json=payload, timeout=300)
