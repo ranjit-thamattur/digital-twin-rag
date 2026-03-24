@@ -1,0 +1,159 @@
+/* =====================================================
+   Peak AI — Custom Cognito Hosted UI Theme
+   Domain: ai.peakpa.com
+   ===================================================== */
+
+/* ─── Google Font Import ─── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ─── Root Variables ─── */
+:root {
+  --peak-primary: #0F4C81;       /* Deep navy blue */
+  --peak-accent:  #00C2A0;       /* Teal/green accent */
+  --peak-bg:      #F0F4F8;       /* Soft off-white background */
+  --peak-card:    #FFFFFF;
+  --peak-text:    #1A202C;
+  --peak-muted:   #718096;
+  --peak-border:  #CBD5E0;
+  --peak-radius:  12px;
+  --peak-shadow:  0 4px 24px rgba(15, 76, 129, 0.12);
+}
+
+/* ─── Page background ─── */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(135deg, #0F4C81 0%, #1A6FAF 50%, #00C2A0 100%);
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* ─── Login card ─── */
+.modal-content,
+.background-customizable {
+  background: linear-gradient(135deg, #0F4C81 0%, #1A6FAF 50%, #00C2A0 100%) !important;
+}
+
+.banner-customizable {
+  padding: 24px 0 12px 0;
+  background: transparent !important;
+}
+
+/* Logo container */
+.banner-customizable img {
+  width: 140px !important;
+  height: auto !important;
+}
+
+/* ─── Form container / white card ─── */
+.submitButton-customizable,
+.cognito-asf-ui-container,
+form {
+  background: var(--peak-card) !important;
+  border-radius: var(--peak-radius) !important;
+  box-shadow: var(--peak-shadow) !important;
+}
+
+/* ─── Labels ─── */
+.label-customizable {
+  color: var(--peak-text) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ─── Input fields ─── */
+.inputField-customizable {
+  border: 1.5px solid var(--peak-border) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-size: 14px !important;
+  color: var(--peak-text) !important;
+  background: #F7FAFC !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+  outline: none !important;
+}
+
+.inputField-customizable:focus {
+  border-color: var(--peak-primary) !important;
+  box-shadow: 0 0 0 3px rgba(15, 76, 129, 0.12) !important;
+  background: #FFFFFF !important;
+}
+
+/* ─── Primary CTA button ─── */
+.submitButton-customizable {
+  background: linear-gradient(135deg, var(--peak-primary), #1A6FAF) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  letter-spacing: 0.03em !important;
+  padding: 12px !important;
+  transition: opacity 0.2s, transform 0.1s !important;
+  cursor: pointer !important;
+}
+
+.submitButton-customizable:hover {
+  opacity: 0.92 !important;
+  transform: translateY(-1px) !important;
+}
+
+.submitButton-customizable:active {
+  transform: translateY(0) !important;
+}
+
+/* ─── Social / SSO provider buttons (Cognito login) ─── */
+.provider-customizable {
+  border: 1.5px solid var(--peak-border) !important;
+  border-radius: 8px !important;
+  background: #FFFFFF !important;
+  color: var(--peak-text) !important;
+  font-weight: 500 !important;
+  transition: background 0.2s, border-color 0.2s !important;
+}
+
+.provider-customizable:hover {
+  background: var(--peak-bg) !important;
+  border-color: var(--peak-primary) !important;
+}
+
+/* ─── Links ─── */
+.redirect-customizable a,
+a {
+  color: var(--peak-accent) !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+}
+
+a:hover {
+  text-decoration: underline !important;
+}
+
+/* ─── Error / info messages ─── */
+.errorMessage-customizable {
+  background: #FFF5F5 !important;
+  border: 1px solid #FC8181 !important;
+  border-radius: 8px !important;
+  color: #C53030 !important;
+  font-size: 13px !important;
+  padding: 10px 14px !important;
+}
+
+/* ─── "Don't have an account?" section ─── */
+.redirect-customizable {
+  color: var(--peak-muted) !important;
+  font-size: 13px !important;
+}
+
+/* ─── Page title ─── */
+.idpDescription-customizable {
+  color: var(--peak-muted) !important;
+  font-size: 14px !important;
+  text-align: center !important;
+}
+
+/* ─── Header text above form ─── */
+h1, h2, h3 {
+  color: var(--peak-text) !important;
+  font-weight: 700 !important;
+}
