@@ -166,13 +166,13 @@ class CloneMindStack(Stack):
         _logo_path = pathlib.Path(__file__).parent / "peak_logo_cognito.png"
         _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode("utf-8")
 
-        cognito.CfnUserPoolUICustomizationAttachment(
+        ui_attachment = cognito.CfnUserPoolUICustomizationAttachment(
             self, "PeakUICustomization",
             user_pool_id=user_pool.user_pool_id,
             client_id="ALL",       # Apply branding to ALL app clients
             css=_css_content,
-            image_file=_logo_b64,
         )
+        ui_attachment.add_property_override("ImageFile", _logo_b64)
 
         # ===================================================================
         # 4. STORAGE: S3 & DYNAMODB
