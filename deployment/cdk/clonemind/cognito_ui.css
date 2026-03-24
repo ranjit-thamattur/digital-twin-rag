@@ -22,132 +22,132 @@ body {
   background: transparent !important;
 }
 
-/* ─── Logo Injection (CSS Background fallback) ─── */
+/* ─── Logo Injection (Remote URL to avoid parser slashes error) ─── */
 .banner-customizable img {
   display: none !important;
 }
 .banner-customizable {
-  background-image: url("data:image/png;base64,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HOf0ZNCkXzO38/6uDq7ObmjN0hL9SbenX3N9v3mCJiAkMDWlsK3ZzdBv809Aun5o+e/p9V249/uWhm4DCH09ve+639O0Oq6G7/9ofNOHLAnU/96N0F98+ZNCkt98TfV89++Z05UfFB/OtoO6/fUKp1I97/at36r7Z3S7p6pUq9HjkNnIDD6XjoxU9eeP0fHj4uHNoB3hvewBvW91yX6tYOf9vU2T6099T80dN2fLV7dEIA7C3Xq3WHP//TksvR6U9989X77m72eE3hK6Bv0N3bI9XqjR/+8OfvK979qGbfvY9MDfIOfOvdV86ePn6XpLO3qU+N6pBGr3309aL75mRmnshS9Sr4Ntzm7oZun9B73Y69B8599va699564Iu1B1AWh9fF46O9G37D8K588jU8Y06NclOfe0ZInVqj7tHqj5XWPvPKBwsW3P/Q/KmPvzS7/HghH4eIDGqV+tixozC8lD0ZcK6Y12P0Y3dHD0u8/n7D13/MmjXp0emPHj906pXnp947d+rV3Y296fB7YjR67D788v5zK1asf336nKTI6GAAatUaxByT18p09PTo/X0Vn69e//7qT1Z9uWHTXnEvdG272F9p1OqMvWre7z65Z9yUpD9+3tPfp4G9pD6T093d39IubmjrX/L2H/8687fO9n4M6un91Grtu5+uOXE8H76I60yX0FfOayq67qO9m9e//8UXX2/f/fNxb8f9nB63276o3W09ZQXNzz8/H+3kP/5eGzQG7Y696XOnxP/9yeZefJatPndZre16XF/fS3X79mPnS+oe+u8Y6W9Hdf3x98ZonqS1r3N73z+zZ8mSJWN6u7pU6D67eHk7O7t4uzn2dve2SnoatAbtYp9VvPvi/vRzx/POnip96On7H5ka8ZshwF406Z2K4vrOnv6eHqna6NreI3G0tf3q481nz504e7L0ofmPjI4PHF9R3ICl9Y96gOtwOfw7v/jD0T+265Sqy9vP4fPee/Wr5iLp1D+9v+mH3b2tUkRle09Pd3+PnL3/mXmPD88XjGk0uod89H/66PJ6kO6zW2XoYjJ/mH7S3E6Y2F/1T603m60bGrFmbeunH78RGuGDTY9S3v99QpYl86D/+C2T/16E++3C0T92MDvzuv1U2S0L5r7Z207sN7C392DTozM6vM4Pz/r9t3t6OmV2dnbY9OjsHODz/O9Zszn/+Xk69Xat1pY49a9/3rD9Z7W9vR3+b/P2/u9r5Z09k97+qGZPHu+TqR+9e2L9un9h6v3D70e3+ObeGPrS7Xn6T/83p738Pfr7vF6B0Gf8w+3tXIn/RvfGzW6eLqNnhp962fD2X7e6eTr9QG442L9/h1dY0mO6W37dI6fM/84I9M/O8P/Oiv93u97YtbeL3ZkXv5O/x6vL/86K/3e79v882Y7E/7X8634t8T9GOnvX3q4Xv5O/xxtX+U9Gf3YdO/qXjS6u/7uPNo3+9/fK7nZ8YmU3Bf67R5fXg7x99D9GOv7vPto0+t/bP/NfVp/LrfSfvS/S/81GfVwnfP6f/fT37uFj/z9G+v827v96pXb79Lmj/68R6Yv+yYv+yYv+6S8XvH39XydX/Y8R6Yv+yYv+yYv+yYv+6S8XvP/v2n99XOnp9XCd8Pl/9Xv7/4T9E/976D9xH2p1OtoNfIduj/7R3/Y9pQpXp7R0Wl92D0i6UvS/C7N0T3PndF5v/g6v/f63T78n9O/r6vXn//DR5fUgvXndfrT0v035/3mxdvsc7uB3cfWf5n97pPr7/3vEufD++P/m4fWA/f95pLb7Z2P6fzdK/2uK/8vE/xjp7N37v/3f7+L6p/7XFf+XSf7vRjp7+f92pHZ6zWfIn8tB6X/N4p/e66/aI0R62K8O1YfK9f9HPrK8HmbpGv2Prv4XfE/Yn8v5X0+MvU3B/Kevu38fXf9fOOn/r0YmD/NfRuo/9v/I77XFf7i9vUv/332A/n996O/9f7eM/n919L+vJ3oOnZ2f+f91NPhffvS/L5V0/H87u6zR66D/2B8Lp+365v678P2vP/q7f8N0f37Z1/+8EaIovdGgNWogzO6X87O+XnN/v/u/+0AonZofXvdfYvFv3mgnA3Z2mK7+O/vPz+v79XWf/vXpS/7v3pBKT69H9m/2v0b/vwX+L78f/V89Unp9Yv96of7vRjr/f57y+v9pVP3vRuo/9r/G9X/tH6Pr/0f/+u8v3f/9KPP2tU6u0T/+u6H/fT2pf4/6r/F9ev39RxeK3/77pY/U2D0fP//N9vM6XfW3X5zeerLp3/9Iee+NpX/470/W796V/Z9/3vzrnuOnm1t/P3a2mX721O+f/+4/H7p7un11/1q06L7n08/8fNrvnx97++W3Xp93LzY7L977yKuvpXzzyXv/vPrS85++/6935/5tXmqS7vSxj+79f8yG+167V4VAAAAAElFTkSuQmCC\") !important;
-47:   background-repeat: no-repeat !important;
-48:   background-position: center !important;
-49:   background-size: contain !important;
-50:   height: 85px !important;
-51:   width: 100% !important;
-52:   margin-top: 20px !important;
-53: }
-54: 
-55: /* ─── Form container / white card ─── */
-56: .submitButton-customizable,
-57: .cognito-asf-ui-container,
-58: form {
-59:   background: #FFFFFF !important;
-60:   border-radius: 12px !important;
-61:   box-shadow: 0 4px 24px rgba(15, 76, 129, 0.12) !important;
-62: }
-63: 
-64: /* ─── Labels ─── */
-65: .label-customizable {
-66:   color: #1A202C !important;
-67:   font-weight: 500 !important;
-68:   font-size: 13px !important;
-69:   letter-spacing: 0.02em !important;
-70: }
-71: 
-72: /* ─── Input fields ─── */
-73: .inputField-customizable {
-74:   border: 1.5px solid #CBD5E0 !important;
-75:   border-radius: 8px !important;
-76:   padding: 10px 14px !important;
-77:   font-size: 14px !important;
-78:   color: #1A202C !important;
-79:   background: #F7FAFC !important;
-80:   outline: none !important;
-81: }
-82: 
-83: .inputField-customizable:focus {
-84:   border-color: #0F4C81 !important;
-85:   background: #FFFFFF !important;
-86: }
-87: 
-88: /* ─── Primary CTA button ─── */
-89: .submitButton-customizable {
-90:   background: linear-gradient(135deg, #0F4C81, #1A6FAF) !important;
-91:   border: none !important;
-92:   border-radius: 8px !important;
-93:   color: #FFFFFF !important;
-94:   font-weight: 600 !important;
-95:   font-size: 15px !important;
-96:   letter-spacing: 0.03em !important;
-97:   padding: 12px !important;
-98:   cursor: pointer !important;
-99: }
-100: 
-101: .submitButton-customizable:hover {
-102:   opacity: 0.92 !important;
-103: }
-104: 
-105: /* ─── Social / SSO provider buttons ─── */
-106: .provider-customizable {
-107:   border: 1.5px solid #CBD5E0 !important;
-108:   border-radius: 8px !important;
-109:   background: #FFFFFF !important;
-110:   color: #1A202C !important;
-111:   font-weight: 500 !important;
-112: }
-113: 
-114: .provider-customizable:hover {
-115:   background: #F0F4F8 !important;
-116:   border-color: #0F4C81 !important;
-117: }
-118: 
-119: /* ─── Links ─── */
-120: .redirect-customizable a,
-121: a {
-122:   color: #00C2A0 !important;
-123:   font-weight: 500 !important;
-124:   text-decoration: none !important;
-125: }
-126: 
-127: a:hover {
-128:   text-decoration: underline !important;
-129: }
-130: 
-131: /* ─── Error / info messages ─── */
-132: .errorMessage-customizable {
-133:   background: #FFF5F5 !important;
-134:   border: 1px solid #FC8181 !important;
-135:   border-radius: 8px !important;
-136:   color: #C53030 !important;
-137:   font-size: 13px !important;
-138:   padding: 10px 14px !important;
-139: }
-140: 
-141: /* ─── "Don't have an account?" section ─── */
-142: .redirect-customizable {
-143:   color: #718096 !important;
-144:   font-size: 13px !important;
-145: }
-146: 
-147: /* ─── Page title ─── */
-148: .idpDescription-customizable {
-149:   color: #718096 !important;
-150:   font-size: 14px !important;
-151:   text-align: center !important;
-152: }
-153: 
-154: /* ─── Header text ─── */
-155: h1, h2, h3 {
-156:   color: #1A202C !important;
-157:   font-weight: 700 !important;
-158: }
-159: 
-160: /* ─── UI Fixes for legacy Cognito parser ─── */
-161: input {
-162:   display: block;
-163:   width: 100%;
-164: }
-165: 
-166: .submitButton-customizable {
-167:   display: block;
-168:   width: 100%;
-169: }
+  background-image: url("https://peakpa.com/wp-content/uploads/2024/04/Untitled-design-23.png") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: contain !important;
+  height: 85px !important;
+  width: 100% !important;
+  margin-top: 20px !important;
+}
+
+/* ─── Form container / white card ─── */
+.submitButton-customizable,
+.cognito-asf-ui-container,
+form {
+  background: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 24px rgba(15, 76, 129, 0.12) !important;
+}
+
+/* ─── Labels ─── */
+.label-customizable {
+  color: #1A202C !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ─── Input fields ─── */
+.inputField-customizable {
+  border: 1.5px solid #CBD5E0 !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-size: 14px !important;
+  color: #1A202C !important;
+  background: #F7FAFC !important;
+  outline: none !important;
+}
+
+.inputField-customizable:focus {
+  border-color: #0F4C81 !important;
+  background: #FFFFFF !important;
+}
+
+/* ─── Primary CTA button ─── */
+.submitButton-customizable {
+  background: linear-gradient(135deg, #0F4C81, #1A6FAF) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  letter-spacing: 0.03em !important;
+  padding: 12px !important;
+  cursor: pointer !important;
+}
+
+.submitButton-customizable:hover {
+  opacity: 0.92 !important;
+}
+
+/* ─── Social / SSO provider buttons ─── */
+.provider-customizable {
+  border: 1.5px solid #CBD5E0 !important;
+  border-radius: 8px !important;
+  background: #FFFFFF !important;
+  color: #1A202C !important;
+  font-weight: 500 !important;
+}
+
+.provider-customizable:hover {
+  background: #F0F4F8 !important;
+  border-color: #0F4C81 !important;
+}
+
+/* ─── Links ─── */
+.redirect-customizable a,
+a {
+  color: #00C2A0 !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+}
+
+a:hover {
+  text-decoration: underline !important;
+}
+
+/* ─── Error / info messages ─── */
+.errorMessage-customizable {
+  background: #FFF5F5 !important;
+  border: 1px solid #FC8181 !important;
+  border-radius: 8px !important;
+  color: #C53030 !important;
+  font-size: 13px !important;
+  padding: 10px 14px !important;
+}
+
+/* ─── "Don't have an account?" section ─── */
+.redirect-customizable {
+  color: #718096 !important;
+  font-size: 13px !important;
+}
+
+/* ─── Page title ─── */
+.idpDescription-customizable {
+  color: #718096 !important;
+  font-size: 14px !important;
+  text-align: center !important;
+}
+
+/* ─── Header text ─── */
+h1, h2, h3 {
+  color: #1A202C !important;
+  font-weight: 700 !important;
+}
+
+/* ─── UI Fixes ─── */
+input {
+  display: block;
+  width: 100%;
+}
+
+.submitButton-customizable {
+  display: block;
+  width: 100%;
+}
