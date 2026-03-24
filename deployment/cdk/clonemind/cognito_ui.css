@@ -1,32 +1,23 @@
 /* =====================================================
    Peak AI — Custom Cognito Hosted UI Theme
-   Domain: ai.peakpa.com
+   STRICTLY ALLOWED CLASSES ONLY
    ===================================================== */
 
-/* ─── Page background ─── */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background: linear-gradient(135deg, #0F4C81 0%, #1A6FAF 50%, #00C2A0 100%);
-  min-height: 100vh;
-  margin: 0;
-}
-
-/* ─── Login card ─── */
-.modal-content,
+/* Page Background */
 .background-customizable {
   background: linear-gradient(135deg, #0F4C81 0%, #1A6FAF 50%, #00C2A0 100%) !important;
 }
 
-.banner-customizable {
-  padding: 24px 0 12px 0;
-  background: transparent !important;
+/* Modal / Card Background */
+.modal-content {
+  background: #FFFFFF !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 24px rgba(15, 76, 129, 0.12) !important;
 }
 
-/* ─── Logo Injection (Remote URL to avoid parser slashes error) ─── */
-.banner-customizable img {
-  display: none !important;
-}
+/* Logo Area */
 .banner-customizable {
+  padding: 24px 0 12px 0 !important;
   background-image: url("https://peakpa.com/wp-content/uploads/2024/04/Untitled-design-23.png") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
@@ -36,32 +27,24 @@ body {
   margin-top: 20px !important;
 }
 
-/* ─── Form container / white card ─── */
-.submitButton-customizable,
-.cognito-asf-ui-container,
-form {
-  background: #FFFFFF !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 24px rgba(15, 76, 129, 0.12) !important;
+/* Hide the default logo img since we use background-image */
+.banner-customizable img {
+  display: none !important;
 }
 
-/* ─── Labels ─── */
+/* Labels */
 .label-customizable {
   color: #1A202C !important;
   font-weight: 500 !important;
   font-size: 13px !important;
-  letter-spacing: 0.02em !important;
 }
 
-/* ─── Input fields ─── */
+/* Input Fields */
 .inputField-customizable {
   border: 1.5px solid #CBD5E0 !important;
   border-radius: 8px !important;
-  padding: 10px 14px !important;
-  font-size: 14px !important;
   color: #1A202C !important;
   background: #F7FAFC !important;
-  outline: none !important;
 }
 
 .inputField-customizable:focus {
@@ -69,7 +52,7 @@ form {
   background: #FFFFFF !important;
 }
 
-/* ─── Primary CTA button ─── */
+/* Primary Button */
 .submitButton-customizable {
   background: linear-gradient(135deg, #0F4C81, #1A6FAF) !important;
   border: none !important;
@@ -77,22 +60,19 @@ form {
   color: #FFFFFF !important;
   font-weight: 600 !important;
   font-size: 15px !important;
-  letter-spacing: 0.03em !important;
   padding: 12px !important;
-  cursor: pointer !important;
 }
 
 .submitButton-customizable:hover {
   opacity: 0.92 !important;
 }
 
-/* ─── Social / SSO provider buttons ─── */
+/* Social Buttons */
 .provider-customizable {
   border: 1.5px solid #CBD5E0 !important;
   border-radius: 8px !important;
   background: #FFFFFF !important;
   color: #1A202C !important;
-  font-weight: 500 !important;
 }
 
 .provider-customizable:hover {
@@ -100,54 +80,29 @@ form {
   border-color: #0F4C81 !important;
 }
 
-/* ─── Links ─── */
-.redirect-customizable a,
-a {
-  color: #00C2A0 !important;
-  font-weight: 500 !important;
-  text-decoration: none !important;
-}
-
-a:hover {
-  text-decoration: underline !important;
-}
-
-/* ─── Error / info messages ─── */
-.errorMessage-customizable {
-  background: #FFF5F5 !important;
-  border: 1px solid #FC8181 !important;
-  border-radius: 8px !important;
-  color: #C53030 !important;
-  font-size: 13px !important;
-  padding: 10px 14px !important;
-}
-
-/* ─── "Don't have an account?" section ─── */
+/* Links & Redirect Text */
 .redirect-customizable {
   color: #718096 !important;
   font-size: 13px !important;
 }
 
-/* ─── Page title ─── */
+.redirect-customizable a {
+  color: #00C2A0 !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+}
+
+/* Header Text (Class version) */
 .idpDescription-customizable {
   color: #718096 !important;
   font-size: 14px !important;
-  text-align: center !important;
 }
 
-/* ─── Header text ─── */
-h1, h2, h3 {
-  color: #1A202C !important;
-  font-weight: 700 !important;
-}
-
-/* ─── UI Fixes ─── */
-input {
-  display: block;
-  width: 100%;
-}
-
-.submitButton-customizable {
-  display: block;
-  width: 100%;
+/* Error Messages */
+.errorMessage-customizable {
+  background: #FFF5F5 !important;
+  border: 1px solid #FC8181 !important;
+  border-radius: 8px !important;
+  color: #C53030 !important;
+  padding: 10px 14px !important;
 }
