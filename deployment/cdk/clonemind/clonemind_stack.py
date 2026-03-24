@@ -158,15 +158,18 @@ class CloneMindStack(Stack):
         # ===================================================================
         # 3b. COGNITO HOSTED UI BRANDING — Peak AI
         # ===================================================================
-        _css_path = pathlib.Path(__file__).parent / "cognito_ui.css"
-        _css_content = _css_path.read_text()
-
-        cognito.CfnUserPoolUICustomizationAttachment(
-            self, "PeakUICustomization",
-            user_pool_id=user_pool.user_pool_id,
-            client_id="ALL",       # Apply branding to ALL app clients
-            css=_css_content,
-        )
+        # NOTE: Temporarily commented out due to strict/buggy Cognito CSS validator 
+        # in some regions. Apply branding manually in AWS Console for better feedback.
+        #
+        # _css_path = pathlib.Path(__file__).parent / "cognito_ui.css"
+        # _css_content = _css_path.read_text()
+        #
+        # cognito.CfnUserPoolUICustomizationAttachment(
+        #     self, "PeakUICustomization",
+        #     user_pool_id=user_pool.user_pool_id,
+        #     client_id="ALL",       # Apply branding to ALL app clients
+        #     css=_css_content,
+        # )
 
         # ===================================================================
         # 4. STORAGE: S3 & DYNAMODB
