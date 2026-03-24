@@ -3,48 +3,45 @@
    STRICTLY ALLOWED CLASSES ONLY
    ===================================================== */
 
-/* Page Background */
+/* Outer Page Background */
 .background-customizable {
   background: linear-gradient(135deg, #0F4C81 0%, #1A6FAF 50%, #00C2A0 100%) !important;
+  background-attachment: fixed !important;
 }
 
-/* Modal / Card Background */
-.modal-content {
-  background: #FFFFFF !important;
-  border-radius: 12px !important;
-  box-shadow: 0 4px 24px rgba(15, 76, 129, 0.12) !important;
-}
-
-/* Logo Area */
+/* Logo Area (Centering the Peak AI logo) */
 .banner-customizable {
-  padding: 24px 0 12px 0 !important;
+  padding: 30px 0 10px 0 !important;
   background-image: url("https://peakpa.com/wp-content/uploads/2024/04/Untitled-design-23.png") !important;
   background-repeat: no-repeat !important;
   background-position: center !important;
   background-size: contain !important;
-  height: 85px !important;
-  width: 100% !important;
-  margin-top: 20px !important;
+  height: 90px !important;
+  display: block !important;
+  margin: 0 auto !important;
 }
 
-/* Hide the default logo img since we use background-image */
+/* Hide default Cognito logo img */
 .banner-customizable img {
   display: none !important;
 }
 
-/* Labels */
+/* Labels (Email, Password, etc.) */
 .label-customizable {
   color: #1A202C !important;
-  font-weight: 500 !important;
-  font-size: 13px !important;
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
 }
 
 /* Input Fields */
 .inputField-customizable {
-  border: 1.5px solid #CBD5E0 !important;
-  border-radius: 8px !important;
+  border: 1px solid #CBD5E0 !important;
+  border-radius: 6px !important;
   color: #1A202C !important;
   background: #F7FAFC !important;
+  padding: 12px !important;
+  font-size: 15px !important;
 }
 
 .inputField-customizable:focus {
@@ -52,57 +49,51 @@
   background: #FFFFFF !important;
 }
 
-/* Primary Button */
+/* Login Button */
 .submitButton-customizable {
   background: linear-gradient(135deg, #0F4C81, #1A6FAF) !important;
   border: none !important;
-  border-radius: 8px !important;
+  border-radius: 6px !important;
   color: #FFFFFF !important;
-  font-weight: 600 !important;
-  font-size: 15px !important;
-  padding: 12px !important;
+  font-weight: 700 !important;
+  font-size: 16px !important;
+  padding: 14px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
 }
 
 .submitButton-customizable:hover {
-  opacity: 0.92 !important;
+  opacity: 0.9 !important;
 }
 
-/* Social Buttons */
+/* SSO / Social Buttons */
 .provider-customizable {
-  border: 1.5px solid #CBD5E0 !important;
-  border-radius: 8px !important;
+  border: 1px solid #CBD5E0 !important;
+  border-radius: 6px !important;
   background: #FFFFFF !important;
   color: #1A202C !important;
+  font-weight: 500 !important;
 }
 
-.provider-customizable:hover {
-  background: #F0F4F8 !important;
-  border-color: #0F4C81 !important;
-}
-
-/* Links & Redirect Text */
+/* Link area (Sign up, Forgot password) */
 .redirect-customizable {
   color: #718096 !important;
   font-size: 13px !important;
 }
 
-.redirect-customizable a {
-  color: #00C2A0 !important;
-  font-weight: 500 !important;
-  text-decoration: none !important;
-}
-
-/* Header Text (Class version) */
+/* Description text above SSO buttons */
 .idpDescription-customizable {
   color: #718096 !important;
   font-size: 14px !important;
+  text-align: center !important;
 }
 
 /* Error Messages */
 .errorMessage-customizable {
   background: #FFF5F5 !important;
   border: 1px solid #FC8181 !important;
-  border-radius: 8px !important;
+  border-radius: 6px !important;
   color: #C53030 !important;
-  padding: 10px 14px !important;
+  padding: 12px !important;
+  font-size: 13px !important;
 }
