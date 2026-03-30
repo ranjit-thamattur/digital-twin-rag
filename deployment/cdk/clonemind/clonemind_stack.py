@@ -398,7 +398,7 @@ class CloneMindStack(Stack):
             memory_limit_mib=1536,
             cpu=256,
             environment={
-                "WEBUI_NAME": "Peak AI 1.0",
+                "WEBUI_NAME": "Peak AI (Branded)",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
                 "ENABLE_SIGNUP": "true",
@@ -411,11 +411,13 @@ class CloneMindStack(Stack):
                 "REDIRECT_URI": "https://ai.peakpa.com/oauth/oidc/callback",
                 "WEBUI_FAVICON_URL": "/static/peak_logo.png",
                 "WEBUI_LOGO_URL": "/static/peak_logo.png",
-                "DEPLOYMENT_ID": "v6-nuclear-branding",
-                "DEPLOY_TIMESTAMP": "2026-02-02-1545",
+                "DEPLOYMENT_ID": "v8-logout-fix",
+                "DEPLOY_TIMESTAMP": "2026-03-31-1000",
                 "OAUTH_PROVIDER_NAME": "Peak AI",
-                # Fix Cognito logout: Cognito needs client_id in the logout URL
+                # Fix Cognito logout: Cognito needs client_id in the logout URL and DOES NOT support id_token_hint
+                # We set both variables to ensure maximal compatibility with OpenWebUI's auth logic
                 "OAUTH_LOGOUT_REDIRECT_URL": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
+                "OPENID_END_SESSION_ENDPOINT": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
