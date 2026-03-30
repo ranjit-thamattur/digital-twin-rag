@@ -134,7 +134,7 @@ def is_off_topic(query: str) -> bool:
     if any(p in q for p in OFF_TOPIC_PATTERNS):
         return True
     # Very short query with no business keywords → likely casual
-    if len(q.split()) <= 5 and not any(k in q for k in BUSINESS_KEYWORDS):
+    if len(q.split()) <= 2 and not any(k in q for k in BUSINESS_KEYWORDS):
         return True
     return False
 # ─────────────────────────────────────────────
