@@ -6,6 +6,7 @@ qdrant-client
 python-dotenv
 httpx
 redis
+boto3
 
 # OpenAI for chat and embeddings
 openai>=1.0.0
