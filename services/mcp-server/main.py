@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 import openai
 import redis
+import boto3
 
 # Load environment variables
 load_dotenv()
@@ -84,6 +85,12 @@ try:
 except Exception as e:
     print(f"❌ Redis connection failed: {e}")
 
+# DynamoDB Configuration
+TENANT_TABLE = os.getenv("TENANT_TABLE", "clonemind-tenants")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+tenant_metadata_table = dynamodb.Table(TENANT_TABLE)
+
 # Caching
 embedding_cache = {}
 
@@ -118,7 +125,8 @@ BUSINESS_KEYWORDS = [
     "invoice", "contract", "partner", "roadmap", "target", "objective",
     "stakeholder", "quarter", "annual", "profit", "cost", "headcount",
     "hiring", "onboard", "workflow", "process", "sla", "metrics", "data",
-    "analysis", "insight", "dashboard", "document", "policy", "procedure"
+    "analysis", "insight", "dashboard", "document", "policy", "procedure",
+    "peak", "profile", "company"
 ]
 
 BASIC_GUARDRAIL_RESPONSE = (
@@ -127,16 +135,53 @@ BASIC_GUARDRAIL_RESPONSE = (
     "company, strategy, clients, or knowledge base. 💼"
 )
 
-def is_off_topic(query: str) -> bool:
+def is_off_topic(query: str, tenant_keywords: Optional[List[str]] = None) -> bool:
     """Returns True if the query is casual/off-topic for a Basic plan tenant."""
     q = query.lower().strip()
+    
+    # Merge global business keywords with tenant-specific ones
+    all_business_keywords = BUSINESS_KEYWORDS
+    if tenant_keywords:
+        all_business_keywords = list(set(BUSINESS_KEYWORDS + [k.lower() for k in tenant_keywords]))
+
     # Block explicit casual patterns
     if any(p in q for p in OFF_TOPIC_PATTERNS):
         return True
     # Very short query with no business keywords → likely casual
-    if len(q.split()) <= 2 and not any(k in q for k in BUSINESS_KEYWORDS):
+    if len(q.split()) <= 2 and not any(k in q for k in all_business_keywords):
         return True
     return False
+
+async def get_tenant_metadata(tenantId: str) -> dict:
+    """Retrives metadata for a tenant from Redis cache or DynamoDB."""
+    cache_key = f"tenant:{tenantId}:metadata"
+    
+    # 1. Try Redis cache
+    try:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return json.loads(cached_data)
+    except Exception as e:
+        print(f"⚠ Redis cache fetch failed for metadata: {e}")
+
+    # 2. Fetch from DynamoDB
+    try:
+        response = await asyncio.to_thread(
+            lambda: tenant_metadata_table.get_item(Key={'tenantId': tenantId})
+        )
+        metadata = response.get('Item', {})
+        
+        # 3. Cache in Redis for 1 hour
+        if metadata:
+            try:
+                redis_client.setex(cache_key, 3600, json.dumps(metadata))
+            except Exception as e:
+                print(f"⚠ Failed to cache tenant metadata in Redis: {e}")
+        
+        return metadata
+    except Exception as e:
+        print(f"❌ Failed to fetch tenant metadata from DynamoDB: {e}")
+        return {}
 # ─────────────────────────────────────────────
 
 
@@ -562,15 +607,22 @@ async def generate_twin_response(
 ) -> str:
     """Full RAG Pipeline"""
     try:
+        # 0. Fetch Tenant Metadata (including plan and keywords)
+        metadata = await get_tenant_metadata(tenantId)
+        
+        # Override plan if set in metadata
+        actual_plan = metadata.get("plan", plan if plan else "basic")
+        tenant_keywords = metadata.get("guardrailKeywords", [])
+
         # ── Basic Plan: Off-topic Guardrail (zero LLM cost) ──
-        if plan == "basic" and is_off_topic(query):
+        if actual_plan == "basic" and is_off_topic(query, tenant_keywords):
             print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
             return BASIC_GUARDRAIL_RESPONSE
 
         # ── Per-plan limits ──
-        rag_limit   = 3    if plan == "basic" else 10
-        max_tokens  = 512  if plan == "basic" else 2048
-        history_len = 3    if plan == "basic" else 5
+        rag_limit   = 3    if actual_plan == "basic" else 10
+        max_tokens  = 512  if actual_plan == "basic" else 2048
+        history_len = 3    if actual_plan == "basic" else 5
         # 1. Check Semantic Cache
         cached_answer = await get_semantic_cache(query, tenantId, personaId)
         if cached_answer:
