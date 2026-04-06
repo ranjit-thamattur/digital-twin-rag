@@ -318,6 +318,7 @@ class CloneMindStack(Stack):
         )
         
         tenant_table.grant_read_write_data(mcp_task.task_role)
+        documents_bucket.grant_read(mcp_task.task_role)
         
         # REMOVED: No longer using Bedrock
         # mcp_task.task_role.add_to_policy(
@@ -411,8 +412,8 @@ class CloneMindStack(Stack):
                 "REDIRECT_URI": "https://ai.peakpa.com/oauth/oidc/callback",
                 "WEBUI_FAVICON_URL": "/static/peak_logo.png",
                 "WEBUI_LOGO_URL": "/static/peak_logo.png",
-                "DEPLOYMENT_ID": "v8-logout-fix",
-                "DEPLOY_TIMESTAMP": "2026-03-31-1000",
+                "DEPLOYMENT_ID": "v10-excel-support",
+                "DEPLOY_TIMESTAMP": "2026-04-06-2100",
                 "OAUTH_PROVIDER_NAME": "Peak AI",
                 # Fix Cognito logout: Cognito needs client_id in the logout URL and DOES NOT support id_token_hint
                 # We set both variables to ensure maximal compatibility with OpenWebUI's auth logic
@@ -496,25 +497,21 @@ def lambda_handler(event, context):
             
             print(f"Processing knowledge: s3://{bucket}/{key} for tenant: {tenant_id}")
             
-            response = s3.get_object(Bucket=bucket, Key=key)
-            content = response['Body'].read().decode('utf-8', errors='ignore')
-            
-            if not content:
-                print(f"Warning: File {key} is empty")
-                continue
-
+            # Forward ONLY bucket and key to MCP - let MCP handle binary parsing (Excel, PDF, etc)
             payload = {
-                "text": content[:250000], 
+                "s3_bucket": bucket,
+                "s3_key": key,
                 "tenantId": tenant_id,
                 "metadata": {
                     "filename": filename,
                     "s3_key": key,
                     "personaId": persona_id,
-                    "ingested_at": int(time.time())
+                    "ingested_at": int(time.time()),
+                    "original_event_id": record.get('eventID')
                 }
             }
             
-            print(f"Sending {len(payload['text'])} characters to MCP server...")
+            print(f"Forwarding S3 event to MCP server...")
             
             req = urllib.request.Request(
                 f"{mcp_url}/call/ingest_knowledge",
@@ -524,17 +521,17 @@ def lambda_handler(event, context):
             )
             
             try:
-                with urllib.request.urlopen(req, timeout=110) as response:
+                with urllib.request.urlopen(req, timeout=120) as response:
                     resp_body = response.read().decode('utf-8')
-                    print(f"Successfully processed {key}. MCP Response: {resp_body}")
+                    print(f"Successfully forwarded {key}. MCP Response: {resp_body}")
             except Exception as req_err:
-                print(f"Request to MCP failed for {key}: {str(req_err)}")
+                print(f"Forwarding to MCP failed for {key}: {str(req_err)}")
             
         except Exception as e:
             print(f"Unexpected error processing {key}: {str(e)}")
             continue
     
-    return {'statusCode': 200, 'body': json.dumps('Processed all records')}
+    return {'statusCode': 200, 'body': json.dumps('Forwarded all records')}
 """),
             environment={
                 # Uses the static Elastic IP - will never change even if EC2 is replaced

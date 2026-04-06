@@ -15,6 +15,8 @@ import uvicorn
 import openai
 import redis
 import boto3
+import pandas as pd
+import io
 
 # Load environment variables
 load_dotenv()
@@ -735,11 +737,45 @@ async def clear_tenant_knowledge(tenantId: str) -> str:
         return f"Wipe Error: {str(e)}"
 
 @mcp.tool()
-async def ingest_knowledge(text: str, tenantId: str, metadata: Optional[dict] = None, **kwargs) -> str:
-    """Ingest knowledge with explicit metadata handling."""
+async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metadata: Optional[dict] = None, **kwargs) -> str:
+    """Ingest knowledge from text or S3 (Excel/CSV/Text)."""
     try:
+        # 1. Handle S3 source if provided
+        s3_bucket = kwargs.get("s3_bucket")
+        s3_key = kwargs.get("s3_key")
+        
+        if s3_bucket and s3_key:
+            print(f"📥 [INGEST] Fetching from S3: s3://{s3_bucket}/{s3_key}")
+            try:
+                s3_client = boto3.client('s3')
+                response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+                file_content = response['Body'].read()
+                
+                # Detect file type and parse
+                ext = s3_key.split('.')[-1].lower()
+                if ext in ['xlsx', 'xls']:
+                    print(f"📊 Parsing Excel...")
+                    xl = pd.ExcelFile(io.BytesIO(file_content))
+                    sheets_text = []
+                    for sheet_name in xl.sheet_names:
+                        df = pd.read_excel(xl, sheet_name=sheet_name)
+                        # Filter out empty rows/cols to save tokens
+                        df = df.dropna(how='all').dropna(axis=1, how='all')
+                        if not df.empty:
+                            sheets_text.append(f"SHEET: {sheet_name}\n{df.to_csv(index=False, sep='|')}")
+                    text = "\n\n---\n\n".join(sheets_text)
+                elif ext == 'csv':
+                    print(f"📄 Parsing CSV...")
+                    df = pd.read_csv(io.BytesIO(file_content))
+                    text = df.to_csv(index=False, sep='|')
+                else:
+                    # Treat as text
+                    text = file_content.decode('utf-8', errors='ignore')
+            except Exception as s3_err:
+                return f"S3 Error: {str(s3_err)}"
+
         if not text or not text.strip():
-            return "Error: Text is empty"
+            return "Error: Text content is empty after parsing"
         
         # Ensure metadata is a dict and capture top-level filename info
         if metadata is None:
