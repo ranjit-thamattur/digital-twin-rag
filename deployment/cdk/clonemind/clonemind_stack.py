@@ -402,7 +402,8 @@ class CloneMindStack(Stack):
                 "WEBUI_NAME": "Peak AI (Branded)",
                 "ENABLE_PIPELINE_MODE": "true",
                 "WEBUI_AUTH": "true",
-                "ENABLE_SIGNUP": "true",
+                "ENABLE_SIGNUP": "false",
+                "ENABLE_LOGIN_FORM": "true",
                 "ENABLE_OAUTH_SIGNUP": "true",
                 "DEFAULT_USER_ROLE": "user",
                 "PORT": "8080",
@@ -419,6 +420,9 @@ class CloneMindStack(Stack):
                 # We set both variables to ensure maximal compatibility with OpenWebUI's auth logic
                 "OAUTH_LOGOUT_REDIRECT_URL": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
                 "OPENID_END_SESSION_ENDPOINT": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
+                "SHOW_ADMIN_DETAILS": "false",
+                "WEBUI_SHOW_WHATS_NEW_MODAL": "false",
+                "CUSTOM_FOOTER": "<style>.oauth-provider-button, #oauth-login-button { background-color: #FF8C00 !important; color: white !important; border: none !important; transition: all 0.3s ease; } .oauth-provider-button:hover { background-color: #e67e00 !important; transform: scale(1.02); }</style>Tenants: Please use the 'Continue with Peak AI' button above for secure access.",
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
         )
