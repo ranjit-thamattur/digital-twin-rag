@@ -9,6 +9,7 @@ redis
 boto3
 pandas
 openpyxl
+python-docx
 
 # OpenAI for chat and embeddings
 openai>=1.0.0

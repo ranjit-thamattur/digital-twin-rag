@@ -17,6 +17,7 @@ import redis
 import boto3
 import pandas as pd
 import io
+import docx
 
 # Load environment variables
 load_dotenv()
@@ -768,6 +769,10 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     print(f"📄 Parsing CSV...")
                     df = pd.read_csv(io.BytesIO(file_content))
                     text = df.to_csv(index=False, sep='|')
+                elif ext == 'docx':
+                    print(f"📝 Parsing Word Document...")
+                    doc = docx.Document(io.BytesIO(file_content))
+                    text = "\n".join([para.text for para in doc.paragraphs])
                 else:
                     # Treat as text
                     text = file_content.decode('utf-8', errors='ignore')
@@ -934,6 +939,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await clear_embedding_cache()
         elif tool_name == "clear_semantic_cache":
             result = await clear_semantic_cache_for_tenant(**arguments)
+        elif tool_name == "clear_tenant_knowledge":
+            result = await clear_tenant_knowledge(**arguments)
         else:
             return JSONResponse({"error": f"Tool not found"}, status_code=404)
         
