@@ -384,7 +384,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             collection_name=cache_collection,
             vector=vector,
             limit=1,
-            score_threshold=0.88
+            score_threshold=0.96  # Increased from 0.88 to prevent over-matching
         )
         
         log_entry = {
@@ -416,7 +416,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
                 log_entry["reason"] = "No cache_id in vector payload"
         else:
             log_entry["score"] = 0
-            log_entry["reason"] = "No match above 0.88"
+            log_entry["reason"] = "No match above 0.96"
         
         cache_debug_log.append(log_entry)
         if len(cache_debug_log) > 20: cache_debug_log.pop(0)
