@@ -500,46 +500,55 @@ async def clear_semantic_cache_for_tenant(tenantId: str):
         return False
 
 @mcp.tool()
-async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[str] = None, limit: Optional[int] = 10) -> str:
-    """Search tenant's knowledge base"""
+async def search_knowledge_base(query: str, tenantId: str = "", limit: int = 5, personaId: str = "ceo", filename: Optional[str] = None) -> str:
+    """Search the knowledge base for a specific tenant and persona. Use 'filename' to restrict search to a specific document."""
     if not tenantId or not query or not query.strip():
-        print(f"⚠ Skipping search: No tenantId or empty query")
-        return ""
+        return "Please provide both tenantId and a search query."
         
     try:
-        # Skip OpenWebUI background tasks
-        if len(query.strip()) < 2:
-            return "" # Skip very short noise
-
+        # 1. Clean inputs
         tenantId = tenantId.strip().lower()
-        
         ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
-        persona_raw = str(personaId).strip().lower() if personaId else None
-        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
+        persona_raw = str(personaId).strip().lower() if personaId else "ceo"
+        active_persona = persona_raw if persona_raw not in ignored_personas else "global"
         
-        # ✅ PERSONA-BASED COLLECTION: tenant_id + persona_id
+        # 2. Collection Name
         collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
+        
+        # 3. Handle Contextual References
+        # If the query contains "this sheet", "it", "that document" and a filename is provided, 
+        # we treat the filename as the primary filter.
+        context_words = ["this sheet", "this document", "that sheet", "the file", "the sheet", "it"]
+        is_contextual = any(word in query.lower() for word in context_words)
         
         search_query = query
         if len(query.split()) <= 4:
             search_query = f"The {query} and key metrics or performance data"
 
-        print(f"🔍 [SEARCH] Collection: {collection_name} | Persona: {active_persona} | Query: '{search_query[:50]}...'")
+        print(f"🔍 [SEARCH] Collection: {collection_name} | Persona: {active_persona} | Filename Filter: {filename} | Query: '{search_query[:50]}...'")
         
         vector = await get_embedding(search_query)
 
         # 4. Build Filter (STRICT ISOLATION)
-        # Even with persona collections, we keep the filter for double-safety
-        query_filter = models.Filter(
-            must=[
+        must_filters = [
+            models.FieldCondition(
+                key="personaId",
+                match=models.MatchValue(value=active_persona)
+            )
+        ]
+        
+        # Add Filename filter if provided
+        if filename:
+            must_filters.append(
                 models.FieldCondition(
-                    key="personaId",
-                    match=models.MatchValue(value=active_persona.lower())
+                    key="filename",
+                    match=models.MatchValue(value=filename)
                 )
-            ]
-        )
+            )
+            
+        query_filter = models.Filter(must=must_filters)
 
-        # ✅ HIGH-COMPATIBILITY SEARCH: Using robust helper
+        # 5. Execute Search
         search_result = await asyncio.to_thread(
             robust_qdrant_search,
             collection_name=collection_name,
@@ -551,16 +560,12 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
         formatted_results = []
         for i, res in enumerate(search_result):
             text = res.payload.get("text", "No text found")
-            
-            # ✅ ROBUST SOURCE DETECTION: Handle different casing/keys
             source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Unknown Document"
             sheet = res.payload.get("sheet_name")
-            
             hit_persona = res.payload.get("personaId", "None")
             score = getattr(res, 'score', 0)
             
-            # Diagnostic print
-            print(f"  - Hit #{i+1}: {source} {'['+sheet+']' if sheet else ''} [Score: {score:.4f}] [Tag: {hit_persona}]")
+            print(f"  - Hit #{i+1}: {source} {'['+sheet+']' if sheet else ''} [Score: {score:.4f}]")
             
             citation = f"DOCUMENT: {source}"
             if sheet:
@@ -568,8 +573,9 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             
             formatted_results.append(f"{citation} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
-        if not formatted_results and active_persona != "global":
-            print(f"⚠ [SEARCH] No results in '{collection_name}'. Falling back to global.")
+        if not formatted_results and active_persona != "global" and not filename:
+            # Fallback to global ONLY if no filename filter was used
+            print(f"⚠ [SEARCH] No results. Falling back to global.")
             global_collection = f"{tenantId.replace('-', '_')}_global"
             if qdrant.collection_exists(global_collection):
                 global_filter = models.Filter(
@@ -582,16 +588,12 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
                     limit=limit,
                     query_filter=global_filter
                 )
-                for i, res in enumerate(search_result):
-                    text = res.payload.get("text", "No text found")
-                    source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Global Document"
-                    formatted_results.append(f"DOCUMENT: {source} (Global)\nCONTENT: {text}\n---")
+                for res in search_result:
+                    text = res.payload.get("text", "")
+                    source = res.payload.get("filename", "Global Source")
+                    formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
 
-        if not formatted_results:
-            print(f"⚠ [SEARCH] Zero results found in all target collections")
-            return ""
-
-        return "\n\n".join(formatted_results)
+        return "\n\n".join(formatted_results) if formatted_results else "No relevant information found."
     except Exception as e:
         # Graceful handling for missing collections or temporary issues
         error_msg = str(e).lower()
