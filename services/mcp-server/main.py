@@ -554,14 +554,19 @@ async def search_knowledge_base(query: str, tenantId: str, personaId: Optional[s
             
             # ✅ ROBUST SOURCE DETECTION: Handle different casing/keys
             source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Unknown Document"
+            sheet = res.payload.get("sheet_name")
             
             hit_persona = res.payload.get("personaId", "None")
             score = getattr(res, 'score', 0)
             
             # Diagnostic print
-            print(f"  - Hit #{i+1}: {source} [Score: {score:.4f}] [Tag: {hit_persona}]")
+            print(f"  - Hit #{i+1}: {source} {'['+sheet+']' if sheet else ''} [Score: {score:.4f}] [Tag: {hit_persona}]")
             
-            formatted_results.append(f"DOCUMENT: {source} (Persona: {hit_persona})\nCONTENT: {text}\n---")
+            citation = f"DOCUMENT: {source}"
+            if sheet:
+                citation += f" [SHEET: {sheet}]"
+            
+            formatted_results.append(f"{citation} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
         if not formatted_results and active_persona != "global":
             print(f"⚠ [SEARCH] No results in '{collection_name}'. Falling back to global.")
@@ -755,16 +760,28 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                 # Detect file type and parse
                 ext = s3_key.split('.')[-1].lower()
                 if ext in ['xlsx', 'xls']:
-                    print(f"📊 Parsing Excel...")
+                    print(f"📊 Parsing Excel with Multi-Sheet Isolation...")
                     xl = pd.ExcelFile(io.BytesIO(file_content))
-                    sheets_text = []
+                    total_successful_chunks = 0
+                    
                     for sheet_name in xl.sheet_names:
                         df = pd.read_excel(xl, sheet_name=sheet_name)
-                        # Filter out empty rows/cols to save tokens
                         df = df.dropna(how='all').dropna(axis=1, how='all')
                         if not df.empty:
-                            sheets_text.append(f"SHEET: {sheet_name}\n{df.to_csv(index=False, sep='|')}")
-                    text = "\n\n---\n\n".join(sheets_text)
+                            sheet_text = f"SHEET: {sheet_name}\n{df.to_csv(index=False, sep='|')}"
+                            
+                            # Update metadata for this specific sheet
+                            sheet_metadata = {**(metadata or {}), "sheet_name": sheet_name}
+                            
+                            # Recursive call or inline ingestion for this sheet
+                            sheet_res = await ingest_knowledge(
+                                text=sheet_text, 
+                                tenantId=tenantId, 
+                                metadata=sheet_metadata
+                            )
+                            print(f"  - Sheet '{sheet_name}' result: {sheet_res}")
+                    
+                    return f"Successfully ingested multi-sheet Excel: {s3_key}"
                 elif ext == 'csv':
                     print(f"📄 Parsing CSV...")
                     df = pd.read_csv(io.BytesIO(file_content))
