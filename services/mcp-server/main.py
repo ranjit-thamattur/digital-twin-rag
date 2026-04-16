@@ -772,7 +772,19 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                 elif ext == 'docx':
                     print(f"📝 Parsing Word Document...")
                     doc = docx.Document(io.BytesIO(file_content))
-                    text = "\n".join([para.text for para in doc.paragraphs])
+                    
+                    # Extract from paragraphs
+                    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                    
+                    # Extract from tables
+                    table_text = []
+                    for table in doc.tables:
+                        for row in table.rows:
+                            row_data = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                            if row_data:
+                                table_text.append(" | ".join(row_data))
+                    
+                    text = "\n".join(paragraphs + table_text)
                 else:
                     # Treat as text
                     text = file_content.decode('utf-8', errors='ignore')
