@@ -817,8 +817,8 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     if not pdf_pages:
                         return "Error: No extractable text found in PDF"
                     text = "\n\n".join(pdf_pages)
-                elif ext in ['pptx', 'ppt']:
-                    print(f"📊 Parsing PowerPoint presentation...")
+                elif ext == 'pptx':
+                    print(f"📊 Parsing PowerPoint (.pptx) presentation...")
                     prs = PptxPresentation(io.BytesIO(file_content))
                     slide_texts = []
                     for slide_num, slide in enumerate(prs.slides, start=1):
@@ -831,6 +831,8 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     if not slide_texts:
                         return "Error: No extractable text found in PowerPoint"
                     text = "\n\n".join(slide_texts)
+                elif ext == 'ppt':
+                    return "Error: Old binary .ppt format is not supported. Please save the file as .pptx (PowerPoint 2007+) and re-upload."
                 else:
                     # Treat as text
                     text = file_content.decode('utf-8', errors='ignore')
