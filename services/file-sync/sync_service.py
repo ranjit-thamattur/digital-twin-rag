@@ -46,12 +46,15 @@ def get_user_context(email):
             data = response.json()
             if data.get("found"):
                 return data["tenantId"], data.get("personaId", "user")
+        print(f"⚠️ Tenant lookup for {email} returned status {response.status_code}")
     except Exception as e:
-        print(f"Tenant Lookup Error: {e}")
+        print(f"Tenant Lookup Error for {email}: {e}")
+    print(f"⚠️ Falling back to default_tenant for {email}")
     return "default_tenant", "user"
 
 def sync_to_s3():
     if not os.path.exists(OPENWEBUI_DB):
+        print(f"⚠️ DB not found at {OPENWEBUI_DB}, skipping sync")
         return
 
     processed = load_processed_files()
@@ -65,10 +68,18 @@ def sync_to_s3():
         cursor.execute("SELECT id, user_id, filename, path FROM file")
         files = cursor.fetchall()
         
+        print(f"📂 Found {len(files)} total files, {len(processed)} already processed")
+        
         for f in files:
             if f['id'] in processed:
                 continue
-                
+
+            filename = f['filename']
+            source_path = f['path']
+            ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'unknown'
+
+            print(f"📄 Processing: {filename} (ext={ext}, path={source_path})")
+            
             # 1. Get User Email
             cursor.execute("SELECT email FROM user WHERE id = ?", (f['user_id'],))
             user = cursor.fetchone()
@@ -76,34 +87,43 @@ def sync_to_s3():
             
             # 2. Get Tenant & Persona Context
             tenant_id, persona_id = get_user_context(email)
+            print(f"   Tenant: {tenant_id} | Persona: {persona_id}")
             
-            # 3. Upload to S3 (Path: tenantId/personaId/filename)
-            source_path = f['path']
+            # 3. Check file exists on disk before attempting upload
             if not os.path.exists(source_path):
+                print(f"   ⚠️ SKIPPED - File path does not exist on disk: {source_path}")
+                # Do NOT mark as processed - retry next cycle in case it appears later
                 continue
                 
-            s3_key = f"{tenant_id}/{persona_id}/{f['filename']}"
-            print(f"Syncing {f['filename']} to s3://{S3_BUCKET}/{s3_key}")
+            s3_key = f"{tenant_id}/{persona_id}/{filename}"
+            print(f"   ⬆️ Uploading to s3://{S3_BUCKET}/{s3_key}")
             
-            s3_client.upload_file(
-                source_path, 
-                S3_BUCKET, 
-                s3_key,
-                ExtraArgs={
-                    'Metadata': {
-                        'tenantId': tenant_id,
-                        'personaId': persona_id
+            try:
+                s3_client.upload_file(
+                    source_path, 
+                    S3_BUCKET, 
+                    s3_key,
+                    ExtraArgs={
+                        'Metadata': {
+                            'tenantId': tenant_id,
+                            'personaId': persona_id
+                        }
                     }
-                }
-            )
-            
-            # 4. Mark as processed
-            save_processed_file(f['id'])
-            processed.add(f['id'])
+                )
+                print(f"   ✅ Upload successful: {s3_key}")
+                
+                # 4. Mark as processed ONLY after successful upload
+                save_processed_file(f['id'])
+                processed.add(f['id'])
+                
+            except Exception as upload_err:
+                print(f"   ❌ S3 Upload FAILED for {filename}: {upload_err}")
             
         conn.close()
     except Exception as e:
         print(f"Sync Error: {e}")
+        import traceback
+        print(traceback.format_exc())
 
 if __name__ == "__main__":
     print(f"Starting File Sync for bucket: {S3_BUCKET}")
