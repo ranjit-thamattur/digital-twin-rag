@@ -18,6 +18,8 @@ import boto3
 import pandas as pd
 import io
 import docx
+import pdfplumber
+from pptx import Presentation as PptxPresentation
 
 # Load environment variables
 load_dotenv()
@@ -804,6 +806,31 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                                 table_text.append(" | ".join(row_data))
                     
                     text = "\n".join(paragraphs + table_text)
+                elif ext == 'pdf':
+                    print(f"📄 Parsing PDF document...")
+                    pdf_pages = []
+                    with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                        for page_num, page in enumerate(pdf.pages, start=1):
+                            page_text = page.extract_text()
+                            if page_text and page_text.strip():
+                                pdf_pages.append(f"PAGE {page_num}:\n{page_text.strip()}")
+                    if not pdf_pages:
+                        return "Error: No extractable text found in PDF"
+                    text = "\n\n".join(pdf_pages)
+                elif ext in ['pptx', 'ppt']:
+                    print(f"📊 Parsing PowerPoint presentation...")
+                    prs = PptxPresentation(io.BytesIO(file_content))
+                    slide_texts = []
+                    for slide_num, slide in enumerate(prs.slides, start=1):
+                        slide_content = []
+                        for shape in slide.shapes:
+                            if hasattr(shape, 'text') and shape.text.strip():
+                                slide_content.append(shape.text.strip())
+                        if slide_content:
+                            slide_texts.append(f"SLIDE {slide_num}:\n" + "\n".join(slide_content))
+                    if not slide_texts:
+                        return "Error: No extractable text found in PowerPoint"
+                    text = "\n\n".join(slide_texts)
                 else:
                     # Treat as text
                     text = file_content.decode('utf-8', errors='ignore')

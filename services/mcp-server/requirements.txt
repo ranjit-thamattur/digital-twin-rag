@@ -10,6 +10,8 @@ boto3
 pandas
 openpyxl
 python-docx
+pdfplumber
+python-pptx
 
 # OpenAI for chat and embeddings
 openai>=1.0.0
