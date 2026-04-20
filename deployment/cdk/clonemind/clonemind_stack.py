@@ -483,25 +483,25 @@ def lambda_handler(event, context):
         print("CRITICAL: MCP_URL not configured in environment variables")
         return {'statusCode': 500, 'body': 'MCP_URL not set'}
     
-    print(f"Starting ingestion process. MCP URL: {mcp_url}")
+            print(f"Starting ingestion process. MCP URL: {mcp_url}")
     
     for record in event.get('Records', []):
+        key = "unknown"
         try:
             bucket = record['s3']['bucket']['name']
             key = urllib.parse.unquote_plus(record['s3']['object']['key'])
             parts = key.split('/')
             
             if len(parts) < 3:
-                print(f"Skipping {key}: path does not follow 'tenant/persona/file' structure")
+                print(f"⚠️ Skipping {key}: path does not follow 'tenant/persona/file' structure")
                 continue
             
             tenant_id = parts[0]
             persona_id = parts[1]
             filename = parts[-1]
             
-            print(f"Processing knowledge: s3://{bucket}/{key} for tenant: {tenant_id}")
+            print(f"🚀 Processing: s3://{bucket}/{key} | Tenant: {tenant_id} | Persona: {persona_id}")
             
-            # Forward ONLY bucket and key to MCP - let MCP handle binary parsing (Excel, PDF, etc)
             payload = {
                 "s3_bucket": bucket,
                 "s3_key": key,
@@ -515,7 +515,8 @@ def lambda_handler(event, context):
                 }
             }
             
-            print(f"Forwarding S3 event to MCP server...")
+            print(f"📡 Forwarding to MCP: {mcp_url}/call/ingest_knowledge")
+            # print(f"DEBUG Payload: {json.dumps(payload)}")
             
             req = urllib.request.Request(
                 f"{mcp_url}/call/ingest_knowledge",
@@ -526,16 +527,21 @@ def lambda_handler(event, context):
             
             try:
                 with urllib.request.urlopen(req, timeout=120) as response:
+                    status = response.getcode()
                     resp_body = response.read().decode('utf-8')
-                    print(f"Successfully forwarded {key}. MCP Response: {resp_body}")
+                    print(f"✅ Success [{status}]: {key} | Response: {resp_body}")
+            except urllib.error.HTTPError as he:
+                print(f"❌ MCP HTTP Error {he.code} for {key}: {he.read().decode('utf-8')}")
             except Exception as req_err:
-                print(f"Forwarding to MCP failed for {key}: {str(req_err)}")
+                print(f"❌ MCP Request failed for {key}: {str(req_err)}")
             
         except Exception as e:
-            print(f"Unexpected error processing {key}: {str(e)}")
+            print(f"💥 Unexpected error processing {key}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             continue
     
-    return {'statusCode': 200, 'body': json.dumps('Forwarded all records')}
+    return {'statusCode': 200, 'body': 'Processed all records'}
 """),
             environment={
                 # Uses the static Elastic IP - will never change even if EC2 is replaced

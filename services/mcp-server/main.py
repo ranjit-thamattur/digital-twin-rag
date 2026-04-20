@@ -763,6 +763,7 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                 
                 # Detect file type and parse
                 ext = s3_key.split('.')[-1].lower()
+                print(f"📂 [INGEST] Detected extension: {ext}")
                 if ext in ['xlsx', 'xls']:
                     print(f"📊 Parsing Excel with Multi-Sheet Isolation...")
                     xl = pd.ExcelFile(io.BytesIO(file_content))
@@ -818,7 +819,7 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                         return "Error: No extractable text found in PDF"
                     text = "\n\n".join(pdf_pages)
                 elif ext == 'pptx':
-                    print(f"📊 Parsing PowerPoint (.pptx) presentation...")
+                    print(f"📊 [INGEST] Parsing (.pptx) - Size: {len(file_content)} bytes")
                     prs = PptxPresentation(io.BytesIO(file_content))
                     slide_texts = []
                     for slide_num, slide in enumerate(prs.slides, start=1):
@@ -828,6 +829,8 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                                 slide_content.append(shape.text.strip())
                         if slide_content:
                             slide_texts.append(f"SLIDE {slide_num}:\n" + "\n".join(slide_content))
+                    
+                    print(f"✅ [INGEST] PPTX parsed: {len(slide_texts)} slides found")
                     if not slide_texts:
                         return "Error: No extractable text found in PowerPoint"
                     text = "\n\n".join(slide_texts)
