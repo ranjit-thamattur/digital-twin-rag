@@ -757,9 +757,10 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
         if s3_bucket and s3_key:
             print(f"📥 [INGEST] Fetching from S3: s3://{s3_bucket}/{s3_key}")
             try:
-                s3_client = boto3.client('s3')
+                s3_client = boto3.client('s3', region_name=AWS_REGION)
                 response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
                 file_content = response['Body'].read()
+                print(f"✅ [INGEST] S3 fetch OK — {len(file_content):,} bytes")
                 
                 # Detect file type and parse
                 ext = s3_key.split('.')[-1].lower()
@@ -808,18 +809,19 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     
                     text = "\n".join(paragraphs + table_text)
                 elif ext == 'pdf':
-                    print(f"📄 Parsing PDF document...")
+                    print(f"📄 [INGEST] Parsing PDF — {len(file_content):,} bytes")
                     pdf_pages = []
                     with pdfplumber.open(io.BytesIO(file_content)) as pdf:
                         for page_num, page in enumerate(pdf.pages, start=1):
                             page_text = page.extract_text()
                             if page_text and page_text.strip():
                                 pdf_pages.append(f"PAGE {page_num}:\n{page_text.strip()}")
+                    print(f"✅ [INGEST] PDF parsed: {len(pdf_pages)} pages with text")
                     if not pdf_pages:
                         return "Error: No extractable text found in PDF"
                     text = "\n\n".join(pdf_pages)
                 elif ext == 'pptx':
-                    print(f"📊 [INGEST] Parsing (.pptx) - Size: {len(file_content)} bytes")
+                    print(f"📊 [INGEST] Parsing PPTX — {len(file_content):,} bytes")
                     prs = PptxPresentation(io.BytesIO(file_content))
                     slide_texts = []
                     for slide_num, slide in enumerate(prs.slides, start=1):
@@ -829,8 +831,7 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                                 slide_content.append(shape.text.strip())
                         if slide_content:
                             slide_texts.append(f"SLIDE {slide_num}:\n" + "\n".join(slide_content))
-                    
-                    print(f"✅ [INGEST] PPTX parsed: {len(slide_texts)} slides found")
+                    print(f"✅ [INGEST] PPTX parsed: {len(slide_texts)} slides with text")
                     if not slide_texts:
                         return "Error: No extractable text found in PowerPoint"
                     text = "\n\n".join(slide_texts)
@@ -864,12 +865,16 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
         
         collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
         
-        print(f"Ingesting for {tenantId} | Persona: {active_persona} | Collection: {collection_name} ({len(text)} chars)")
-        
+        print(f"📝 [INGEST] Ingesting for {tenantId} | Persona: {active_persona} | Collection: {collection_name} | Text: {len(text):,} chars")
+
         chunks = chunk_text(text, chunk_size=2000, overlap=300)
-        print(f"Split into {len(chunks)} chunks")
-        
-        first_vector = await get_embedding(chunks[0])
+        print(f"🔪 [INGEST] Split into {len(chunks)} chunks — starting embedding...")
+
+        try:
+            first_vector = await get_embedding(chunks[0])
+        except Exception as emb_err:
+            print(f"❌ [INGEST] OpenAI embedding FAILED on first chunk: {emb_err}")
+            return f"Error: Embedding failed — {str(emb_err)}"
         vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)
         
