@@ -55,62 +55,88 @@ def get_user_context(email):
     print(f"⚠️ Falling back to default_tenant for {email}")
     return "default_tenant", "user"
 
+def get_real_filename(db_filename: str, meta_json: str | None) -> str:
+    """
+    OpenWebUI stores files under UUID-based names (no extension).
+    The real original filename lives in the `meta` JSON column under key 'name'.
+    Fall back to db_filename if meta is missing or unparseable.
+    """
+    if meta_json:
+        try:
+            meta = json.loads(meta_json)
+            name = meta.get("name") or meta.get("filename") or meta.get("original_name")
+            if name and '.' in name:
+                return name
+        except Exception:
+            pass
+    return db_filename
+
+
 def sync_to_s3():
     if not os.path.exists(OPENWEBUI_DB):
         print(f"⚠️ DB not found at {OPENWEBUI_DB}, skipping sync")
         return
 
     processed = load_processed_files()
-    
+
     try:
         conn = sqlite3.connect(OPENWEBUI_DB)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # OpenWebUI 'file' table stores uploads
-        cursor.execute("SELECT id, user_id, filename, path FROM file")
+
+        # Try to select `meta` column — present in recent OpenWebUI versions
+        try:
+            cursor.execute("SELECT id, user_id, filename, path, meta FROM file")
+        except Exception:
+            # Older schema without meta column
+            cursor.execute("SELECT id, user_id, filename, path FROM file")
+
         files = cursor.fetchall()
-        
         print(f"📂 Found {len(files)} total files, {len(processed)} already processed")
-        
+
         for f in files:
             if f['id'] in processed:
                 continue
 
-            filename = f['filename']
+            db_filename = f['filename']
             source_path = f['path']
-            ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'unknown'
+            # Use meta JSON to get the real original filename (e.g. "report.pptx")
+            meta_json = f['meta'] if 'meta' in f.keys() else None
+            real_filename = get_real_filename(db_filename, meta_json)
+            ext = real_filename.rsplit('.', 1)[-1].lower() if '.' in real_filename else 'unknown'
+
+            print(f"🔎 File: db_name={db_filename} | real_name={real_filename} | ext={ext}")
 
             if ext not in SUPPORTED_EXTENSIONS:
-                print(f"   ⏭️ SKIPPED (unsupported type .{ext}): {filename}")
+                print(f"   ⏭️ SKIPPED (unsupported type .{ext}): {real_filename}")
                 save_processed_file(f['id'])
                 processed.add(f['id'])
                 continue
 
-            print(f"📄 Processing: {filename} (ext={ext}, path={source_path})")
-            
+            print(f"📄 Processing: {real_filename} (ext={ext}, path={source_path})")
+
             # 1. Get User Email
             cursor.execute("SELECT email FROM user WHERE id = ?", (f['user_id'],))
             user = cursor.fetchone()
             email = user['email'] if user else "unknown"
-            
+
             # 2. Get Tenant & Persona Context
             tenant_id, persona_id = get_user_context(email)
             print(f"   Tenant: {tenant_id} | Persona: {persona_id}")
-            
+
             # 3. Check file exists on disk before attempting upload
             if not os.path.exists(source_path):
                 print(f"   ⚠️ SKIPPED - File path does not exist on disk: {source_path}")
-                # Do NOT mark as processed - retry next cycle in case it appears later
                 continue
-                
-            s3_key = f"{tenant_id}/{persona_id}/{filename}"
+
+            # Use real_filename for S3 key so MCP server sees the correct extension
+            s3_key = f"{tenant_id}/{persona_id}/{real_filename}"
             print(f"   ⬆️ Uploading to s3://{S3_BUCKET}/{s3_key}")
-            
+
             try:
                 s3_client.upload_file(
-                    source_path, 
-                    S3_BUCKET, 
+                    source_path,
+                    S3_BUCKET,
                     s3_key,
                     ExtraArgs={
                         'Metadata': {
@@ -120,14 +146,12 @@ def sync_to_s3():
                     }
                 )
                 print(f"   ✅ Upload successful: {s3_key}")
-                
-                # 4. Mark as processed ONLY after successful upload
                 save_processed_file(f['id'])
                 processed.add(f['id'])
-                
+
             except Exception as upload_err:
-                print(f"   ❌ S3 Upload FAILED for {filename}: {upload_err}")
-            
+                print(f"   ❌ S3 Upload FAILED for {real_filename}: {upload_err}")
+
         conn.close()
     except Exception as e:
         print(f"Sync Error: {e}")
