@@ -12,7 +12,10 @@ OPENWEBUI_DB = os.getenv("OPENWEBUI_DB", "/app/backend/data/webui.db")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/backend/data/uploads")
 S3_BUCKET = os.getenv("S3_BUCKET")
 REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-CHECK_INTERVAL = 10 
+CHECK_INTERVAL = 10
+
+# Only upload file types the MCP server can parse
+SUPPORTED_EXTENSIONS = {'pdf', 'pptx', 'xlsx', 'xls', 'csv', 'docx', 'txt'}
 PROCESSED_FILE = "/app/backend/data/synced_files.json"
 TENANT_SERVICE_URL = os.getenv("TENANT_SERVICE_URL", "http://tenant-service-dt:8000")
 
@@ -77,6 +80,12 @@ def sync_to_s3():
             filename = f['filename']
             source_path = f['path']
             ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'unknown'
+
+            if ext not in SUPPORTED_EXTENSIONS:
+                print(f"   ⏭️ SKIPPED (unsupported type .{ext}): {filename}")
+                save_processed_file(f['id'])
+                processed.add(f['id'])
+                continue
 
             print(f"📄 Processing: {filename} (ext={ext}, path={source_path})")
             

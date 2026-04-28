@@ -483,7 +483,7 @@ def lambda_handler(event, context):
         print("CRITICAL: MCP_URL not configured in environment variables")
         return {'statusCode': 500, 'body': 'MCP_URL not set'}
     
-            print(f"Starting ingestion process. MCP URL: {mcp_url}")
+    print(f"Starting ingestion process. MCP URL: {mcp_url}")
     
     for record in event.get('Records', []):
         key = "unknown"
