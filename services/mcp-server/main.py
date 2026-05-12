@@ -35,6 +35,9 @@ REDIS_HOST = os.getenv("REDIS_HOST", "172.17.0.1")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 # CACHE_COLLECTION = "semantic_cache" # Deleted in favor of dynamic persona-based cache collections
 
+# AWS Configuration
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
