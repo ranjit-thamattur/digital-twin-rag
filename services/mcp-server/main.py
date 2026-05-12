@@ -209,6 +209,17 @@ def get_text_hash(text: str) -> str:
     """Create a hash of the text for caching."""
     return hashlib.sha256(text.encode()).hexdigest()
 
+def get_local_embedding(text: str) -> List[float]:
+    """Generate embedding using local sentence-transformers (all-mpnet-base-v2)."""
+    global local_embed_model
+    if local_embed_model is None:
+        print("📥 Initializing local embedding model (all-mpnet-base-v2)...")
+        local_embed_model = SentenceTransformer('all-mpnet-base-v2')
+    
+    # model.encode returns a numpy array, convert to list
+    embedding = local_embed_model.encode(text)
+    return embedding.tolist()
+
 async def get_voyage_embedding(text: str) -> List[float]:
     """Generate embedding using Voyage AI"""
     global voyage_client
@@ -278,6 +289,9 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
             embedding = await get_openai_embedding(text)
         elif EMBEDDING_PROVIDER == "cohere":
             embedding = await get_cohere_embedding(text)
+        elif EMBEDDING_PROVIDER == "local":
+            # Run local embedding in a thread to not block the event loop
+            embedding = await asyncio.to_thread(get_local_embedding, text)
         else:
             raise ValueError(f"Unknown embedding provider: {EMBEDDING_PROVIDER}")
         
@@ -635,6 +649,99 @@ async def search_knowledge_base(
         import traceback
         print(traceback.format_exc())
         return f"SEARCH_ERROR: {str(e)}"
+
+async def rewrite_query(original_query: str) -> str:
+    """Use Mistral on Bedrock to rewrite/optimize the query for RAG."""
+    try:
+        prompt = f"Rewrite this search query to be more descriptive and optimized for a vector search engine. Only return the rewritten query text: {original_query}"
+        
+        body = json.dumps({
+            "prompt": f"<s>[INST] {prompt} [/INST]",
+            "max_tokens": 128,
+            "temperature": 0.1
+        })
+        
+        response = await asyncio.to_thread(
+            lambda: bedrock_runtime.invoke_model(
+                modelId=REWRITE_MODEL,
+                contentType="application/json",
+                accept="application/json",
+                body=body
+            )
+        )
+        
+        response_body = json.loads(response.get('body').read())
+        rewritten = response_body.get('outputs', [{}])[0].get('text', original_query).strip()
+        print(f"🔄 [REWRITE] '{original_query}' -> '{rewritten}'")
+        return rewritten
+    except Exception as e:
+        print(f"⚠ [REWRITE] Error: {e}")
+        return original_query
+
+async def rerank_results(query: str, hits: List[any], top_n: int = 5) -> List[any]:
+    """Use Cohere Rerank on Bedrock to pick the most relevant chunks."""
+    if not hits: return []
+    try:
+        documents = [hit.payload.get("text", "") for hit in hits]
+        
+        body = json.dumps({
+            "query": query,
+            "documents": documents,
+            "top_n": top_n,
+            "api_version": 1
+        })
+        
+        response = await asyncio.to_thread(
+            lambda: bedrock_runtime.invoke_model(
+                modelId=RERANK_MODEL,
+                contentType="application/json",
+                accept="application/json",
+                body=body
+            )
+        )
+        
+        response_body = json.loads(response.get('body').read())
+        results = response_body.get('results', [])
+        
+        # Map original hits back to reranked order
+        ranked_hits = []
+        for r in results:
+            idx = r.get('index')
+            if idx < len(hits):
+                ranked_hits.append(hits[idx])
+        
+        print(f"🎯 [RERANK] Reduced {len(hits)} hits to top {len(ranked_hits)}")
+        return ranked_hits
+    except Exception as e:
+        print(f"⚠ [RERANK] Error: {e}")
+        return hits[:top_n]
+
+async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_tokens: int) -> str:
+    """Invoke Claude 4.5 Sonnet on Bedrock."""
+    try:
+        # Use Message API format
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": messages,
+            "temperature": 0.1
+        })
+        
+        response = await asyncio.to_thread(
+            lambda: bedrock_runtime.invoke_model(
+                modelId=PRIMARY_MODEL,
+                contentType="application/json",
+                accept="application/json",
+                body=body
+            )
+        )
+        
+        response_body = json.loads(response.get('body').read())
+        return response_body.get('content', [{}])[0].get('text', "Error: No response from Claude")
+    except Exception as e:
+        print(f"❌ [BEDROCK] Claude error: {e}")
+        raise
 
 @mcp.tool()
 async def generate_twin_response(
