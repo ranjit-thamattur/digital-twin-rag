@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 import hashlib
-from typing import Optional, List
+from typing import Optional, List, Any
 from mcp.server.fastmcp import FastMCP
 import qdrant_client
 from qdrant_client.http import models
@@ -333,7 +333,7 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[st
         
     return chunks
 
-def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, score_threshold: float = None, query_filter: any = None):
+def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, score_threshold: float = None, query_filter: Any = None):
     """Helper to perform search across different Qdrant client versions."""
     try:
         # Method 1: Modern search()
