@@ -298,8 +298,11 @@ class CloneMindStack(Stack):
             "MCP_TRANSPORT": "sse",
             "AWS_REGION": self.region,
             "PORT": "3000",
-            "EMBEDDING_PROVIDER": "openai",
-            "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")
+            "EMBEDDING_PROVIDER": "local",  # Switching to sentence-transformers
+            "LLM_PROVIDER": "bedrock",     # Switching to Bedrock
+            "PRIMARY_MODEL": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "REWRITE_MODEL": "mistral.ministral-3-14b-instruct",
+            "RERANK_MODEL": "cohere.rerank-v3-5:0"
         }
         
         mcp_task = ecs.Ec2TaskDefinition(self, "McpTask", 
@@ -308,8 +311,8 @@ class CloneMindStack(Stack):
         
         mcp_container = mcp_task.add_container("McpContainer",
             image=ecs.ContainerImage.from_asset("../../services/mcp-server"),
-            memory_limit_mib=512,  # Increased for better performance
-            cpu=256,               # Increased for better performance
+            memory_limit_mib=2048,  # Increased to 2GB for sentence-transformers + torch
+            cpu=512,               # Increased for better performance
             environment=mcp_env,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")
         )
@@ -320,13 +323,17 @@ class CloneMindStack(Stack):
         tenant_table.grant_read_write_data(mcp_task.task_role)
         documents_bucket.grant_read(mcp_task.task_role)
         
-        # REMOVED: No longer using Bedrock
-        # mcp_task.task_role.add_to_policy(
-        #     iam.PolicyStatement(
-        #         actions=["bedrock:InvokeModel"],
-        #         resources=["*"]
-        #     )
-        # )
+        # Grant Bedrock access
+        mcp_task.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:GetInferenceProfile"
+                ],
+                resources=["*"]
+            )
+        )
         
         mcp_service = ecs.Ec2Service(self, "McpService", 
             cluster=cluster, 

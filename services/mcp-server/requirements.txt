@@ -13,10 +13,13 @@ python-docx
 pdfplumber
 python-pptx
 
-# OpenAI for chat and embeddings
+# OpenAI for chat and embeddings (fallback)
 openai>=1.0.0
 
-# Other providers (optional)
-# anthropic>=0.40.0
-# voyageai==0.2.1
-# cohere==4.37.0
+# Local embeddings
+sentence-transformers
+torch --index-url https://download.pytorch.org/whl/cpu
+
+# Other providers
+anthropic>=0.40.0
+cohere>=5.0.0

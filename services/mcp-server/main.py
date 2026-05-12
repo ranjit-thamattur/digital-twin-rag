@@ -21,6 +21,10 @@ import docx
 import pdfplumber
 from pptx import Presentation as PptxPresentation
 
+# New Bedrock & Local Embedding imports
+from sentence_transformers import SentenceTransformer
+import torch
+
 # Load environment variables
 load_dotenv()
 
@@ -35,7 +39,13 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Embedding Configuration
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "openai")
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # now defaulting to local mpnet
+
+# LLM Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+REWRITE_MODEL = os.getenv("REWRITE_MODEL", "mistral.ministral-3-14b-instruct")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
 
 # API Keys for embedding providers
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")
@@ -43,11 +53,12 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 
 # Vector sizes by provider
 VECTOR_SIZES = {
+    "local": 768,   # all-mpnet-base-v2
     "voyage": 1024,
     "openai": 1536,
     "cohere": 1024
 }
-VECTOR_SIZE = VECTOR_SIZES.get(EMBEDDING_PROVIDER, 1536)
+VECTOR_SIZE = VECTOR_SIZES.get(EMBEDDING_PROVIDER, 768)
 
 # Initialize FastMCP server
 mcp = FastMCP("Peak AI 1.0 Knowledge Base")
@@ -63,11 +74,15 @@ qdrant = qdrant_client.QdrantClient(
     prefer_grpc=False # Use HTTP for better compatibility in ECS bridges
 )
 
-# Lazy-loaded embedding clients
+# Bedrock Client
+bedrock_runtime = boto3.client('bedrock-runtime', region_name=AWS_REGION)
+
+# Lazy-loaded embedding models
 voyage_client = None
 cohere_client = None
+local_embed_model = None
 
-# OpenAI Client
+# OpenAI Client (Legacy/Fallback)
 openai_client = None
 if OPENAI_API_KEY:
     openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -502,7 +517,14 @@ async def clear_semantic_cache_for_tenant(tenantId: str):
         return False
 
 @mcp.tool()
-async def search_knowledge_base(query: str, tenantId: str = "", limit: int = 5, personaId: str = "ceo", filename: Optional[str] = None) -> str:
+async def search_knowledge_base(
+    query: str, 
+    tenantId: str = "", 
+    limit: int = 5, 
+    personaId: str = "ceo", 
+    filename: Optional[str] = None,
+    return_raw: bool = False
+) -> any:
     """Search the knowledge base for a specific tenant and persona. Use 'filename' to restrict search to a specific document."""
     if not tenantId or not query or not query.strip():
         return "Please provide both tenantId and a search query."
@@ -590,12 +612,18 @@ async def search_knowledge_base(query: str, tenantId: str = "", limit: int = 5, 
                     limit=limit,
                     query_filter=global_filter
                 )
-                for res in search_result:
-                    text = res.payload.get("text", "")
-                    source = res.payload.get("filename", "Global Source")
-                    formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
+            for res in search_result:
+                text = res.payload.get("text", "")
+                source = res.payload.get("filename", "Global Source")
+                formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
 
-        return "\n\n".join(formatted_results) if formatted_results else "No relevant information found."
+        if return_raw:
+            return search_result
+            
+        if not formatted_results:
+            return ""
+            
+        return "\n".join(formatted_results)
     except Exception as e:
         # Graceful handling for missing collections or temporary issues
         error_msg = str(e).lower()
@@ -617,56 +645,63 @@ async def generate_twin_response(
     messages: Optional[List[dict]] = None,
     plan: Optional[str] = "basic"  # "basic" or "premium"
 ) -> str:
-    """Full RAG Pipeline"""
+    """Full Advanced RAG Pipeline (Bedrock Edition)"""
     try:
-        # 0. Fetch Tenant Metadata (including plan and keywords)
+        # 0. Fetch Tenant Metadata
         metadata = await get_tenant_metadata(tenantId)
-        
-        # Override plan if set in metadata
         actual_plan = metadata.get("plan", plan if plan else "basic")
         tenant_keywords = metadata.get("guardrailKeywords", [])
 
-        # ── Basic Plan: Off-topic Guardrail (zero LLM cost) ──
+        # ── Basic Plan: Off-topic Guardrail ──
         if actual_plan == "basic" and is_off_topic(query, tenant_keywords):
             print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
             return BASIC_GUARDRAIL_RESPONSE
 
         # ── Per-plan limits ──
-        rag_limit   = 3    if actual_plan == "basic" else 10
+        # In Bedrock mode, we always use Rewrite/Rerank for premium, simple flow for basic
+        rag_limit   = 5    if actual_plan == "basic" else 15
         max_tokens  = 512  if actual_plan == "basic" else 2048
         history_len = 3    if actual_plan == "basic" else 5
+
         # 1. Check Semantic Cache
         cached_answer = await get_semantic_cache(query, tenantId, personaId)
         if cached_answer:
             return f"{cached_answer}\n\n(Source: Semantic Cache 🚀)"
 
-        context = await search_knowledge_base(query, tenantId, personaId=personaId, limit=rag_limit)
-        
-        if openai_client is None:
-            return "MCP Error: OpenAI API client not initialized."
+        # 2. Advanced RAG Flow
+        search_query = query
+        if actual_plan == "premium":
+            # 2a. Query Rewrite (Mistral)
+            search_query = await rewrite_query(query)
 
-        print(f"Routing to OpenAI GPT-4o-mini")
+        # 2b. Search (returns Top 15 raw hits for premium, 5 for basic)
+        raw_hits = await search_knowledge_base(search_query, tenantId, personaId=personaId, limit=rag_limit, return_raw=True)
         
-        if context.startswith("SEARCH_ERROR"):
-            # Don't pass technical details to the AI
-            rag_context_block = "Note: A temporary search error occurred. Please answer using your general knowledge but mention that specific records are currently unavailable."
-        elif not context:
+        final_hits = raw_hits
+        if actual_plan == "premium" and len(raw_hits) > 3:
+            # 2c. Rerank (Cohere) - pick top 5
+            final_hits = await rerank_results(query, raw_hits, top_n=5)
+            
+        # Format context block
+        if not final_hits:
             rag_context_block = "Note: No specific records found in the knowledge base for this query."
         else:
-            rag_context_block = context
+            formatted_blocks = []
+            for res in final_hits:
+                src = res.payload.get("filename", "Unknown")
+                txt = res.payload.get("text", "")
+                formatted_blocks.append(f"DOCUMENT: {src}\nCONTENT: {txt}\n---")
+            rag_context_block = "\n".join(formatted_blocks)
 
-        openai_messages = [{"role": "system", "content": system_prompt}]
-        
+        # 3. LLM Generation
+        llm_messages = []
         if messages:
             for msg in messages[-history_len:]:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                if content:
-                    openai_messages.append({"role": role, "content": content})
+                if msg.get("content"):
+                    llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
         
-        persona_label = personaId if personaId else "Digital Twin"
-        
-        rag_prompt = f"""Role: You are the Digital Twin ([Persona: {persona_label}]). 
+        persona_label = personaId if personaId else "Digital Brain"
+        rag_prompt = f"""Role: You are the Digital Brain ([Persona: {persona_label}]). 
 
 Retrieved Wisdom:
 {rag_context_block}
@@ -677,48 +712,38 @@ Current Discussion:
 Rules:
 1. Speak in first person ("I", "We", "Our")
 2. Use Retrieved Wisdom precisely
-3. Cite sources using the exact name after 'DOCUMENT:', e.g.: (Ref: filename.txt)
+3. Cite sources using (Ref: filename.ext)
 4. If no data: "Based on my records, I don't have those details..."
-5. Format data with tables/bullets
 """
-        
-        openai_messages.append({"role": "user", "content": rag_prompt})
+        llm_messages.append({"role": "user", "content": rag_prompt})
 
-        for attempt in range(2):
-            try:
-                response = await asyncio.to_thread(
-                    lambda: openai_client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        max_tokens=max_tokens,
-                        messages=openai_messages,
-                        temperature=0.1
-                    )
+        # ── LLM Invocation ──
+        if LLM_PROVIDER == "bedrock":
+            print(f"📡 Routing to Bedrock: {PRIMARY_MODEL}")
+            answer = await call_bedrock_claude(system_prompt, llm_messages, max_tokens)
+        else:
+            print(f"📡 Routing to OpenAI fallback")
+            response = await asyncio.to_thread(
+                lambda: openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    max_tokens=max_tokens,
+                    messages=[{"role": "system", "content": system_prompt}] + llm_messages,
+                    temperature=0.1
                 )
-                answer = response.choices[0].message.content
-                
-                if response.usage:
-                    cost_tracker["total_tokens"] += response.usage.total_tokens
-                    cost_tracker["chat_calls"] += 1
-                
-                
-                # 4. Save to Cache ONLY if we found actual data
-                # Don't cache "I don't have those details" to allow for future knowledge updates
-                negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
-                is_negative = any(trigger in answer.lower() for trigger in negative_triggers)
-                
-                if not is_negative:
-                    await save_to_semantic_cache(query, answer, tenantId, personaId)
-                else:
-                    print("ℹ Skipping cache save for 'No Data' response.")
-                
-                return answer
-            except Exception as e:
-                if attempt == 1: raise
-                print(f"⚠ Retry after error: {str(e)}")
-                await asyncio.sleep(1)
+            )
+            answer = response.choices[0].message.content
+
+        # 4. Save to Cache
+        negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
+        if not any(t in answer.lower() for t in negative_triggers):
+            await save_to_semantic_cache(query, answer, tenantId, personaId)
+        
+        return answer
 
     except Exception as e:
-        print(f"✗ OpenAI error: {str(e)}")
+        print(f"❌ RAG Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return f"MCP Error: {str(e)}"
 
 @mcp.tool()
@@ -873,7 +898,7 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
         try:
             first_vector = await get_embedding(chunks[0])
         except Exception as emb_err:
-            print(f"❌ [INGEST] OpenAI embedding FAILED on first chunk: {emb_err}")
+            print(f"❌ [INGEST] Embedding FAILED: {emb_err}")
             return f"Error: Embedding failed — {str(emb_err)}"
         vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)

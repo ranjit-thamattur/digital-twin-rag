@@ -24,16 +24,16 @@ class Pipeline:
         
     def __init__(self):
         self.type = "filter"
-        self.name = "Peak AI 1.0: Your Digital Twin"
+        self.name = "Peak AI 1.0: Your Digital Brain"
         self.valves = self.Valves()
         
     async def on_startup(self):
-        print(f"✅ Digital Twin RAG Pipeline loaded")
+        print(f"✅ Digital Brain RAG Pipeline loaded")
         print(f"   n8n URL: {self.valves.N8N_WEBHOOK_URL}")
         print(f"   Multi-tenant: {self.valves.ENABLE_TENANT_FILTERING}")
         
     async def on_shutdown(self):
-        print("👋 Digital Twin RAG Pipeline shutting down")
+        print("👋 Digital Brain RAG Pipeline shutting down")
 
     def get_tenant_info(self, __user__: dict) -> tuple:
         """
@@ -74,7 +74,7 @@ class Pipeline:
         self, user_message: str, model_id: str, messages: List[dict], body: dict
     ) -> Union[str, Generator, Iterator]:
         
-        print(f"📨 Digital Twin RAG Query: {user_message[:50]}...")
+        print(f"📨 Digital Brain RAG Query: {user_message[:50]}...")
         
         # Get user info
         __user__ = body.get("user", {})
