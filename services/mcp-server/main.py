@@ -1153,6 +1153,92 @@ async def call_tool_bridge(tool_name: str, request: Request):
         print(f"Error: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
+# OpenAI Compatibility Layer (Direct OpenWebUI Integration)
+@app.get("/v1/models")
+async def list_models():
+    """Returns a list of available 'Digital Brain' models for OpenWebUI."""
+    return JSONResponse({
+        "object": "list",
+        "data": [
+            {
+                "id": "digital-brain",
+                "object": "model",
+                "created": 1700000000,
+                "owned_by": "peak-ai",
+                "permission": [],
+                "root": "digital-brain",
+                "parent": None
+            }
+        ]
+    })
+
+@app.post("/v1/chat/completions")
+async def openai_chat_bridge(request: Request):
+    """
+    Standard OpenAI Chat completions endpoint.
+    Converts OpenAI requests to 'generate_twin_response' calls.
+    """
+    try:
+        body = await request.json()
+        messages = body.get("messages", [])
+        if not messages:
+            return JSONResponse({"error": "No messages provided"}, status_code=400)
+            
+        user_query = messages[-1].get("content", "")
+        
+        # Identity Logic: Use headers or body metadata
+        # OpenWebUI often passes 'user' or 'X-User-Email'
+        tenant_id = "default"
+        persona_id = "default"
+        
+        # Try to extract from user metadata if provided by OpenWebUI
+        user_info = body.get("user", {})
+        if user_info:
+            metadata = user_info.get("metadata", {})
+            tenant_id = metadata.get("tenantId", "default")
+            persona_id = metadata.get("personaId", "default")
+            
+            # Fallback to email domain if metadata missing
+            if tenant_id == "default":
+                email = user_info.get("email", "")
+                if "@" in email:
+                    tenant_id = f"tenant-{email.split('@')[1].replace('.', '-')}"
+                    persona_id = f"persona-{email.split('@')[0]}"
+
+        # Execute our advanced RAG pipeline
+        answer = await generate_twin_response(
+            query=user_query,
+            tenantId=tenant_id,
+            personaId=persona_id,
+            chat_history=messages[:-1]
+        )
+        
+        # Return OpenAI compatible response
+        return JSONResponse({
+            "id": f"chatcmpl-{uuid.uuid4()}",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": "digital-brain",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": answer
+                    },
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
+        })
+    except Exception as e:
+        print(f"❌ OpenAI Bridge Error: {str(e)}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     port = int(os.getenv("PORT", "3000"))
