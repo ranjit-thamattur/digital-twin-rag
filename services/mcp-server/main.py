@@ -65,6 +65,8 @@ VECTOR_SIZE = VECTOR_SIZES.get(EMBEDDING_PROVIDER, 768)
 
 # Initialize FastMCP server
 mcp = FastMCP("Peak AI 1.0 Knowledge Base")
+VERSION = "3.8-TYPE-SAFE"
+print(f"🚀 Starting Peak AI MCP Server {VERSION}")
 
 # Initialize FastAPI for HTTP endpoints
 app = FastAPI()
@@ -541,7 +543,7 @@ async def search_knowledge_base(
     personaId: str = "ceo", 
     filename: Optional[str] = None,
     return_raw: bool = False
-) -> any:
+) -> Any:
     """Search the knowledge base for a specific tenant and persona. Use 'filename' to restrict search to a specific document."""
     if not tenantId or not query or not query.strip():
         return "Please provide both tenantId and a search query."
@@ -681,7 +683,7 @@ async def rewrite_query(original_query: str) -> str:
         print(f"⚠ [REWRITE] Error: {e}")
         return original_query
 
-async def rerank_results(query: str, hits: List[any], top_n: int = 5) -> List[any]:
+async def rerank_results(query: str, hits: List[Any], top_n: int = 5) -> List[Any]:
     """Use Cohere Rerank on Bedrock to pick the most relevant chunks."""
     if not hits: return []
     try:
@@ -882,7 +884,7 @@ async def clear_tenant_knowledge(tenantId: str) -> str:
         return f"Wipe Error: {str(e)}"
 
 @mcp.tool()
-async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metadata: Optional[dict] = None, **kwargs) -> str:
+async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metadata: Optional[dict] = None, **kwargs: Any) -> str:
     """Ingest knowledge from text or S3 (Excel/CSV/Text)."""
     try:
         # 1. Handle S3 source if provided
