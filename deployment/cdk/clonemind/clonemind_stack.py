@@ -58,7 +58,7 @@ class CloneMindStack(Stack):
         )
         
         asg = cluster.add_capacity("FinalCapacity",
-            instance_type=ec2.InstanceType("t3.medium"),
+            instance_type=ec2.InstanceType("t3.large"),
             min_capacity=1,
             max_capacity=1,
             desired_capacity=1,
