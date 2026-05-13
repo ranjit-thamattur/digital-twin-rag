@@ -64,7 +64,15 @@ class CloneMindStack(Stack):
             desired_capacity=1,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
             machine_image=ecs.EcsOptimizedImage.amazon_linux2(),
-            associate_public_ip_address=True
+            associate_public_ip_address=True,
+            block_devices=[
+                ec2.BlockDevice(
+                    device_name="/dev/xvda",
+                    volume=ec2.BlockDeviceVolume.ebs(100,
+                        volume_type=ec2.EbsDeviceVolumeType.GP3
+                    )
+                )
+            ]
         )
         
         asg.role.add_managed_policy(
@@ -87,7 +95,9 @@ class CloneMindStack(Stack):
         asg.add_user_data(
             "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
             "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
-            f"aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id {eip.attr_allocation_id} --region $REGION --allow-reassociation"
+            f"aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id {eip.attr_allocation_id} --region $REGION --allow-reassociation",
+            # Add hourly Docker cleanup to prevent disk issues
+            "echo '0 * * * * root /usr/bin/docker image prune -af >> /var/log/docker-prune.log 2>&1' > /etc/cron.d/docker-cleanup"
         )
 
         # Grant permission to associate the EIP
@@ -302,7 +312,7 @@ class CloneMindStack(Stack):
             "LLM_PROVIDER": "bedrock",
             # ✅ US cross-region inference for Claude Sonnet 4.5 (us-east-1)
             "PRIMARY_MODEL": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            "REWRITE_MODEL": "mistral.ministral-3-14b-instruct-v1:0",
+            "REWRITE_MODEL": "mistral.ministral-3-14b-instruct",
             "RERANK_MODEL": "cohere.rerank-v3-5:0"
         }
         
@@ -341,7 +351,8 @@ class CloneMindStack(Stack):
             task_definition=mcp_task,
             desired_count=1,
             min_healthy_percent=0,
-            service_name="mcp-server"
+            service_name="mcp-server",
+            enable_execute_command=True
         )
 
         # ===================================================================
@@ -380,7 +391,8 @@ class CloneMindStack(Stack):
             task_definition=tenant_task,
             desired_count=1,
             min_healthy_percent=0,
-            service_name="tenant-service"
+            service_name="tenant-service",
+            enable_execute_command=True
         )
 
         # ===================================================================
@@ -471,7 +483,8 @@ class CloneMindStack(Stack):
             task_definition=webui_task,
             desired_count=1,
             min_healthy_percent=0,
-            service_name="webui"
+            service_name="webui",
+            enable_execute_command=True
         )
 
         # ===================================================================
