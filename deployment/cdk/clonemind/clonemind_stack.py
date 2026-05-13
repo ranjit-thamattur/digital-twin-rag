@@ -66,10 +66,10 @@ class CloneMindStack(Stack):
             machine_image=ecs.EcsOptimizedImage.amazon_linux2(),
             associate_public_ip_address=True,
             block_devices=[
-                ec2.BlockDevice(
+                autoscaling.BlockDevice(
                     device_name="/dev/xvda",
-                    volume=ec2.BlockDeviceVolume.ebs(100,
-                        volume_type=ec2.EbsDeviceVolumeType.GP3
+                    volume=autoscaling.BlockDeviceVolume.ebs(100,
+                        volume_type=autoscaling.EbsDeviceVolumeType.GP3
                     )
                 )
             ]
