@@ -300,8 +300,8 @@ class CloneMindStack(Stack):
             "PORT": "3000",
             "EMBEDDING_PROVIDER": "local",
             "LLM_PROVIDER": "bedrock",
-            # ✅ Claude Sonnet 4.5 with correct us. prefix for cross-region inference
-            "PRIMARY_MODEL": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            # ✅ Claude Sonnet 4.5 - exact model ID from AWS Bedrock Model Catalog
+            "PRIMARY_MODEL": "anthropic.claude-sonnet-4-5-20250929-v1:0",
             "REWRITE_MODEL": "mistral.ministral-3-14b-instruct-v1:0",
             "RERANK_MODEL": "cohere.rerank-v3-5:0"
         }
