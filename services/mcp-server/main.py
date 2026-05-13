@@ -1211,8 +1211,9 @@ async def openai_chat_bridge(request: Request):
         answer = await generate_twin_response(
             query=user_query,
             tenantId=tenant_id,
+            system_prompt="You are the Digital Brain, a helpful AI assistant.",
             personaId=persona_id,
-            chat_history=messages[:-1]
+            messages=messages[:-1]
         )
         
         # Return OpenAI compatible response
