@@ -1182,16 +1182,43 @@ async def openai_chat_bridge(request: Request):
     """
     try:
         body = await request.json()
+        headers = dict(request.headers)
+        
+        # 🔍 DIAGNOSTIC: Log the request to see what OpenWebUI sends for multitenancy
+        print(f"📥 [BRIDGE] Request Headers: {json.dumps(headers)}")
+        # print(f"📥 [BRIDGE] Request Body: {json.dumps(body)}")
+        
         messages = body.get("messages", [])
         if not messages:
             return JSONResponse({"error": "No messages provided"}, status_code=400)
             
         user_query = messages[-1].get("content", "")
         
-        # Identity Logic: Use headers or body metadata
-        # OpenWebUI often passes 'user' or 'X-User-Email'
+        # Default identity attributes
         tenant_id = "default"
-        persona_id = "default"
+        persona_id = "global"
+        
+        # 1. Try X-User-Email header (standard in many reverse proxies for OpenWebUI)
+        user_email = headers.get("x-user-email") or headers.get("X-User-Email")
+        
+        # 2. Try 'user' object from body (passed by OpenWebUI)
+        user_info = body.get("user", {})
+        if not user_email and user_info:
+            user_email = user_info.get("email")
+            
+        if user_email and "@" in user_email:
+            # Custom logic: map domain to tenant
+            domain = user_email.split("@")[1].replace(".", "-")
+            tenant_id = f"tenant-{domain}"
+            persona_id = f"persona-{user_email.split('@')[0]}"
+            
+        # 3. Check for specific overrides in body metadata
+        metadata = user_info.get("metadata", {}) if user_info else body.get("metadata", {})
+        if metadata:
+            tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
+            persona_id = metadata.get("personaId", persona_id).strip().lower()
+
+        print(f"👤 [BRIDGE] Identified Tenant: {tenant_id} | Persona: {persona_id}")
         
         # Try to extract from user metadata if provided by OpenWebUI
         user_info = body.get("user", {})
