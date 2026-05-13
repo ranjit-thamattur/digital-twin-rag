@@ -1198,27 +1198,42 @@ async def openai_chat_bridge(request: Request):
         tenant_id = "default"
         persona_id = "global"
         
-        # 1. Try X-User-Email header (standard in many reverse proxies for OpenWebUI)
+        # 1. 🔑 AUTHORIZATION BASED TENANT OVERRIDE (Most reliable for direct OpenWebUI connection)
+        # Use the Bearer token as the tenantId if it's not the generic 'mcp-bridge'
+        auth_header = headers.get("authorization", "")
+        if "Bearer " in auth_header:
+            token = auth_header.replace("Bearer ", "").strip()
+            if token and token != "mcp-bridge":
+                print(f"🔑 [BRIDGE] Using tenant from Bearer token: {token}")
+                tenant_id = token.lower()
+
+        # 2. Try X-User-Email header
         user_email = headers.get("x-user-email") or headers.get("X-User-Email")
         
-        # 2. Try 'user' object from body (passed by OpenWebUI)
+        # 3. Try 'user' object from body (passed by OpenWebUI in some modes)
         user_info = body.get("user", {})
         if not user_email and user_info:
             user_email = user_info.get("email")
             
-        if user_email and "@" in user_email:
-            # Custom logic: map domain to tenant
+        if user_email and "@" in user_email and tenant_id == "default":
             domain = user_email.split("@")[1].replace(".", "-")
             tenant_id = f"tenant-{domain}"
             persona_id = f"persona-{user_email.split('@')[0]}"
             
-        # 3. Check for specific overrides in body metadata
+        # 4. Check for direct model suffix: digital-brain:tenant_id
+        model_name = body.get("model", "digital-brain")
+        if ":" in model_name:
+            _, suffix = model_name.split(":", 1)
+            tenant_id = suffix.strip().lower()
+            print(f"🏷 [BRIDGE] Using tenant from model suffix: {tenant_id}")
+
+        # 5. Metadata Overrides
         metadata = user_info.get("metadata", {}) if user_info else body.get("metadata", {})
         if metadata:
             tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
             persona_id = metadata.get("personaId", persona_id).strip().lower()
 
-        print(f"👤 [BRIDGE] Identified Tenant: {tenant_id} | Persona: {persona_id}")
+        print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
         
         # Try to extract from user metadata if provided by OpenWebUI
         user_info = body.get("user", {})
