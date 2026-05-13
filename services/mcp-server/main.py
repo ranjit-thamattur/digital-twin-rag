@@ -46,8 +46,8 @@ EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # now defaulting t
 
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")
-# Using Claude 3.5 Sonnet v2 (latest stable production ID for us-east-1)
-PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+# Claude Sonnet 4.5 via cross-region inference (us. prefix required for us-east-1)
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 REWRITE_MODEL = os.getenv("REWRITE_MODEL", "mistral.ministral-3-14b-instruct-v1:0")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
 
