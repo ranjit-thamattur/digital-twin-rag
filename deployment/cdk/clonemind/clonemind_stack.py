@@ -11,6 +11,7 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_efs as efs,
     aws_cognito as cognito,
+    aws_autoscaling as autoscaling,
     aws_s3_notifications as s3n,
     aws_secretsmanager as secretsmanager,
     aws_ssm as ssm,
