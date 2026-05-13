@@ -298,10 +298,11 @@ class CloneMindStack(Stack):
             "MCP_TRANSPORT": "sse",
             "AWS_REGION": self.region,
             "PORT": "3000",
-            "EMBEDDING_PROVIDER": "local",  # Switching to sentence-transformers
-            "LLM_PROVIDER": "bedrock",     # Switching to Bedrock
-            "PRIMARY_MODEL": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            "REWRITE_MODEL": "mistral.ministral-3-14b-instruct",
+            "EMBEDDING_PROVIDER": "local",
+            "LLM_PROVIDER": "bedrock",
+            # ✅ Verified production Bedrock model IDs for us-east-1
+            "PRIMARY_MODEL": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "REWRITE_MODEL": "mistral.ministral-3-14b-instruct-v1:0",
             "RERANK_MODEL": "cohere.rerank-v3-5:0"
         }
         
