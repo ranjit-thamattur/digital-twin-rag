@@ -81,6 +81,20 @@ class CloneMindStack(Stack):
                 "service-role/AmazonEC2ContainerServiceforEC2Role"
             )
         )
+        
+        # Add Bedrock and Marketplace permissions to Instance Role
+        asg.role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:GetInferenceProfile",
+                    "aws-marketplace:ViewSubscriptions",
+                    "aws-marketplace:Subscribe"
+                ],
+                resources=["*"]
+            )
+        )
         asg.role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name(
                 "AmazonSSMManagedInstanceCore"
@@ -335,19 +349,21 @@ class CloneMindStack(Stack):
         tenant_table.grant_read_write_data(mcp_task.task_role)
         documents_bucket.grant_read(mcp_task.task_role)
         
-        # Grant Bedrock access
-        mcp_task.task_role.add_to_policy(
-            iam.PolicyStatement(
-                actions=[
-                    "bedrock:InvokeModel",
-                    "bedrock:InvokeModelWithResponseStream",
-                    "bedrock:GetInferenceProfile",
-                    "aws-marketplace:ViewSubscriptions",
-                    "aws-marketplace:Subscribe"
-                ],
-                resources=["*"]
-            )
-        )
+        # Grant Bedrock access to both Task and Execution roles
+        for role in [mcp_task.task_role, mcp_task.execution_role]:
+            if role:
+                role.add_to_policy(
+                    iam.PolicyStatement(
+                        actions=[
+                            "bedrock:InvokeModel",
+                            "bedrock:InvokeModelWithResponseStream",
+                            "bedrock:GetInferenceProfile",
+                            "aws-marketplace:ViewSubscriptions",
+                            "aws-marketplace:Subscribe"
+                        ],
+                        resources=["*"]
+                    )
+                )
         
         mcp_service = ecs.Ec2Service(self, "McpService", 
             cluster=cluster, 
