@@ -1329,11 +1329,12 @@ async def openai_chat_bridge(request: Request):
 
         print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
 
-        # 🛡️ FAIL-SAFE: If still default, check if query explicitly mentions 11x
-        if tenant_id == "default" and "11x" in user_query.lower():
+        # 🛡️ FAIL-SAFE: Check if '11x' is mentioned ANYWHERE in the conversation history
+        full_context = " ".join([m.get("content", "") for m in messages]).lower()
+        if tenant_id == "default" and "11x" in full_context:
             tenant_id = "tenant-11x"
             persona_id = "ceo"
-            print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED: Forced 11x identity based on query content.")
+            print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED (Context): Forced 11x identity based on conversation history.")
 
         # Mapping: if tenant is 11x, ensure persona is ceo if not otherwise specified
         if "11x" in tenant_id and persona_id in ["global", "ranjitt", "global/any", "user"]:
