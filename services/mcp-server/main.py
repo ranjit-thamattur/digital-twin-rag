@@ -841,7 +841,9 @@ async def generate_twin_response(
                     llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
         
         persona_label = personaId if personaId else "Digital Brain"
-        rag_prompt = f"""Role: You are the Digital Brain ([Persona: {persona_label}]). 
+        rag_prompt = f"""You are the Digital Brain ([Persona: {persona_label}]). 
+
+IMPORTANT: Use the following "Retrieved Wisdom" to answer the user's question. If the information is in the wisdom, you MUST use it.
 
 Retrieved Wisdom:
 {rag_context_block}
