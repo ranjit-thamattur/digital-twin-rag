@@ -1222,9 +1222,9 @@ async def openai_chat_bridge(request: Request):
         body = await request.json()
         headers = dict(request.headers)
         
-        # 🔍 DIAGNOSTIC: Log the request to see what OpenWebUI sends for multitenancy
-        print(f"📥 [BRIDGE] Request Headers: {json.dumps(headers)}")
-        # print(f"📥 [BRIDGE] Request Body: {json.dumps(body)}")
+        # 🔥 DEEP DIAGNOSTIC: See everything OpenWebUI is sending
+        print(f"DEBUG_HEADERS: {json.dumps(headers)}")
+        print(f"DEBUG_BODY: {json.dumps(body)}")
         
         messages = body.get("messages", [])
         if not messages:
