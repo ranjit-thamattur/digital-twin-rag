@@ -1327,19 +1327,34 @@ async def openai_chat_bridge(request: Request):
             tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
             persona_id = metadata.get("personaId", persona_id).strip().lower()
 
-        print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
+        # 🧠 SMART SESSION RECALL: If still default, check Redis
+        session_key = f"session:{headers.get('x-forwarded-for', request.client.host)}:identity"
+        if tenant_id == "default":
+            cached_identity = redis_client.get(session_key)
+            if cached_identity:
+                c_tenant, c_persona = cached_identity.split(":")
+                tenant_id, persona_id = c_tenant, c_persona
+                print(f"🧠 [BRIDGE] SESSION RECALLED: {tenant_id}:{persona_id}")
 
         # 🛡️ FAIL-SAFE: Check if '11x' is mentioned ANYWHERE in the conversation history
-        full_context = " ".join([m.get("content", "") for m in messages]).lower()
-        if tenant_id == "default" and "11x" in full_context:
-            tenant_id = "tenant-11x"
-            persona_id = "ceo"
-            print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED (Context): Forced 11x identity based on conversation history.")
+        if tenant_id == "default":
+            full_context = " ".join([m.get("content", "") for m in messages]).lower()
+            if "11x" in full_context:
+                tenant_id = "tenant-11x"
+                persona_id = "ceo"
+                print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED: Forced 11x identity.")
 
-        # Mapping: if tenant is 11x, ensure persona is ceo if not otherwise specified
-        if "11x" in tenant_id and persona_id in ["global", "ranjitt", "global/any", "user"]:
+        # 🎭 PERSONA MAPPING: Handle common variants for 11x
+        if "11x" in tenant_id and persona_id in ["global", "ranjitt", "global/any", "user", "any", "none"]:
             persona_id = "ceo"
             print(f"🎭 [BRIDGE] Remapped persona to: {persona_id}")
+        
+        # 💾 SESSION SAVE: Remember successful non-default identity
+        if tenant_id != "default":
+            redis_client.setex(session_key, 3600, f"{tenant_id}:{persona_id}")
+            print(f"💾 [BRIDGE] SESSION SAVED: {tenant_id}:{persona_id}")
+
+        print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
 
         answer = await generate_twin_response(
             query=user_query,
