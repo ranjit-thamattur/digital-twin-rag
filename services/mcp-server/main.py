@@ -729,10 +729,20 @@ async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_toke
         is_nova = "amazon.nova" in PRIMARY_MODEL.lower()
         
         if is_nova:
-            # Amazon Nova Format
+            # Amazon Nova Format requires content to be a list of blocks
+            nova_messages = []
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    content = [{"text": content}]
+                nova_messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": content
+                })
+
             body = json.dumps({
                 "system": [{"text": system_prompt}] if system_prompt else [],
-                "messages": messages,
+                "messages": nova_messages,
                 "inferenceConfig": {
                     "maxNewTokens": max_tokens,
                     "temperature": 0.1,
