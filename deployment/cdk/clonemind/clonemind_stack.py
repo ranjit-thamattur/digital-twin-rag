@@ -507,7 +507,69 @@ class CloneMindStack(Stack):
         )
 
         # ===================================================================
-        # 11. S3 PROCESSOR LAMBDA
+        # 11. PRODUCTION ACCESS: ALB + HTTPS
+        #     Domain: ai.peakpa.com  |  DNS managed externally (Hostinger/GoDaddy)
+        #     Certificate: ACM (us-east-1), validated via CNAME in DNS provider
+        # ===================================================================
+        
+        # 1. Import pre-existing ACM Certificate by ARN
+        #    Certificate covers ai.peakpa.com, validated in us-east-1.
+        cert = acm.Certificate.from_certificate_arn(
+            self, "SiteCert",
+            certificate_arn="arn:aws:acm:us-east-1:543187302175:certificate/f79ec0e6-6486-4d3e-b37f-e3e72dedcc94"
+        )
+        
+        # 2. Application Load Balancer
+        lb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB",
+            vpc=vpc,
+            internet_facing=True,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+        )
+        
+        # 3. HTTP Listener -> Redirect to HTTPS
+        lb.add_listener("HttpListener",
+            port=80,
+            default_action=elbv2.ListenerAction.redirect(
+                protocol="HTTPS",
+                port="443",
+                permanent=True
+            )
+        )
+        
+        # 4. HTTPS Listener with imported certificate
+        https_listener = lb.add_listener("HttpsListener",
+            port=443,
+            certificates=[cert],
+            open=True
+        )
+        
+        # 5. Target: WebUI Service
+        https_listener.add_targets("WebUITarget",
+            port=8080,
+            targets=[webui_service],
+            health_check=elbv2.HealthCheck(
+                path="/",
+                interval=Duration.seconds(60)
+            )
+        )
+        
+        # 6. HTTP Listener for Ingestion (Port 3000)
+        # Lambda calls this to forward S3 events to MCP
+        mcp_listener = lb.add_listener("McpListener",
+            port=3000,
+            open=True
+        )
+        mcp_listener.add_targets("McpTarget",
+            port=3000,
+            targets=[mcp_service],
+            health_check=elbv2.HealthCheck(
+                path="/", # FastMCP default root
+                interval=Duration.seconds(60)
+            )
+        )
+
+        # ===================================================================
+        # 12. S3 PROCESSOR LAMBDA
         # ===================================================================
         s3_processor = _lambda.Function(self, "S3ToMcpProcessor",
             runtime=_lambda.Runtime.PYTHON_3_11,
@@ -599,67 +661,6 @@ def lambda_handler(event, context):
             s3n.LambdaDestination(s3_processor)
         )
 
-        # ===================================================================
-        # 12. PRODUCTION ACCESS: ALB + HTTPS
-        #     Domain: ai.peakpa.com  |  DNS managed externally (Hostinger/GoDaddy)
-        #     Certificate: ACM (us-east-1), validated via CNAME in DNS provider
-        # ===================================================================
-        
-        # 1. Import pre-existing ACM Certificate by ARN
-        #    Certificate covers ai.peakpa.com, validated in us-east-1.
-        cert = acm.Certificate.from_certificate_arn(
-            self, "SiteCert",
-            certificate_arn="arn:aws:acm:us-east-1:543187302175:certificate/f79ec0e6-6486-4d3e-b37f-e3e72dedcc94"
-        )
-        
-        # 2. Application Load Balancer
-        lb = elbv2.ApplicationLoadBalancer(self, "CloneMindALB",
-            vpc=vpc,
-            internet_facing=True,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
-        )
-        
-        # 3. HTTP Listener -> Redirect to HTTPS
-        lb.add_listener("HttpListener",
-            port=80,
-            default_action=elbv2.ListenerAction.redirect(
-                protocol="HTTPS",
-                port="443",
-                permanent=True
-            )
-        )
-        
-        # 4. HTTPS Listener with imported certificate
-        https_listener = lb.add_listener("HttpsListener",
-            port=443,
-            certificates=[cert],
-            open=True
-        )
-        
-        # 5. Target: WebUI Service
-        https_listener.add_targets("WebUITarget",
-            port=8080,
-            targets=[webui_service],
-            health_check=elbv2.HealthCheck(
-                path="/",
-                interval=Duration.seconds(60)
-            )
-        )
-        
-        # 6. HTTP Listener for Ingestion (Port 3000)
-        # Lambda calls this to forward S3 events to MCP
-        mcp_listener = lb.add_listener("McpListener",
-            port=3000,
-            open=True
-        )
-        mcp_listener.add_targets("McpTarget",
-            port=3000,
-            targets=[mcp_service],
-            health_check=elbv2.HealthCheck(
-                path="/", # FastMCP default root
-                interval=Duration.seconds(60)
-            )
-        )
         
         # Note: No Route53 Alias Record created.
         # DNS is managed in Hostinger:
