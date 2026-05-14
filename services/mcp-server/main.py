@@ -33,7 +33,6 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "172.17.0.1")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 REDIS_HOST = os.getenv("REDIS_HOST", "172.17.0.1")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-# CACHE_COLLECTION = "semantic_cache" # Deleted in favor of dynamic persona-based cache collections
 
 # AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -42,11 +41,10 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Embedding Configuration
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # now defaulting to local mpnet
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")
 
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")
-# US cross-region inference for Claude Sonnet 4.5 (us-east-1)
 PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "amazon.nova-pro-v1:0")
 REWRITE_MODEL = os.getenv("REWRITE_MODEL", "mistral.ministral-3-14b-instruct")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
@@ -74,10 +72,10 @@ app = FastAPI()
 
 # Initialize Clients
 qdrant = qdrant_client.QdrantClient(
-    host=QDRANT_HOST, 
+    host=QDRANT_HOST,
     port=QDRANT_PORT,
     timeout=30,
-    prefer_grpc=False # Use HTTP for better compatibility in ECS bridges
+    prefer_grpc=False
 )
 
 # Bedrock Client
@@ -96,8 +94,8 @@ if OPENAI_API_KEY:
 # Redis Client for Semantic Cache values
 print(f"📡 Connecting to Redis at {REDIS_HOST}:{REDIS_PORT}...")
 redis_client = redis.Redis(
-    host=REDIS_HOST, 
-    port=REDIS_PORT, 
+    host=REDIS_HOST,
+    port=REDIS_PORT,
     decode_responses=True,
     socket_timeout=2.0,
     socket_connect_timeout=2.0,
@@ -105,7 +103,6 @@ redis_client = redis.Redis(
 )
 
 try:
-    # Quick check
     redis_client.ping()
     print("✅ Redis connection successful")
 except Exception as e:
@@ -113,7 +110,6 @@ except Exception as e:
 
 # DynamoDB Configuration
 TENANT_TABLE = os.getenv("TENANT_TABLE", "clonemind-tenants")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
 tenant_metadata_table = dynamodb.Table(TENANT_TABLE)
 
@@ -130,6 +126,55 @@ cost_tracker = {
 
 # Global debug log for cache operations
 cache_debug_log = []
+
+# ─────────────────────────────────────────────
+# COLLECTION NAME NORMALIZATION — single source of truth
+# ─────────────────────────────────────────────
+
+IGNORED_PERSONAS = {'any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user'}
+
+
+def normalize_tenant_id(tenantId: str) -> str:
+    """Return a clean, prefixed tenant slug for use in collection names.
+    
+    Always produces: tenant_{slug}
+    Examples:
+      "My-Company"  -> "tenant_my_company"
+      "tenant-abc"  -> "tenant_abc"          (de-duplicates the prefix)
+      "tenant_abc"  -> "tenant_abc"
+    """
+    t = tenantId.strip().lower().replace('-', '_')
+    # Strip an existing "tenant_" prefix before re-adding so we never get
+    # "tenant_tenant_abc" from a tenantId that already starts with "tenant-".
+    if t.startswith("tenant_"):
+        t = t[len("tenant_"):]
+    return f"tenant_{t}"
+
+
+def normalize_persona(personaId) -> str:
+    """Return a clean persona slug, falling back to 'global' for ignored values."""
+    p = str(personaId).strip().lower() if personaId else "global"
+    return p if p not in IGNORED_PERSONAS else "global"
+
+
+def normalize_collection_name(tenantId: str, personaId=None, suffix: str = "") -> str:
+    """Single source of truth for Qdrant collection names.
+
+    Format: tenant_{id}_{persona}[_{suffix}]
+
+    Examples:
+      normalize_collection_name("my-company", "CEO")        -> "tenant_my_company_ceo"
+      normalize_collection_name("my-company", "global")     -> "tenant_my_company_global"
+      normalize_collection_name("my-company", "ceo", "cache") -> "tenant_my_company_ceo_cache"
+      normalize_collection_name("tenant-abc", "ceo")        -> "tenant_abc_ceo"
+    """
+    t = normalize_tenant_id(tenantId)
+    p = normalize_persona(personaId)
+    name = f"{t}_{p}"
+    if suffix:
+        name = f"{name}_{suffix}"
+    return name
+
 
 # ─────────────────────────────────────────────
 # BASIC PLAN: Off-topic / Casual Chat Guardrail
@@ -161,28 +206,26 @@ BASIC_GUARDRAIL_RESPONSE = (
     "company, strategy, clients, or knowledge base. 💼"
 )
 
+
 def is_off_topic(query: str, tenant_keywords: Optional[List[str]] = None) -> bool:
     """Returns True if the query is casual/off-topic for a Basic plan tenant."""
     q = query.lower().strip()
-    
-    # Merge global business keywords with tenant-specific ones
+
     all_business_keywords = BUSINESS_KEYWORDS
     if tenant_keywords:
         all_business_keywords = list(set(BUSINESS_KEYWORDS + [k.lower() for k in tenant_keywords]))
 
-    # Block explicit casual patterns
     if any(p in q for p in OFF_TOPIC_PATTERNS):
         return True
-    # Very short query with no business keywords → likely casual
     if len(q.split()) <= 2 and not any(k in q for k in all_business_keywords):
         return True
     return False
 
+
 async def get_tenant_metadata(tenantId: str) -> dict:
-    """Retrives metadata for a tenant from Redis cache or DynamoDB."""
+    """Retrieves metadata for a tenant from Redis cache or DynamoDB."""
     cache_key = f"tenant:{tenantId}:metadata"
-    
-    # 1. Try Redis cache
+
     try:
         cached_data = redis_client.get(cache_key)
         if cached_data:
@@ -190,30 +233,32 @@ async def get_tenant_metadata(tenantId: str) -> dict:
     except Exception as e:
         print(f"⚠ Redis cache fetch failed for metadata: {e}")
 
-    # 2. Fetch from DynamoDB
     try:
         response = await asyncio.to_thread(
             lambda: tenant_metadata_table.get_item(Key={'tenantId': tenantId})
         )
         metadata = response.get('Item', {})
-        
-        # 3. Cache in Redis for 1 hour
+
         if metadata:
             try:
                 redis_client.setex(cache_key, 3600, json.dumps(metadata))
             except Exception as e:
                 print(f"⚠ Failed to cache tenant metadata in Redis: {e}")
-        
+
         return metadata
     except Exception as e:
         print(f"❌ Failed to fetch tenant metadata from DynamoDB: {e}")
         return {}
-# ─────────────────────────────────────────────
 
+
+# ─────────────────────────────────────────────
+# EMBEDDING HELPERS
+# ─────────────────────────────────────────────
 
 def get_text_hash(text: str) -> str:
     """Create a hash of the text for caching."""
     return hashlib.sha256(text.encode()).hexdigest()
+
 
 def get_local_embedding(text: str) -> List[float]:
     """Generate embedding using local sentence-transformers (all-mpnet-base-v2)."""
@@ -221,10 +266,9 @@ def get_local_embedding(text: str) -> List[float]:
     if local_embed_model is None:
         print("📥 Initializing local embedding model (all-mpnet-base-v2)...")
         local_embed_model = SentenceTransformer('all-mpnet-base-v2')
-    
-    # model.encode returns a numpy array, convert to list
     embedding = local_embed_model.encode(text)
     return embedding.tolist()
+
 
 async def get_voyage_embedding(text: str) -> List[float]:
     """Generate embedding using Voyage AI"""
@@ -232,11 +276,12 @@ async def get_voyage_embedding(text: str) -> List[float]:
     if voyage_client is None:
         import voyageai
         voyage_client = voyageai.Client(api_key=VOYAGE_API_KEY)
-    
+
     result = await asyncio.to_thread(
         lambda: voyage_client.embed([text[:4000]], model="voyage-2", input_type="document")
     )
     return result.embeddings[0]
+
 
 async def get_openai_embedding(text: str) -> List[float]:
     """Generate embedding using OpenAI"""
@@ -250,10 +295,12 @@ async def get_openai_embedding(text: str) -> List[float]:
             )
             return response.data[0].embedding
         except Exception as e:
-            if attempt == 2: raise
+            if attempt == 2:
+                raise
             wait_time = (attempt + 1) * 2
             print(f"⚠ OpenAI embedding attempt {attempt+1} failed: {str(e)}. Retrying in {wait_time}s...")
             await asyncio.sleep(wait_time)
+
 
 async def get_cohere_embedding(text: str) -> List[float]:
     """Generate embedding using Cohere"""
@@ -261,7 +308,7 @@ async def get_cohere_embedding(text: str) -> List[float]:
     if cohere_client is None:
         import cohere
         cohere_client = cohere.Client(COHERE_API_KEY)
-    
+
     response = await asyncio.to_thread(
         lambda: cohere_client.embed(
             texts=[text[:2048]],
@@ -271,24 +318,24 @@ async def get_cohere_embedding(text: str) -> List[float]:
     )
     return response.embeddings[0]
 
+
 async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
     """Generate embedding using configured provider"""
-    
     if not text or not text.strip():
         raise ValueError("Cannot generate embedding for empty text")
-    
+
     if use_cache:
         text_hash = get_text_hash(text)
         if text_hash in embedding_cache:
             print(f"✓ Using cached embedding")
             return embedding_cache[text_hash]
-    
+
     print(f"Generating {EMBEDDING_PROVIDER} embedding for text (length: {len(text)})")
-    
+
     try:
         if EMBEDDING_PROVIDER == "openai" and openai_client is None:
             raise ValueError("OpenAI API Key not configured")
-            
+
         if EMBEDDING_PROVIDER == "voyage":
             embedding = await get_voyage_embedding(text)
         elif EMBEDDING_PROVIDER == "openai":
@@ -296,31 +343,31 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
         elif EMBEDDING_PROVIDER == "cohere":
             embedding = await get_cohere_embedding(text)
         elif EMBEDDING_PROVIDER == "local":
-            # Run local embedding in a thread to not block the event loop
             embedding = await asyncio.to_thread(get_local_embedding, text)
         else:
             raise ValueError(f"Unknown embedding provider: {EMBEDDING_PROVIDER}")
-        
+
         if use_cache:
             embedding_cache[get_text_hash(text)] = embedding
-        
+
         cost_tracker["embedding_calls"] += 1
         return embedding
-        
+
     except Exception as e:
         print(f"✗ {EMBEDDING_PROVIDER} embedding error: {str(e)}")
         raise
+
 
 def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[str]:
     """Split text into chunks"""
     if len(text) <= chunk_size:
         return [text]
-    
+
     lines = text.split('\n')
     chunks = []
     current_chunk = []
     current_length = 0
-    
+
     for line in lines:
         if current_length + len(line) > chunk_size and current_chunk:
             chunks.append('\n'.join(current_chunk))
@@ -330,16 +377,17 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[st
         else:
             current_chunk.append(line)
             current_length += len(line)
-            
+
     if current_chunk:
         chunks.append('\n'.join(current_chunk))
-        
+
     return chunks
 
-def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, score_threshold: float = None, query_filter: Any = None):
+
+def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1,
+                          score_threshold: float = None, query_filter: Any = None):
     """Helper to perform search across different Qdrant client versions."""
     try:
-        # Method 1: Modern search()
         if hasattr(qdrant, 'search'):
             return qdrant.search(
                 collection_name=collection_name,
@@ -349,7 +397,6 @@ def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, sco
                 score_threshold=score_threshold,
                 with_payload=True
             )
-        # Method 2: query_points() (Latest API)
         elif hasattr(qdrant, 'query_points'):
             response = qdrant.query_points(
                 collection_name=collection_name,
@@ -363,7 +410,6 @@ def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, sco
         else:
             raise AttributeError("Qdrant client has no search or query_points method")
     except TypeError as e:
-        # If query_vector fails, try 'query' (older versions)
         if "query_vector" in str(e) and hasattr(qdrant, 'search'):
             return qdrant.search(
                 collection_name=collection_name,
@@ -374,6 +420,7 @@ def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1, sco
                 with_payload=True
             )
         raise e
+
 
 def ensure_collection(collection_name: str, vector_size: int):
     """Ensure a Qdrant collection exists"""
@@ -398,39 +445,36 @@ def ensure_collection(collection_name: str, vector_size: int):
         print(f"Qdrant error: {str(e)}")
         raise
 
+
+# ─────────────────────────────────────────────
+# SEMANTIC CACHE
+# ─────────────────────────────────────────────
+
 async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
     """Check if a semantically similar question exists in the persona-specific cache."""
     if os.getenv("DISABLE_SEMANTIC_CACHE", "false").lower() == "true":
         return None
-        
+
     try:
+        # FIX: use normalize_collection_name — single source of truth
         tenantId = tenantId.strip().lower()
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
-        persona_raw = str(personaId).strip().lower() if personaId else None
-        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
-        
-        # Clean query: strip markdown noise (* and _) and whitespace for better matching
         clean_query = query.strip().strip('*').strip('_').strip()
-        if not clean_query: clean_query = query
-        
-        t_id = tenantId.replace('-', '_')
-        if not t_id.startswith("tenant_"):
-            t_id = f"tenant_{t_id}"
-            
-        cache_collection = f"{t_id}_{active_persona}_cache"
-        
+        if not clean_query:
+            clean_query = query
+
+        cache_collection = normalize_collection_name(tenantId, personaId, suffix="cache")
+
         vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
-        
-        # Search for similar questions (Strict Isolation by Collection Name)
+
         results = await asyncio.to_thread(
             robust_qdrant_search,
             collection_name=cache_collection,
             vector=vector,
             limit=1,
-            score_threshold=0.96  # Increased from 0.88 to prevent over-matching
+            score_threshold=0.96
         )
-        
+
         log_entry = {
             "query": clean_query[:50] + "...",
             "collection": cache_collection,
@@ -442,7 +486,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             score = results[0].score
             cache_id = results[0].payload.get("cache_id")
             log_entry["score"] = round(score, 4)
-            
+
             if cache_id:
                 try:
                     response = redis_client.get(f"cache:{cache_id}")
@@ -461,9 +505,10 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         else:
             log_entry["score"] = 0
             log_entry["reason"] = "No match above 0.96"
-        
+
         cache_debug_log.append(log_entry)
-        if len(cache_debug_log) > 20: cache_debug_log.pop(0)
+        if len(cache_debug_log) > 20:
+            cache_debug_log.pop(0)
         return None
 
     except Exception as e:
@@ -476,31 +521,26 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         print(f"⚠ Cache lookup error: {str(e)}")
         return None
 
+
 async def save_to_semantic_cache(query: str, answer: str, tenantId: str, personaId: Optional[str] = None):
     """Store question vector and answer in persona-specific cache."""
     try:
+        # FIX: use normalize_collection_name — single source of truth
         tenantId = tenantId.strip().lower()
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
-        persona_raw = str(personaId).strip().lower() if personaId else None
-        active_persona = persona_raw if (persona_raw and persona_raw not in ignored_personas) else "global"
-        
-        # Clean query: strip markdown noise (* and _) and whitespace for better matching
         clean_query = query.strip().strip('*').strip('_').strip()
-        if not clean_query: clean_query = query
-        
-        # ✅ Standardize cache collection: tenant_{id}_{persona}_cache
-        t_id = tenantId.replace('-', '_')
-        if not t_id.startswith("tenant_"):
-            t_id = f"tenant_{t_id}"
-            
-        cache_collection = f"{t_id}_{active_persona}_cache"
-        
+        if not clean_query:
+            clean_query = query
+
+        cache_collection = normalize_collection_name(tenantId, personaId, suffix="cache")
+
         vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
-        
+
         cache_id = str(uuid.uuid4())
-        
-        # Store metadata in Qdrant
+
+        # Derive active_persona for payload storage
+        active_persona = normalize_persona(personaId)
+
         payload = {
             "query": query,
             "tenantId": tenantId.lower(),
@@ -508,94 +548,89 @@ async def save_to_semantic_cache(query: str, answer: str, tenantId: str, persona
             "cache_id": cache_id,
             "created_at": time.time()
         }
-        
+
         qdrant.upsert(
             collection_name=cache_collection,
             points=[models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=payload)]
         )
-        
-        # Store full answer in Redis (TTL: 24 hours)
+
         redis_client.setex(f"cache:{cache_id}", 86400, answer)
         print(f"💾 [CACHE SAVE] Collection: {cache_collection}")
     except Exception as e:
         print(f"⚠ Cache save error: {str(e)}")
 
+
 async def clear_semantic_cache_for_tenant(tenantId: str):
     """Wipe all semantic cache collections for a specific tenant."""
     try:
-        tenantId = tenantId.strip().lower()
-        prefix = tenantId.replace("-", "_")
-        
-        # Get all collections
+        # FIX: normalize_tenant_id guarantees the "tenant_" prefix is present
+        # so the startswith check correctly matches all tenant collections
+        prefix = normalize_tenant_id(tenantId.strip().lower())
+
         collections_response = qdrant.get_collections()
         deleted_count = 0
-        
+
         for col in collections_response.collections:
             name = col.name
             if name.startswith(f"{prefix}_") and name.endswith("_cache"):
                 print(f"🧹 Deleting cache collection: {name}")
                 qdrant.delete_collection(name)
                 deleted_count += 1
-        
-        # Also clear in-memory embedding cache
+
         embedding_cache.clear()
         print("🧼 Flushing in-memory vector cache")
-        
+
         return True
     except Exception as e:
         print(f"⚠ Cache clear error: {str(e)}")
         return False
 
+
+# ─────────────────────────────────────────────
+# MCP TOOLS
+# ─────────────────────────────────────────────
+
 @mcp.tool()
 async def search_knowledge_base(
-    query: str, 
-    tenantId: str = "", 
-    limit: int = 5, 
-    personaId: str = "ceo", 
+    query: str,
+    tenantId: str = "",
+    limit: int = 5,
+    personaId: str = "ceo",
     filename: Optional[str] = None,
     return_raw: bool = False
 ) -> Any:
-    """Search the knowledge base for a specific tenant and persona. Use 'filename' to restrict search to a specific document."""
+    """Search the knowledge base for a specific tenant and persona.
+    Use 'filename' to restrict search to a specific document."""
     if not tenantId or not query or not query.strip():
         return "Please provide both tenantId and a search query."
-        
+
     try:
-        # 1. Clean inputs
+        # FIX: normalize via shared helpers — no inline normalization
         tenantId = tenantId.strip().lower()
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any', 'user']
-        persona_raw = str(personaId).strip().lower() if personaId else "ceo"
-        active_persona = persona_raw if persona_raw not in ignored_personas else "global"
-        
-        # 2. Standardize collection name: tenant_{id}_{persona}
-        t_id = tenantId.replace('-', '_')
-        if not t_id.startswith("tenant_"):
-            t_id = f"tenant_{t_id}"
-            
-        collection_name = f"{t_id}_{active_persona}"
-        
-        # 3. Handle Contextual References
-        # If the query contains "this sheet", "it", "that document" and a filename is provided, 
-        # we treat the filename as the primary filter.
+        active_persona = normalize_persona(personaId)
+        collection_name = normalize_collection_name(tenantId, active_persona)
+
+        # Handle contextual references
         context_words = ["this sheet", "this document", "that sheet", "the file", "the sheet", "it"]
         is_contextual = any(word in query.lower() for word in context_words)
-        
+
         search_query = query
         if len(query.split()) <= 4:
             search_query = f"The {query} and key metrics or performance data"
 
-        print(f"🔍 [SEARCH] Collection: {collection_name} | Persona: {active_persona} | Filename Filter: {filename} | Query: '{search_query[:50]}...'")
-        
+        print(f"🔍 [SEARCH] Collection: {collection_name} | Persona: {active_persona} | "
+              f"Filename Filter: {filename} | Query: '{search_query[:50]}...'")
+
         vector = await get_embedding(search_query)
 
-        # 4. Build Filter (STRICT ISOLATION)
+        # Build filter (strict isolation by collection + personaId)
         must_filters = [
             models.FieldCondition(
                 key="personaId",
                 match=models.MatchValue(value=active_persona)
             )
         ]
-        
-        # Add Filename filter if provided
+
         if filename:
             must_filters.append(
                 models.FieldCondition(
@@ -603,10 +638,9 @@ async def search_knowledge_base(
                     match=models.MatchValue(value=filename)
                 )
             )
-            
+
         query_filter = models.Filter(must=must_filters)
 
-        # 5. Execute Search
         search_result = await asyncio.to_thread(
             robust_qdrant_search,
             collection_name=collection_name,
@@ -618,23 +652,24 @@ async def search_knowledge_base(
         formatted_results = []
         for i, res in enumerate(search_result):
             text = res.payload.get("text", "No text found")
-            source = res.payload.get("filename") or res.payload.get("fileName") or res.payload.get("source") or "Unknown Document"
+            source = (res.payload.get("filename") or res.payload.get("fileName")
+                      or res.payload.get("source") or "Unknown Document")
             sheet = res.payload.get("sheet_name")
             hit_persona = res.payload.get("personaId", "None")
             score = getattr(res, 'score', 0)
-            
+
             print(f"  - Hit #{i+1}: {source} {'['+sheet+']' if sheet else ''} [Score: {score:.4f}]")
-            
+
             citation = f"DOCUMENT: {source}"
             if sheet:
                 citation += f" [SHEET: {sheet}]"
-            
+
             formatted_results.append(f"{citation} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
+        # FIX: fallback to global uses normalize_collection_name (no missing prefix bug)
         if not formatted_results and active_persona != "global" and not filename:
-            # Fallback to global ONLY if no filename filter was used
-            print(f"⚠ [SEARCH] No results. Falling back to global.")
-            global_collection = f"{tenantId.replace('-', '_')}_global"
+            print(f"⚠ [SEARCH] No results for persona '{active_persona}'. Falling back to global.")
+            global_collection = normalize_collection_name(tenantId, "global")
             if qdrant.collection_exists(global_collection):
                 global_filter = models.Filter(
                     must=[models.FieldCondition(key="personaId", match=models.MatchValue(value="global"))]
@@ -646,41 +681,45 @@ async def search_knowledge_base(
                     limit=limit,
                     query_filter=global_filter
                 )
-            for res in search_result:
-                text = res.payload.get("text", "")
-                source = res.payload.get("filename", "Global Source")
-                formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
+                for res in search_result:
+                    text = res.payload.get("text", "")
+                    source = res.payload.get("filename", "Global Source")
+                    formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
 
         if return_raw:
             return search_result
-            
+
         if not formatted_results:
             return ""
-            
+
         return "\n".join(formatted_results)
+
     except Exception as e:
-        # Graceful handling for missing collections or temporary issues
         error_msg = str(e).lower()
         if "not found" in error_msg or "does not exist" in error_msg:
             print(f"⚠ [SEARCH] Collection '{collection_name}' not found. Returning empty results.")
             return ""
-        
+
         print(f"✗ [SEARCH] Error: {str(e)}")
         import traceback
         print(traceback.format_exc())
         return f"SEARCH_ERROR: {str(e)}"
 
+
 async def rewrite_query(original_query: str) -> str:
     """Use Mistral on Bedrock to rewrite/optimize the query for RAG."""
     try:
-        prompt = f"Rewrite this search query to be more descriptive and optimized for a vector search engine. Only return the rewritten query text: {original_query}"
-        
+        prompt = (
+            "Rewrite this search query to be more descriptive and optimized for a "
+            f"vector search engine. Only return the rewritten query text: {original_query}"
+        )
+
         body = json.dumps({
             "prompt": f"<s>[INST] {prompt} [/INST]",
             "max_tokens": 128,
             "temperature": 0.1
         })
-        
+
         response = await asyncio.to_thread(
             lambda: bedrock_runtime.invoke_model(
                 modelId=REWRITE_MODEL,
@@ -689,7 +728,7 @@ async def rewrite_query(original_query: str) -> str:
                 body=body
             )
         )
-        
+
         response_body = json.loads(response.get('body').read())
         rewritten = response_body.get('outputs', [{}])[0].get('text', original_query).strip()
         print(f"🔄 [REWRITE] '{original_query}' -> '{rewritten}'")
@@ -698,19 +737,21 @@ async def rewrite_query(original_query: str) -> str:
         print(f"⚠ [REWRITE] Error: {e}")
         return original_query
 
+
 async def rerank_results(query: str, hits: List[Any], top_n: int = 5) -> List[Any]:
     """Use Cohere Rerank on Bedrock to pick the most relevant chunks."""
-    if not hits: return []
+    if not hits:
+        return []
     try:
         documents = [hit.payload.get("text", "") for hit in hits]
-        
+
         body = json.dumps({
             "query": query,
             "documents": documents,
             "top_n": top_n,
             "api_version": 1
         })
-        
+
         response = await asyncio.to_thread(
             lambda: bedrock_runtime.invoke_model(
                 modelId=RERANK_MODEL,
@@ -719,28 +760,26 @@ async def rerank_results(query: str, hits: List[Any], top_n: int = 5) -> List[An
                 body=body
             )
         )
-        
+
         response_body = json.loads(response.get('body').read())
         results = response_body.get('results', [])
-        
-        # Map original hits back to reranked order
+
         ranked_hits = []
         for r in results:
             idx = r.get('index')
             if idx < len(hits):
                 ranked_hits.append(hits[idx])
-        
+
         print(f"🎯 [RERANK] Reduced {len(hits)} hits to top {len(ranked_hits)}")
         return ranked_hits
     except Exception as e:
         print(f"⚠ [RERANK] Error: {e}")
         return hits[:top_n]
 
+
 async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_tokens: int) -> str:
     """Invoke any Bedrock model using the unified Converse API."""
     try:
-        # The Converse API handles Claude, Nova, and Mistral automatically
-        # We need to ensure messages content is always in the list-of-blocks format
         formatted_messages = []
         for msg in messages:
             content = msg.get("content", "")
@@ -751,11 +790,11 @@ async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_toke
                 "content": content
             })
 
-        # ✅ CONVERSE API REQUIREMENT: First message must be 'user'
+        # Converse API requirement: first message must be 'user'
         while formatted_messages and formatted_messages[0]["role"] != "user":
-            print(f"🧹 [BEDROCK] Removing leading {formatted_messages[0]['role']} message to satisfy Converse API requirements")
+            print(f"🧹 [BEDROCK] Removing leading {formatted_messages[0]['role']} message")
             formatted_messages.pop(0)
-            
+
         if not formatted_messages:
             return "Error: No user messages found in conversation history."
 
@@ -772,21 +811,21 @@ async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_toke
                 }
             )
         )
-        
-        # Converse API returns the text in output['message']['content'][0]['text']
+
         return response['output']['message']['content'][0]['text']
     except Exception as e:
         print(f"❌ [BEDROCK] error: {e}")
         raise
 
+
 @mcp.tool()
 async def generate_twin_response(
-    query: str, 
-    tenantId: str, 
+    query: str,
+    tenantId: str,
     system_prompt: str,
     personaId: Optional[str] = None,
     messages: Optional[List[dict]] = None,
-    plan: Optional[str] = "basic"  # "basic" or "premium"
+    plan: Optional[str] = "basic"
 ) -> str:
     """Full Advanced RAG Pipeline (Bedrock Edition)"""
     try:
@@ -795,13 +834,12 @@ async def generate_twin_response(
         actual_plan = metadata.get("plan", plan if plan else "basic")
         tenant_keywords = metadata.get("guardrailKeywords", [])
 
-        # ── Basic Plan: Off-topic Guardrail ──
+        # Basic Plan: off-topic guardrail
         if actual_plan == "basic" and is_off_topic(query, tenant_keywords):
             print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
             return BASIC_GUARDRAIL_RESPONSE
 
-        # ── Per-plan limits ──
-        # In Bedrock mode, we always use Rewrite/Rerank for premium, simple flow for basic
+        # Per-plan limits
         rag_limit   = 5    if actual_plan == "basic" else 15
         max_tokens  = 512  if actual_plan == "basic" else 2048
         history_len = 3    if actual_plan == "basic" else 5
@@ -814,17 +852,17 @@ async def generate_twin_response(
         # 2. Advanced RAG Flow
         search_query = query
         if actual_plan == "premium":
-            # 2a. Query Rewrite (Mistral)
             search_query = await rewrite_query(query)
 
-        # 2b. Search (returns Top 15 raw hits for premium, 5 for basic)
-        raw_hits = await search_knowledge_base(search_query, tenantId, personaId=personaId, limit=rag_limit, return_raw=True)
-        
+        # search_knowledge_base normalizes internally via normalize_collection_name
+        raw_hits = await search_knowledge_base(
+            search_query, tenantId, personaId=personaId, limit=rag_limit, return_raw=True
+        )
+
         final_hits = raw_hits
         if actual_plan == "premium" and len(raw_hits) > 3:
-            # 2c. Rerank (Cohere) - pick top 5
             final_hits = await rerank_results(query, raw_hits, top_n=5)
-            
+
         # Format context block
         if not final_hits:
             rag_context_block = "Note: No specific records found in the knowledge base for this query."
@@ -842,9 +880,9 @@ async def generate_twin_response(
             for msg in messages[-history_len:]:
                 if msg.get("content"):
                     llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
-        
+
         persona_label = personaId if personaId else "Digital Brain"
-        rag_prompt = f"""You are the Digital Brain ([Persona: {persona_label}]). 
+        rag_prompt = f"""You are the Digital Brain ([Persona: {persona_label}]).
 
 IMPORTANT: Use the following "Retrieved Wisdom" to answer the user's question. If the information is in the wisdom, you MUST use it.
 
@@ -862,7 +900,7 @@ Rules:
 """
         llm_messages.append({"role": "user", "content": rag_prompt})
 
-        # ── LLM Invocation ──
+        # LLM Invocation
         if LLM_PROVIDER == "bedrock":
             print(f"📡 Routing to Bedrock: {PRIMARY_MODEL}")
             answer = await call_bedrock_claude(system_prompt, llm_messages, max_tokens)
@@ -882,7 +920,7 @@ Rules:
         negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
         if not any(t in answer.lower() for t in negative_triggers):
             await save_to_semantic_cache(query, answer, tenantId, personaId)
-        
+
         return answer
 
     except Exception as e:
@@ -891,39 +929,44 @@ Rules:
         traceback.print_exc()
         return f"MCP Error: {str(e)}"
 
+
 @mcp.tool()
 async def clear_tenant_knowledge(tenantId: str) -> str:
     """Wipe all knowledge for a specific tenant (all personas)."""
     try:
-        tenantId = tenantId.strip().lower()
-        prefix = tenantId.replace("-", "_")
-        
-        # Get all collections
+        # FIX: normalize_tenant_id guarantees "tenant_" prefix for correct prefix matching
+        prefix = normalize_tenant_id(tenantId.strip().lower())
+
         collections_response = qdrant.get_collections()
         deleted_count = 0
-        
+
         for col in collections_response.collections:
             name = col.name
             if name == prefix or name.startswith(f"{prefix}_"):
                 print(f"🗑 Deleting collection: {name}")
                 qdrant.delete_collection(name)
                 deleted_count += 1
-        
-        # Also clear cache
+
         await clear_semantic_cache_for_tenant(tenantId)
-        
+
         return f"Successfully wiped {deleted_count} collections and cache for tenant: {tenantId}"
     except Exception as e:
         return f"Wipe Error: {str(e)}"
 
+
 @mcp.tool()
-async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metadata: Optional[dict] = None, **kwargs: Any) -> str:
-    """Ingest knowledge from text or S3 (Excel/CSV/Text)."""
+async def ingest_knowledge(
+    text: Optional[str] = None,
+    tenantId: str = "",
+    metadata: Optional[dict] = None,
+    **kwargs: Any
+) -> str:
+    """Ingest knowledge from text or S3 (Excel/CSV/Text/PDF/PPTX/DOCX)."""
     try:
         # 1. Handle S3 source if provided
         s3_bucket = kwargs.get("s3_bucket")
         s3_key = kwargs.get("s3_key")
-        
+
         if s3_bucket and s3_key:
             print(f"📥 [INGEST] Fetching from S3: s3://{s3_bucket}/{s3_key}")
             try:
@@ -931,53 +974,46 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                 response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
                 file_content = response['Body'].read()
                 print(f"✅ [INGEST] S3 fetch OK — {len(file_content):,} bytes")
-                
-                # Detect file type and parse
+
                 ext = s3_key.split('.')[-1].lower()
                 print(f"📂 [INGEST] Detected extension: {ext}")
+
                 if ext in ['xlsx', 'xls']:
                     print(f"📊 Parsing Excel with Multi-Sheet Isolation...")
                     xl = pd.ExcelFile(io.BytesIO(file_content))
-                    total_successful_chunks = 0
-                    
+
                     for sheet_name in xl.sheet_names:
                         df = pd.read_excel(xl, sheet_name=sheet_name)
                         df = df.dropna(how='all').dropna(axis=1, how='all')
                         if not df.empty:
                             sheet_text = f"SHEET: {sheet_name}\n{df.to_csv(index=False, sep='|')}"
-                            
-                            # Update metadata for this specific sheet
                             sheet_metadata = {**(metadata or {}), "sheet_name": sheet_name}
-                            
-                            # Recursive call or inline ingestion for this sheet
                             sheet_res = await ingest_knowledge(
-                                text=sheet_text, 
-                                tenantId=tenantId, 
+                                text=sheet_text,
+                                tenantId=tenantId,
                                 metadata=sheet_metadata
                             )
                             print(f"  - Sheet '{sheet_name}' result: {sheet_res}")
-                    
+
                     return f"Successfully ingested multi-sheet Excel: {s3_key}"
+
                 elif ext == 'csv':
                     print(f"📄 Parsing CSV...")
                     df = pd.read_csv(io.BytesIO(file_content))
                     text = df.to_csv(index=False, sep='|')
+
                 elif ext == 'docx':
                     print(f"📝 Parsing Word Document...")
                     doc = docx.Document(io.BytesIO(file_content))
-                    
-                    # Extract from paragraphs
                     paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-                    
-                    # Extract from tables
                     table_text = []
                     for table in doc.tables:
                         for row in table.rows:
                             row_data = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                             if row_data:
                                 table_text.append(" | ".join(row_data))
-                    
                     text = "\n".join(paragraphs + table_text)
+
                 elif ext == 'pdf':
                     print(f"📄 [INGEST] Parsing PDF — {len(file_content):,} bytes")
                     pdf_pages = []
@@ -990,6 +1026,7 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     if not pdf_pages:
                         return "Error: No extractable text found in PDF"
                     text = "\n\n".join(pdf_pages)
+
                 elif ext == 'pptx':
                     print(f"📊 [INGEST] Parsing PPTX — {len(file_content):,} bytes")
                     prs = PptxPresentation(io.BytesIO(file_content))
@@ -1005,42 +1042,38 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     if not slide_texts:
                         return "Error: No extractable text found in PowerPoint"
                     text = "\n\n".join(slide_texts)
+
                 elif ext == 'ppt':
-                    return "Error: Old binary .ppt format is not supported. Please save the file as .pptx (PowerPoint 2007+) and re-upload."
+                    return ("Error: Old binary .ppt format is not supported. "
+                            "Please save the file as .pptx (PowerPoint 2007+) and re-upload.")
                 else:
-                    # Treat as text
                     text = file_content.decode('utf-8', errors='ignore')
+
             except Exception as s3_err:
                 return f"S3 Error: {str(s3_err)}"
 
         if not text or not text.strip():
             return "Error: Text content is empty after parsing"
-        
-        # Ensure metadata is a dict and capture top-level filename info
+
         if metadata is None:
             metadata = {}
-        
-        # Capture filename if passed at top level (common in n8n/webhooks)
-        fname = kwargs.get("fileName") or kwargs.get("filename") or metadata.get("fileName") or metadata.get("filename")
+
+        # Capture filename if passed at top level
+        fname = (kwargs.get("fileName") or kwargs.get("filename")
+                 or metadata.get("fileName") or metadata.get("filename"))
         if fname:
             metadata["filename"] = fname
             print(f"📎 Found filename in request: {fname}")
 
         tenantId = tenantId.strip().lower()
-        
-        # ✅ PERSONA-BASED COLLECTION: Extract persona for naming
-        persona_raw = metadata.get("personaId") if metadata else "global"
-        ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
-        active_persona = str(persona_raw).strip().lower() if (persona_raw and str(persona_raw).strip().lower() not in ignored_personas) else "global"
-        
-        # ✅ Standardize collection name: tenant_{id}_{persona}
-        t_id = tenantId.replace('-', '_')
-        if not t_id.startswith("tenant_"):
-            t_id = f"tenant_{t_id}"
-            
-        collection_name = f"{t_id}_{active_persona}"
-        
-        print(f"📝 [INGEST] Ingesting for {tenantId} | Persona: {active_persona} | Collection: {collection_name} | Text: {len(text):,} chars")
+
+        # FIX: use normalize_collection_name — no inline normalization
+        persona_raw = metadata.get("personaId") if metadata else None
+        active_persona = normalize_persona(persona_raw)
+        collection_name = normalize_collection_name(tenantId, active_persona)
+
+        print(f"📝 [INGEST] Ingesting for {tenantId} | Persona: {active_persona} | "
+              f"Collection: {collection_name} | Text: {len(text):,} chars")
 
         chunks = chunk_text(text, chunk_size=2000, overlap=300)
         print(f"🔪 [INGEST] Split into {len(chunks)} chunks — starting embedding...")
@@ -1050,15 +1083,16 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
         except Exception as emb_err:
             print(f"❌ [INGEST] Embedding FAILED: {emb_err}")
             return f"Error: Embedding failed — {str(emb_err)}"
+
         vector_size = len(first_vector)
         ensure_collection(collection_name, vector_size)
-        
+
         successful_chunks = 0
-        
+
         for i, chunk in enumerate(chunks):
             try:
                 vector = await get_embedding(chunk)
-                
+
                 chunk_metadata = {
                     **(metadata or {}),
                     "text": chunk,
@@ -1068,50 +1102,50 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
                     "total_chunks": len(chunks),
                     "full_text_hash": get_text_hash(text)[:16]
                 }
-                
-                # ✅ DETERMINISTIC ID: Use hash of content + tenantId to prevent duplicates
+
+                # Deterministic ID: hash of content + tenantId prevents duplicates
                 id_seed = f"{tenantId.lower()}:{chunk}".encode()
                 point_id = hashlib.sha256(id_seed).hexdigest()[:32]
-                
-                # ✅ FIXED: Direct call, no asyncio.to_thread
+
                 qdrant.upsert(
                     collection_name=collection_name,
                     points=[models.PointStruct(id=point_id, vector=vector, payload=chunk_metadata)]
                 )
-                
+
                 successful_chunks += 1
-                
+
                 if i % 5 == 0 and i > 0:
                     print(f"  - Ingested {i}/{len(chunks)}")
-                    
+
             except Exception as chunk_err:
                 print(f"  - Error chunk {i}: {str(chunk_err)}")
                 continue
-        
-        
-        print(f"✓ Ingested {successful_chunks}/{len(chunks)} chunks")
-        
-        # ✅ CACHE INVALIDATION: Clear cache after adding new knowledge
+
+        print(f"✓ Ingested {successful_chunks}/{len(chunks)} chunks into '{collection_name}'")
+
+        # Cache invalidation after new knowledge is added
         await clear_semantic_cache_for_tenant(tenantId)
-        
+
         return f"Successfully ingested {successful_chunks}/{len(chunks)} chunks"
+
     except Exception as e:
         print(f"✗ Ingestion error: {str(e)}")
         return f"Error: {str(e)}"
+
 
 @mcp.tool()
 async def get_cost_stats() -> str:
     """Get cost statistics"""
     embedding_costs = {"voyage": 0.0001, "openai": 0.00002, "cohere": 0.001}
-    
+
     embedding_cost = cost_tracker['embedding_calls'] * embedding_costs.get(EMBEDDING_PROVIDER, 0)
     chat_cost = cost_tracker['chat_calls'] * 0.00015
-    
+
     return f"""
 Cost Statistics:
 ===============
 Embedding Provider: {EMBEDDING_PROVIDER.upper()}
-Chat Provider: OpenAI GPT-4o-mini
+Chat Provider: Bedrock / OpenAI fallback
 
 - Embedding Calls: {cost_tracker['embedding_calls']}
 - Chat Calls: {cost_tracker['chat_calls']}
@@ -1125,31 +1159,38 @@ Estimated Costs:
 Cache: {len(embedding_cache)} embeddings
 """
 
+
 @mcp.tool()
 async def clear_embedding_cache() -> str:
-    """Clear cache"""
+    """Clear in-memory embedding cache"""
     cache_size = len(embedding_cache)
     embedding_cache.clear()
     return f"Cleared {cache_size} cached embeddings"
 
+
+# ─────────────────────────────────────────────
 # FastAPI HTTP Bridge
+# ─────────────────────────────────────────────
+
 @app.get("/")
 async def health_check():
     return JSONResponse({
         "status": "healthy",
         "service": "Peak AI 1.0 MCP",
-        "version": "3.2-fixed",
+        "version": VERSION,
         "provider": EMBEDDING_PROVIDER
     })
+
 
 @app.get("/health")
 async def health():
     redis_up = False
     try:
         redis_up = redis_client.ping()
-    except:
+    except Exception:
         pass
     return JSONResponse({"status": "healthy", "redis": redis_up})
+
 
 @app.get("/stats")
 async def stats():
@@ -1160,16 +1201,20 @@ async def stats():
         "estimated_cost": {
             "embeddings": round(cost_tracker["embedding_calls"] * 0.00002, 4),
             "chat": round(cost_tracker["total_tokens"] * (0.0002 / 1000), 4),
-            "total": round((cost_tracker["embedding_calls"] * 0.00002) + (cost_tracker["total_tokens"] * (0.0002 / 1000)), 4)
+            "total": round(
+                (cost_tracker["embedding_calls"] * 0.00002)
+                + (cost_tracker["total_tokens"] * (0.0002 / 1000)), 4
+            )
         }
     })
 
+
 @app.post("/call/{tool_name}")
 async def call_tool_bridge(tool_name: str, request: Request):
-    """HTTP bridge"""
+    """HTTP bridge for MCP tools"""
     try:
         arguments = await request.json()
-        
+
         if tool_name == "generate_twin_response":
             result = await generate_twin_response(**arguments)
         elif tool_name == "search_knowledge_base":
@@ -1185,15 +1230,19 @@ async def call_tool_bridge(tool_name: str, request: Request):
         elif tool_name == "clear_tenant_knowledge":
             result = await clear_tenant_knowledge(**arguments)
         else:
-            return JSONResponse({"error": f"Tool not found"}, status_code=404)
-        
+            return JSONResponse({"error": f"Tool not found: {tool_name}"}, status_code=404)
+
         return JSONResponse({"content": result})
     except Exception as e:
         import traceback
         print(f"Error: {traceback.format_exc()}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
-# OpenAI Compatibility Layer (Direct OpenWebUI Integration)
+
+# ─────────────────────────────────────────────
+# OpenAI Compatibility Layer (OpenWebUI Integration)
+# ─────────────────────────────────────────────
+
 @app.get("/v1/models")
 async def list_models():
     """Returns a list of available 'Digital Brain' models for OpenWebUI."""
@@ -1212,44 +1261,41 @@ async def list_models():
         ]
     })
 
+
 @app.post("/v1/chat/completions")
 async def openai_chat_bridge(request: Request):
-    """
-    Standard OpenAI Chat completions endpoint.
-    Converts OpenAI requests to 'generate_twin_response' calls.
-    """
+    """Standard OpenAI Chat completions endpoint.
+    Converts OpenAI requests to 'generate_twin_response' calls."""
     try:
         body = await request.json()
         headers = dict(request.headers)
-        
-        # 🔥 DEEP DIAGNOSTIC: See everything OpenWebUI is sending
+
         print(f"DEBUG_HEADERS: {json.dumps(headers)}")
         print(f"DEBUG_BODY: {json.dumps(body)}")
-        
+
         messages = body.get("messages", [])
         if not messages:
             return JSONResponse({"error": "No messages provided"}, status_code=400)
-            
+
         user_query = messages[-1].get("content", "")
-        
-        # Default identity attributes
+
         tenant_id = "default"
         persona_id = "global"
 
-        # 1. Try to get user info from body (passed by OpenWebUI)
+        # 1. Try user info from body
         user_info = body.get("user", {})
         user_email = user_info.get("email") if user_info else None
-        
-        # 2. Try X-User-Email or X-Tenant-Id headers
+
+        # 2. Try header values
         if not user_email:
             user_email = headers.get("x-user-email") or headers.get("X-User-Email")
-        
+
         header_tenant = headers.get("x-tenant-id") or headers.get("X-Tenant-Id")
         if header_tenant:
             tenant_id = header_tenant.lower()
             print(f"🆔 [BRIDGE] Using tenant from header: {tenant_id}")
 
-        # 3. 🔑 AUTHORIZATION BASED TENANT OVERRIDE
+        # 3. Authorization-based tenant override
         auth_header = headers.get("authorization", "")
         if "Bearer " in auth_header:
             token = auth_header.replace("Bearer ", "").strip()
@@ -1257,42 +1303,43 @@ async def openai_chat_bridge(request: Request):
                 print(f"🔑 [BRIDGE] Using tenant from Bearer token: {token}")
                 tenant_id = token.lower()
 
-        # 4. Email-based fallback (if still default)
+        # 4. Email-based fallback
         if tenant_id == "default" and user_email and "@" in user_email:
             domain = user_email.split("@")[1].lower()
-            
-            # Special case for 11x
             if "11x" in domain:
                 tenant_id = "tenant-11x"
             else:
-                # Remove common extensions
                 clean_domain = domain.split(".")[0]
                 tenant_id = f"tenant-{clean_domain}"
-            
             persona_id = user_email.split("@")[0]
             print(f"📧 [BRIDGE] Inferred tenant from email: {tenant_id}")
 
-        # 5. Model Suffix Override (digital-brain:tenant_id)
+        # 5. Model suffix override (digital-brain:tenant_id)
         model_name = body.get("model", "digital-brain")
         if ":" in model_name:
             _, suffix = model_name.split(":", 1)
             tenant_id = suffix.strip().lower()
             print(f"🏷 [BRIDGE] Using tenant from model suffix: {tenant_id}")
 
-        # 6. Metadata Overrides
+        # 6. Metadata overrides
         metadata = user_info.get("metadata", {}) if user_info else body.get("metadata", {})
         if metadata:
             tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
             persona_id = metadata.get("personaId", persona_id).strip().lower()
 
         print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
-        
+
+        # 🛡️ FAIL-SAFE: If still default, check if query explicitly mentions 11x
+        if tenant_id == "default" and "11x" in user_query.lower():
+            tenant_id = "tenant-11x"
+            persona_id = "ceo"
+            print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED: Forced 11x identity based on query content.")
+
         # Mapping: if tenant is 11x, ensure persona is ceo if not otherwise specified
-        if "11x" in tenant_id and persona_id in ["global", "ranjitt"]:
+        if "11x" in tenant_id and persona_id in ["global", "ranjitt", "global/any", "user"]:
             persona_id = "ceo"
             print(f"🎭 [BRIDGE] Remapped persona to: {persona_id}")
-        
-        # Execute our advanced RAG pipeline
+
         answer = await generate_twin_response(
             query=user_query,
             tenantId=tenant_id,
@@ -1300,12 +1347,11 @@ async def openai_chat_bridge(request: Request):
             personaId=persona_id,
             messages=messages[:-1]
         )
-        
-        # Return OpenAI compatible response
+
         return JSONResponse({
             "id": f"chatcmpl-{uuid.uuid4()}",
             "object": "chat.completion",
-            "created": 1700000000,
+            "created": int(time.time()),
             "model": "digital-brain",
             "choices": [
                 {
@@ -1327,21 +1373,26 @@ async def openai_chat_bridge(request: Request):
         print(f"❌ OpenAI Bridge Error: {str(e)}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
+# ─────────────────────────────────────────────
+# ENTRYPOINT
+# ─────────────────────────────────────────────
+
 if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     port = int(os.getenv("PORT", "3000"))
-    
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║       Peak AI 1.0 MCP Server v3.2-FIXED                      ║
+║       Peak AI 1.0 MCP Server {VERSION:<30} ║
 ╠══════════════════════════════════════════════════════════════╣
-║  ✓ OpenAI GPT-4o-mini (Chat)                                ║
-║  ✓ {EMBEDDING_PROVIDER.upper()} Embeddings                  ║
-║  ✓ Qdrant Search FIXED                                      ║
-║  ✓ Persona Filtering                                        ║
+║  ✓ Bedrock Converse API (Chat)                              ║
+║  ✓ {EMBEDDING_PROVIDER.upper():<52} ║
+║  ✓ Unified normalize_collection_name() (FIXED)             ║
+║  ✓ Persona + Tenant Isolation                              ║
 ╚══════════════════════════════════════════════════════════════╝
     """)
-    
+
     if transport == "sse":
         print(f"Starting HTTP server on port {port}...")
         uvicorn.run(app, host="0.0.0.0", port=port)
