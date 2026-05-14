@@ -1259,12 +1259,18 @@ async def openai_chat_bridge(request: Request):
 
         # 4. Email-based fallback (if still default)
         if tenant_id == "default" and user_email and "@" in user_email:
-            domain = user_email.split("@")[1].replace(".", "-")
-            # Remove common domains
-            if domain not in ["gmail-com", "outlook-com", "hotmail-com", "yahoo-com"]:
-                tenant_id = f"tenant-{domain}"
-                persona_id = user_email.split("@")[0]
-                print(f"📧 [BRIDGE] Inferred tenant from email: {tenant_id}")
+            domain = user_email.split("@")[1].lower()
+            
+            # Special case for 11x
+            if "11x" in domain:
+                tenant_id = "tenant-11x"
+            else:
+                # Remove common extensions
+                clean_domain = domain.split(".")[0]
+                tenant_id = f"tenant-{clean_domain}"
+            
+            persona_id = user_email.split("@")[0]
+            print(f"📧 [BRIDGE] Inferred tenant from email: {tenant_id}")
 
         # 5. Model Suffix Override (digital-brain:tenant_id)
         model_name = body.get("model", "digital-brain")
@@ -1280,6 +1286,11 @@ async def openai_chat_bridge(request: Request):
             persona_id = metadata.get("personaId", persona_id).strip().lower()
 
         print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
+        
+        # Mapping: if tenant is 11x, ensure persona is ceo if not otherwise specified
+        if "11x" in tenant_id and persona_id in ["global", "ranjitt"]:
+            persona_id = "ceo"
+            print(f"🎭 [BRIDGE] Remapped persona to: {persona_id}")
         
         # Execute our advanced RAG pipeline
         answer = await generate_twin_response(
