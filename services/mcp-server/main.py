@@ -410,8 +410,11 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         clean_query = query.strip().strip('*').strip('_').strip()
         if not clean_query: clean_query = query
         
-        # ✅ PERSONA-BASED CACHE COLLECTION
-        cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
+        t_id = tenantId.replace('-', '_')
+        if not t_id.startswith("tenant_"):
+            t_id = f"tenant_{t_id}"
+            
+        cache_collection = f"{t_id}_{active_persona}_cache"
         
         vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
@@ -482,8 +485,12 @@ async def save_to_semantic_cache(query: str, answer: str, tenantId: str, persona
         clean_query = query.strip().strip('*').strip('_').strip()
         if not clean_query: clean_query = query
         
-        # ✅ PERSONA-BASED CACHE COLLECTION
-        cache_collection = f"{tenantId.replace('-', '_')}_{active_persona}_cache"
+        # ✅ Standardize cache collection: tenant_{id}_{persona}_cache
+        t_id = tenantId.replace('-', '_')
+        if not t_id.startswith("tenant_"):
+            t_id = f"tenant_{t_id}"
+            
+        cache_collection = f"{t_id}_{active_persona}_cache"
         
         vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
@@ -556,8 +563,12 @@ async def search_knowledge_base(
         persona_raw = str(personaId).strip().lower() if personaId else "ceo"
         active_persona = persona_raw if persona_raw not in ignored_personas else "global"
         
-        # 2. Collection Name
-        collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
+        # 2. Standardize collection name: tenant_{id}_{persona}
+        t_id = tenantId.replace('-', '_')
+        if not t_id.startswith("tenant_"):
+            t_id = f"tenant_{t_id}"
+            
+        collection_name = f"{t_id}_{active_persona}"
         
         # 3. Handle Contextual References
         # If the query contains "this sheet", "it", "that document" and a filename is provided, 
@@ -736,6 +747,14 @@ async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_toke
                 "role": msg.get("role", "user"),
                 "content": content
             })
+
+        # ✅ CONVERSE API REQUIREMENT: First message must be 'user'
+        while formatted_messages and formatted_messages[0]["role"] != "user":
+            print(f"🧹 [BEDROCK] Removing leading {formatted_messages[0]['role']} message to satisfy Converse API requirements")
+            formatted_messages.pop(0)
+            
+        if not formatted_messages:
+            return "Error: No user messages found in conversation history."
 
         print(f"📡 Routing to Bedrock (Converse): {PRIMARY_MODEL}")
         response = await asyncio.to_thread(
