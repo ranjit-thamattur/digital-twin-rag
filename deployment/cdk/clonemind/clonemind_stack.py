@@ -562,6 +562,7 @@ class CloneMindStack(Stack):
         )
         mcp_listener.add_targets("McpTarget",
             port=3000,
+            protocol=elbv2.ApplicationProtocol.HTTP,
             targets=[mcp_service],
             health_check=elbv2.HealthCheck(
                 path="/", # FastMCP default root
