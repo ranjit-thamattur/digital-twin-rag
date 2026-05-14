@@ -341,7 +341,9 @@ class CloneMindStack(Stack):
                 actions=[
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelWithResponseStream",
-                    "bedrock:GetInferenceProfile"
+                    "bedrock:GetInferenceProfile",
+                    "aws-marketplace:ViewSubscriptions",
+                    "aws-marketplace:Subscribe"
                 ],
                 resources=["*"]
             )
