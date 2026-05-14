@@ -723,61 +723,38 @@ async def rerank_results(query: str, hits: List[Any], top_n: int = 5) -> List[An
         return hits[:top_n]
 
 async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_tokens: int) -> str:
-    """Invoke Claude or Amazon Nova on Bedrock."""
+    """Invoke any Bedrock model using the unified Converse API."""
     try:
-        # Detect if it's a Nova model
-        is_nova = "amazon.nova" in PRIMARY_MODEL.lower()
-        
-        if is_nova:
-            # Amazon Nova Format requires content to be a list of blocks
-            nova_messages = []
-            for msg in messages:
-                content = msg.get("content", "")
-                if isinstance(content, str):
-                    content = [{"text": content}]
-                nova_messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": content
-                })
+        # The Converse API handles Claude, Nova, and Mistral automatically
+        # We need to ensure messages content is always in the list-of-blocks format
+        formatted_messages = []
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                content = [{"text": content}]
+            formatted_messages.append({
+                "role": msg.get("role", "user"),
+                "content": content
+            })
 
-            body = json.dumps({
-                "system": [{"text": system_prompt}] if system_prompt else [],
-                "messages": nova_messages,
-                "inferenceConfig": {
-                    "maxNewTokens": max_tokens,
+        print(f"📡 Routing to Bedrock (Converse): {PRIMARY_MODEL}")
+        response = await asyncio.to_thread(
+            lambda: bedrock_runtime.converse(
+                modelId=PRIMARY_MODEL,
+                messages=formatted_messages,
+                system=[{"text": system_prompt}] if system_prompt else [],
+                inferenceConfig={
+                    "maxTokens": max_tokens,
                     "temperature": 0.1,
                     "topP": 0.9
                 }
-            })
-        else:
-            # Claude Message API format
-            body = json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "system": system_prompt,
-                "messages": messages,
-                "temperature": 0.1
-            })
-        
-        response = await asyncio.to_thread(
-            lambda: bedrock_runtime.invoke_model(
-                modelId=PRIMARY_MODEL,
-                contentType="application/json",
-                accept="application/json",
-                body=body
             )
         )
         
-        response_body = json.loads(response.get('body').read())
-        
-        if is_nova:
-            # Parse Nova response: output -> message -> content[0] -> text
-            return response_body.get('output', {}).get('message', {}).get('content', [{}])[0].get('text', "Error: No response from Nova")
-        else:
-            # Parse Claude response: content[0] -> text
-            return response_body.get('content', [{}])[0].get('text', "Error: No response from Claude")
+        # Converse API returns the text in output['message']['content'][0]['text']
+        return response['output']['message']['content'][0]['text']
     except Exception as e:
-        print(f"❌ [BEDROCK] Claude error: {e}")
+        print(f"❌ [BEDROCK] error: {e}")
         raise
 
 @mcp.tool()
