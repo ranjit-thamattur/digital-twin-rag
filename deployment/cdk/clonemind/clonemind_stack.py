@@ -557,6 +557,7 @@ class CloneMindStack(Stack):
         # Lambda calls this to forward S3 events to MCP
         mcp_listener = lb.add_listener("McpListener",
             port=3000,
+            protocol=elbv2.ApplicationProtocol.HTTP,
             open=True
         )
         mcp_listener.add_targets("McpTarget",
