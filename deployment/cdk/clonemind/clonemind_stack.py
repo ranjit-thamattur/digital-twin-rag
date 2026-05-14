@@ -323,6 +323,7 @@ class CloneMindStack(Stack):
             "MCP_TRANSPORT": "sse",
             "AWS_REGION": self.region,
             "PORT": "3000",
+            "DISABLE_SEMANTIC_CACHE": "false",
             "EMBEDDING_PROVIDER": "local",
             "LLM_PROVIDER": "bedrock",
             # ✅ Amazon Nova Pro (Active & bypasses Marketplace billing blocks)
