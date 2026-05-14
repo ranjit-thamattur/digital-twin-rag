@@ -1284,13 +1284,13 @@ async def openai_chat_bridge(request: Request):
 
         # 1. Try user info from body
         user_info = body.get("user", {})
-        user_email = user_info.get("email") if user_info else None
-
-        # 2. Try header values
+        user_email = user_info.get("email") if isinstance(user_info, dict) else None
+        
+        # 2. Try header values (case-insensitive)
         if not user_email:
-            user_email = headers.get("x-user-email") or headers.get("X-User-Email")
-
-        header_tenant = headers.get("x-tenant-id") or headers.get("X-Tenant-Id")
+            user_email = headers.get("x-user-email") or headers.get("X-User-Email") or headers.get("user-email")
+        
+        header_tenant = headers.get("x-tenant-id") or headers.get("X-Tenant-Id") or headers.get("tenant-id")
         if header_tenant:
             tenant_id = header_tenant.lower()
             print(f"🆔 [BRIDGE] Using tenant from header: {tenant_id}")
@@ -1299,7 +1299,10 @@ async def openai_chat_bridge(request: Request):
         auth_header = headers.get("authorization", "")
         if "Bearer " in auth_header:
             token = auth_header.replace("Bearer ", "").strip()
-            if token and token != "mcp-bridge":
+            # If token looks like an email, use it
+            if "@" in token:
+                user_email = token.lower()
+            elif token and token != "mcp-bridge":
                 print(f"🔑 [BRIDGE] Using tenant from Bearer token: {token}")
                 tenant_id = token.lower()
 
@@ -1308,11 +1311,12 @@ async def openai_chat_bridge(request: Request):
             domain = user_email.split("@")[1].lower()
             if "11x" in domain:
                 tenant_id = "tenant-11x"
+                persona_id = "ceo" # Force CEO for 11x emails
             else:
                 clean_domain = domain.split(".")[0]
                 tenant_id = f"tenant-{clean_domain}"
-            persona_id = user_email.split("@")[0]
-            print(f"📧 [BRIDGE] Inferred tenant from email: {tenant_id}")
+                persona_id = user_email.split("@")[0]
+            print(f"📧 [BRIDGE] Inferred identity from email: {tenant_id}:{persona_id}")
 
         # 5. Model suffix override (digital-brain:tenant_id)
         model_name = body.get("model", "digital-brain")
