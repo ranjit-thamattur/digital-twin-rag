@@ -1009,7 +1009,12 @@ async def ingest_knowledge(text: Optional[str] = None, tenantId: str = "", metad
         ignored_personas = ['any', 'global', 'optional', 'none', 'all', 'default', 'global/any']
         active_persona = str(persona_raw).strip().lower() if (persona_raw and str(persona_raw).strip().lower() not in ignored_personas) else "global"
         
-        collection_name = f"{tenantId.replace('-', '_')}_{active_persona}"
+        # ✅ Standardize collection name: tenant_{id}_{persona}
+        t_id = tenantId.replace('-', '_')
+        if not t_id.startswith("tenant_"):
+            t_id = f"tenant_{t_id}"
+            
+        collection_name = f"{t_id}_{active_persona}"
         
         print(f"📝 [INGEST] Ingesting for {tenantId} | Persona: {active_persona} | Collection: {collection_name} | Text: {len(text):,} chars")
 

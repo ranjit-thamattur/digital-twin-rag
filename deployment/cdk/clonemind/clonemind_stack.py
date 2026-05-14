@@ -683,6 +683,12 @@ def lambda_handler(event, context):
             ec2.Port.tcp(3000),
             "Allow MCP Server access from Lambda"
         )
+        # Allow Direct Public access to Qdrant Dashboard
+        instance_sg.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(6333),
+            "Allow Qdrant Dashboard access"
+        )
         # If other services need to be accessed via ALB, add them here.
         # But initially we are only exposing WebUI at root.
         
