@@ -723,16 +723,31 @@ async def rerank_results(query: str, hits: List[Any], top_n: int = 5) -> List[An
         return hits[:top_n]
 
 async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_tokens: int) -> str:
-    """Invoke Claude 4.5 Sonnet on Bedrock."""
+    """Invoke Claude or Amazon Nova on Bedrock."""
     try:
-        # Use Message API format
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": max_tokens,
-            "system": system_prompt,
-            "messages": messages,
-            "temperature": 0.1
-        })
+        # Detect if it's a Nova model
+        is_nova = "amazon.nova" in PRIMARY_MODEL.lower()
+        
+        if is_nova:
+            # Amazon Nova Format
+            body = json.dumps({
+                "system": [{"text": system_prompt}] if system_prompt else [],
+                "messages": messages,
+                "inferenceConfig": {
+                    "maxNewTokens": max_tokens,
+                    "temperature": 0.1,
+                    "topP": 0.9
+                }
+            })
+        else:
+            # Claude Message API format
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": max_tokens,
+                "system": system_prompt,
+                "messages": messages,
+                "temperature": 0.1
+            })
         
         response = await asyncio.to_thread(
             lambda: bedrock_runtime.invoke_model(
@@ -744,7 +759,13 @@ async def call_bedrock_claude(system_prompt: str, messages: List[dict], max_toke
         )
         
         response_body = json.loads(response.get('body').read())
-        return response_body.get('content', [{}])[0].get('text', "Error: No response from Claude")
+        
+        if is_nova:
+            # Parse Nova response: output -> message -> content[0] -> text
+            return response_body.get('output', {}).get('message', {}).get('content', [{}])[0].get('text', "Error: No response from Nova")
+        else:
+            # Parse Claude response: content[0] -> text
+            return response_body.get('content', [{}])[0].get('text', "Error: No response from Claude")
     except Exception as e:
         print(f"❌ [BEDROCK] Claude error: {e}")
         raise
