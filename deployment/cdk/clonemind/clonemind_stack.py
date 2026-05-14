@@ -585,7 +585,8 @@ def lambda_handler(event, context):
 """),
             environment={
                 # Uses the static Elastic IP - will never change even if EC2 is replaced
-                "MCP_URL": f"http://{eip.attr_public_ip}:3000"
+                # Uses the Load Balancer DNS - stable and AWS-native
+                "MCP_URL": f"http://{lb.load_balancer_dns_name}:3000"
             },
             timeout=Duration.seconds(180),
             memory_size=512
@@ -641,6 +642,21 @@ def lambda_handler(event, context):
             targets=[webui_service],
             health_check=elbv2.HealthCheck(
                 path="/",
+                interval=Duration.seconds(60)
+            )
+        )
+        
+        # 6. HTTP Listener for Ingestion (Port 3000)
+        # Lambda calls this to forward S3 events to MCP
+        mcp_listener = lb.add_listener("McpListener",
+            port=3000,
+            open=True
+        )
+        mcp_listener.add_targets("McpTarget",
+            port=3000,
+            targets=[mcp_service],
+            health_check=elbv2.HealthCheck(
+                path="/", # FastMCP default root
                 interval=Duration.seconds(60)
             )
         )
