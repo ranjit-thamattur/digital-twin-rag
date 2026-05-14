@@ -47,7 +47,7 @@ EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local") # now defaulting t
 # LLM Configuration
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")
 # US cross-region inference for Claude Sonnet 4.5 (us-east-1)
-PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "us.anthropic.claude-sonnet-4-6")
+PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "amazon.nova-pro-v1:0")
 REWRITE_MODEL = os.getenv("REWRITE_MODEL", "mistral.ministral-3-14b-instruct")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
 

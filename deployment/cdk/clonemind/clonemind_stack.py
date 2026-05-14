@@ -325,8 +325,8 @@ class CloneMindStack(Stack):
             "PORT": "3000",
             "EMBEDDING_PROVIDER": "local",
             "LLM_PROVIDER": "bedrock",
-            # ✅ US cross-region inference for Claude Sonnet 4.6 (Active)
-            "PRIMARY_MODEL": "us.anthropic.claude-sonnet-4-6",
+            # ✅ Amazon Nova Pro (Active & bypasses Marketplace billing blocks)
+            "PRIMARY_MODEL": "amazon.nova-pro-v1:0",
             "REWRITE_MODEL": "mistral.ministral-3-14b-instruct",
             "RERANK_MODEL": "cohere.rerank-v3-5:0"
         }
