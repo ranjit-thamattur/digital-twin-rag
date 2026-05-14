@@ -1232,9 +1232,21 @@ async def openai_chat_bridge(request: Request):
         # Default identity attributes
         tenant_id = "default"
         persona_id = "global"
+
+        # 1. Try to get user info from body (passed by OpenWebUI)
+        user_info = body.get("user", {})
+        user_email = user_info.get("email") if user_info else None
         
-        # 1. 🔑 AUTHORIZATION BASED TENANT OVERRIDE (Most reliable for direct OpenWebUI connection)
-        # Use the Bearer token as the tenantId if it's not the generic 'mcp-bridge'
+        # 2. Try X-User-Email or X-Tenant-Id headers
+        if not user_email:
+            user_email = headers.get("x-user-email") or headers.get("X-User-Email")
+        
+        header_tenant = headers.get("x-tenant-id") or headers.get("X-Tenant-Id")
+        if header_tenant:
+            tenant_id = header_tenant.lower()
+            print(f"🆔 [BRIDGE] Using tenant from header: {tenant_id}")
+
+        # 3. 🔑 AUTHORIZATION BASED TENANT OVERRIDE
         auth_header = headers.get("authorization", "")
         if "Bearer " in auth_header:
             token = auth_header.replace("Bearer ", "").strip()
@@ -1242,27 +1254,23 @@ async def openai_chat_bridge(request: Request):
                 print(f"🔑 [BRIDGE] Using tenant from Bearer token: {token}")
                 tenant_id = token.lower()
 
-        # 2. Try X-User-Email header
-        user_email = headers.get("x-user-email") or headers.get("X-User-Email")
-        
-        # 3. Try 'user' object from body (passed by OpenWebUI in some modes)
-        user_info = body.get("user", {})
-        if not user_email and user_info:
-            user_email = user_info.get("email")
-            
-        if user_email and "@" in user_email and tenant_id == "default":
+        # 4. Email-based fallback (if still default)
+        if tenant_id == "default" and user_email and "@" in user_email:
             domain = user_email.split("@")[1].replace(".", "-")
-            tenant_id = f"tenant-{domain}"
-            persona_id = f"persona-{user_email.split('@')[0]}"
-            
-        # 4. Check for direct model suffix: digital-brain:tenant_id
+            # Remove common domains
+            if domain not in ["gmail-com", "outlook-com", "hotmail-com", "yahoo-com"]:
+                tenant_id = f"tenant-{domain}"
+                persona_id = user_email.split("@")[0]
+                print(f"📧 [BRIDGE] Inferred tenant from email: {tenant_id}")
+
+        # 5. Model Suffix Override (digital-brain:tenant_id)
         model_name = body.get("model", "digital-brain")
         if ":" in model_name:
             _, suffix = model_name.split(":", 1)
             tenant_id = suffix.strip().lower()
             print(f"🏷 [BRIDGE] Using tenant from model suffix: {tenant_id}")
 
-        # 5. Metadata Overrides
+        # 6. Metadata Overrides
         metadata = user_info.get("metadata", {}) if user_info else body.get("metadata", {})
         if metadata:
             tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
@@ -1270,20 +1278,6 @@ async def openai_chat_bridge(request: Request):
 
         print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
         
-        # Try to extract from user metadata if provided by OpenWebUI
-        user_info = body.get("user", {})
-        if user_info:
-            metadata = user_info.get("metadata", {})
-            tenant_id = metadata.get("tenantId", "default")
-            persona_id = metadata.get("personaId", "default")
-            
-            # Fallback to email domain if metadata missing
-            if tenant_id == "default":
-                email = user_info.get("email", "")
-                if "@" in email:
-                    tenant_id = f"tenant-{email.split('@')[1].replace('.', '-')}"
-                    persona_id = f"persona-{email.split('@')[0]}"
-
         # Execute our advanced RAG pipeline
         answer = await generate_twin_response(
             query=user_query,
