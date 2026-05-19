@@ -4,7 +4,6 @@ WORKDIR /app
 
 # System libraries required by python-pptx (lxml) and pdfplumber
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     libxml2-dev \
     libxslt-dev \
     libpoppler-cpp-dev \
@@ -13,8 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download embedding model
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
+# Local ML model removed (Now using Amazon Titan API)
 
 COPY . .
 

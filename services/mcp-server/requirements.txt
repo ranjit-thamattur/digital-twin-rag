@@ -16,10 +16,6 @@ python-pptx
 # OpenAI for chat and embeddings (fallback)
 openai>=1.0.0
 
-# Local embeddings
-sentence-transformers
-torch --index-url https://download.pytorch.org/whl/cpu
-
 # Other providers
 anthropic>=0.40.0
 cohere>=5.0.0

@@ -59,7 +59,7 @@ class CloneMindStack(Stack):
         )
         
         asg = cluster.add_capacity("FinalCapacity",
-            instance_type=ec2.InstanceType("t3.large"),
+            instance_type=ec2.InstanceType("t3.medium"),
             min_capacity=1,
             max_capacity=1,
             desired_capacity=1,
@@ -324,7 +324,7 @@ class CloneMindStack(Stack):
             "AWS_REGION": self.region,
             "PORT": "3000",
             "DISABLE_SEMANTIC_CACHE": "false",
-            "EMBEDDING_PROVIDER": "local",
+            "EMBEDDING_PROVIDER": "titan",
             "LLM_PROVIDER": "bedrock",
             # ✅ Amazon Nova Pro (Active & bypasses Marketplace billing blocks)
             "PRIMARY_MODEL": "amazon.nova-pro-v1:0",
@@ -338,7 +338,7 @@ class CloneMindStack(Stack):
         
         mcp_container = mcp_task.add_container("McpContainer",
             image=ecs.ContainerImage.from_asset("../../services/mcp-server"),
-            memory_limit_mib=2048,  # Increased to 2GB for sentence-transformers + torch
+            memory_limit_mib=512,  # Shrunk from 2048 since we removed PyTorch
             cpu=512,               # Increased for better performance
             environment=mcp_env,
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Mcp")

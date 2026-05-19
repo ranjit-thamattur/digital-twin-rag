@@ -21,9 +21,8 @@ import docx
 import pdfplumber
 from pptx import Presentation as PptxPresentation
 
-# New Bedrock & Local Embedding imports
-from sentence_transformers import SentenceTransformer
-import torch
+# Bedrock Embeddings
+# Removed local torch imports to save memory
 
 # Load environment variables
 load_dotenv()
@@ -55,6 +54,7 @@ COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 
 # Vector sizes by provider
 VECTOR_SIZES = {
+    "titan": 1024,  # amazon.titan-embed-text-v2:0
     "local": 768,   # all-mpnet-base-v2
     "voyage": 1024,
     "openai": 1536,
@@ -84,7 +84,7 @@ bedrock_runtime = boto3.client('bedrock-runtime', region_name=AWS_REGION)
 # Lazy-loaded embedding models
 voyage_client = None
 cohere_client = None
-local_embed_model = None
+# local_embed_model removed
 
 # OpenAI Client (Legacy/Fallback)
 openai_client = None
@@ -260,14 +260,26 @@ def get_text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def get_local_embedding(text: str) -> List[float]:
-    """Generate embedding using local sentence-transformers (all-mpnet-base-v2)."""
-    global local_embed_model
-    if local_embed_model is None:
-        print("📥 Initializing local embedding model (all-mpnet-base-v2)...")
-        local_embed_model = SentenceTransformer('all-mpnet-base-v2')
-    embedding = local_embed_model.encode(text)
-    return embedding.tolist()
+async def get_titan_embedding(text: str) -> List[float]:
+    """Generate embedding using Amazon Bedrock Titan Embeddings V2."""
+    import json
+    body = json.dumps({
+        "inputText": text,
+        "dimensions": 1024,
+        "normalize": True
+    })
+    
+    result = await asyncio.to_thread(
+        lambda: bedrock_runtime.invoke_model(
+            body=body,
+            modelId="amazon.titan-embed-text-v2:0",
+            accept="application/json",
+            contentType="application/json"
+        )
+    )
+    
+    response_body = json.loads(result.get('body').read())
+    return response_body.get('embedding')
 
 
 async def get_voyage_embedding(text: str) -> List[float]:
@@ -342,8 +354,8 @@ async def get_embedding(text: str, use_cache: bool = True) -> List[float]:
             embedding = await get_openai_embedding(text)
         elif EMBEDDING_PROVIDER == "cohere":
             embedding = await get_cohere_embedding(text)
-        elif EMBEDDING_PROVIDER == "local":
-            embedding = await asyncio.to_thread(get_local_embedding, text)
+        elif EMBEDDING_PROVIDER == "titan":
+            embedding = await get_titan_embedding(text)
         else:
             raise ValueError(f"Unknown embedding provider: {EMBEDDING_PROVIDER}")
 
