@@ -1,4 +1,5 @@
-FROM python:3.11-slim # Force rebuild 2
+FROM python:3.11-slim
+LABEL force_rebuild="3"
 
 WORKDIR /app
 
