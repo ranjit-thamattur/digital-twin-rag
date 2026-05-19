@@ -1343,7 +1343,7 @@ async def openai_chat_bridge(request: Request):
             print(f"🏷 [BRIDGE] Using tenant from model suffix: {tenant_id}")
 
         # 6. Metadata overrides
-        metadata = user_info.get("metadata", {}) if user_info else body.get("metadata", {})
+        metadata = user_field.get("metadata", {}) if isinstance(user_field, dict) else body.get("metadata", {})
         if metadata:
             tenant_id = metadata.get("tenantId", tenant_id).strip().lower()
             persona_id = metadata.get("personaId", persona_id).strip().lower()
