@@ -1,5 +1,5 @@
 # Extend official OpenWebUI image
-FROM ghcr.io/open-webui/open-webui:main
+FROM ghcr.io/open-webui/open-webui:main # Force rebuild 2
 
 # Install Python dependencies for Pipe
 RUN pip install --no-cache-dir requests pydantic
