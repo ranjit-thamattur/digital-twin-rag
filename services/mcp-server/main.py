@@ -1294,9 +1294,14 @@ async def openai_chat_bridge(request: Request):
         tenant_id = "default"
         persona_id = "global"
 
-        # 1. Try user info from body
-        user_info = body.get("user", {})
-        user_email = user_info.get("email") if isinstance(user_info, dict) else None
+        # 1. Try user info from body (OpenWebUI sends a string in 'user')
+        user_field = body.get("user")
+        if isinstance(user_field, dict):
+            user_email = user_field.get("email")
+        elif isinstance(user_field, str):
+            user_email = user_field
+        else:
+            user_email = None
         
         # 2. Try header values (case-insensitive)
         if not user_email:
