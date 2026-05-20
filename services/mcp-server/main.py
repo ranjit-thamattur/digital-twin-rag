@@ -1390,6 +1390,7 @@ async def openai_chat_bridge(request: Request):
             "object": "chat.completion",
             "created": int(time.time()),
             "model": "digital-brain",
+            "content": answer,  # Flat key for custom OpenWebUI Filters/Pipelines
             "choices": [
                 {
                     "index": 0,
@@ -1407,6 +1408,8 @@ async def openai_chat_bridge(request: Request):
             }
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ OpenAI Bridge Error: {str(e)}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
