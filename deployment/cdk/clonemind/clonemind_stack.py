@@ -435,7 +435,7 @@ class CloneMindStack(Stack):
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Frontend")
         )
         frontend_container.add_port_mappings(
-            ecs.PortMapping(container_port=3000, host_port=3000)
+            ecs.PortMapping(container_port=3000, host_port=3001)
         )
         
         frontend_service = ecs.Ec2Service(self, "FrontendService", 
@@ -499,7 +499,7 @@ class CloneMindStack(Stack):
                 user_pool_domain=user_pool_domain,
                 next=elbv2.ListenerAction.forward([
                     https_listener.add_targets("FrontendTarget",
-                        port=3000,
+                        port=3001,
                         protocol=elbv2.ApplicationProtocol.HTTP,
                         targets=[frontend_service],
                         health_check=elbv2.HealthCheck(
