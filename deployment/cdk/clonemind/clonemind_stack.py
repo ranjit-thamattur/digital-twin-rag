@@ -226,7 +226,7 @@ class CloneMindStack(Stack):
                 type=dynamodb.AttributeType.STRING
             ),
             removal_policy=RemovalPolicy.DESTROY,
-            table_name=f"clonemind-history-{self.account}"
+            table_name=f"clonemind-chat-history-{self.account}"
         )
 
         # ===================================================================
