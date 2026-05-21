@@ -499,7 +499,7 @@ class CloneMindStack(Stack):
                             path="/",
                             interval=Duration.seconds(60)
                         )
-                    ).target_groups[0]
+                    )
                 ])
             )
         )
