@@ -138,7 +138,7 @@ class CloneMindStack(Stack):
             removal_policy=RemovalPolicy.DESTROY
         )
         
-        user_pool.add_domain("CognitoDomain", 
+        user_pool_domain = user_pool.add_domain("CognitoDomain", 
             cognito_domain=cognito.CognitoDomainOptions(
                 domain_prefix=f"clonemind-{self.account}"
             )
@@ -489,7 +489,7 @@ class CloneMindStack(Stack):
             action=elbv2_actions.AuthenticateCognitoAction(
                 user_pool=user_pool,
                 user_pool_client=webui_client,
-                user_pool_domain=domain,
+                user_pool_domain=user_pool_domain,
                 next=elbv2.ListenerAction.forward([
                     https_listener.add_targets("FrontendTarget",
                         port=3000,
