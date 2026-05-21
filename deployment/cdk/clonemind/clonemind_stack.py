@@ -493,6 +493,7 @@ class CloneMindStack(Stack):
                 next=elbv2.ListenerAction.forward([
                     https_listener.add_targets("FrontendTarget",
                         port=3000,
+                        protocol=elbv2.ApplicationProtocol.HTTP,
                         targets=[frontend_service],
                         health_check=elbv2.HealthCheck(
                             path="/",
