@@ -13,8 +13,49 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch history on load
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('/api/history');
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(data.messages || []);
+        }
+      } catch (e) {
+        console.error('Failed to fetch history', e);
+      } finally {
+        setIsFetchingHistory(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
+  const saveToHistory = async (role: string, content: string) => {
+    try {
+      await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, content })
+      });
+    } catch (e) {
+      console.error('Failed to save to history', e);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!confirm('Are you sure you want to clear your chat history?')) return;
+    setMessages([]);
+    try {
+      await fetch('/api/history', { method: 'DELETE' });
+    } catch (e) {
+      console.error('Failed to delete history', e);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,6 +73,9 @@ export default function ChatPage() {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
+    
+    // Fire and forget save
+    saveToHistory('user', userMsg);
 
     try {
       const response = await fetch('/api/chat', {
@@ -48,6 +92,7 @@ export default function ChatPage() {
       
       if (response.ok) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        saveToHistory('assistant', data.answer);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
       }
@@ -111,8 +156,8 @@ export default function ChatPage() {
           <span>Digital Brain</span>
         </div>
         
-        <button className="new-chat-btn" onClick={() => setMessages([])}>
-          <Plus size={18} /> New Chat
+        <button className="new-chat-btn" onClick={clearHistory}>
+          <Plus size={18} /> Clear Chat History
         </button>
 
         <div className="chat-history">
@@ -140,28 +185,33 @@ export default function ChatPage() {
         </div>
 
         <div className="messages-container">
-          {messages.length === 0 && (
+          {isFetchingHistory ? (
+            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 16px', opacity: 0.5 }} />
+              <p>Loading history...</p>
+            </div>
+          ) : messages.length === 0 ? (
             <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <Brain size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
               <h2>How can I help you today?</h2>
               <p style={{ marginTop: '8px' }}>Ask me about documents, metrics, or company knowledge.</p>
             </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`message-row ${msg.role}`}>
-              {msg.role !== 'system' && (
-                <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                  {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
-                </div>
-              )}
-              <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
-                <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
-                  {msg.content}
+          ) : (
+            messages.map((msg, i) => (
+              <div key={i} className={`message-row ${msg.role}`}>
+                {msg.role !== 'system' && (
+                  <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
+                    {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
+                  </div>
+                )}
+                <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
+                  <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
+                    {msg.content}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           
           {isLoading && (
             <div className="message-row ai">

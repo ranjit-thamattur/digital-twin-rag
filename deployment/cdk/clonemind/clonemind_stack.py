@@ -215,6 +215,19 @@ class CloneMindStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             table_name="clonemind-tenants"
         )
+        
+        history_table = dynamodb.Table(self, "ChatHistory",
+            partition_key=dynamodb.Attribute(
+                name="user_email",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="timestamp",
+                type=dynamodb.AttributeType.STRING
+            ),
+            removal_policy=RemovalPolicy.DESTROY,
+            table_name=f"clonemind-history-{self.account}"
+        )
 
         # ===================================================================
         # 5. EFS WITH ACCESS POINTS
@@ -470,9 +483,11 @@ class CloneMindStack(Stack):
         # Inject dynamic environment variables to Frontend container
         frontend_container.add_environment("MCP_SERVER_URL", f"http://{lb.load_balancer_dns_name}:3000")
         frontend_container.add_environment("DOCUMENTS_BUCKET_NAME", documents_bucket.bucket_name)
+        frontend_container.add_environment("CHAT_HISTORY_TABLE_NAME", history_table.table_name)
         
-        # Grant Frontend access to upload files
+        # Grant Frontend access to upload files and save chat history
         documents_bucket.grant_read_write(frontend_task.task_role)
+        history_table.grant_read_write_data(frontend_task.task_role)
         
         # 3. HTTP Listener -> Redirect to HTTPS
         lb.add_listener("HttpListener",
