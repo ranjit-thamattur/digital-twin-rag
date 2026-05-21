@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type Message = {
@@ -25,6 +25,7 @@ export default function ChatPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>('Loading...');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,7 +33,20 @@ export default function ChatPage() {
   // Fetch recent sessions on load
   useEffect(() => {
     fetchSessions();
+    fetchUser();
   }, []);
+
+  const fetchUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setUserEmail(data.email);
+      }
+    } catch (e) {
+      setUserEmail('Unknown');
+    }
+  };
 
   const fetchSessions = async (selectFirst: boolean = true) => {
     try {
@@ -242,9 +256,37 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div style={{ marginTop: 'auto', display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}>
-          <Settings size={16} />
-          <span style={{ fontSize: '0.9rem' }}>Settings</span>
+        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="avatar" style={{ width: '32px', height: '32px', backgroundColor: 'var(--accent-primary)' }}>
+              <User size={16} color="white" />
+            </div>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+              {userEmail}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}>
+              <Settings size={16} />
+              <span style={{ fontSize: '0.9rem' }}>Settings</span>
+            </div>
+            
+            <a 
+              href="https://clonemind-543187302175.auth.us-east-1.amazoncognito.com/logout?client_id=70josbv1q9rjfhgji773k8p3gk&logout_uri=https://ai.peakpa.com/"
+              style={{ display: 'flex', gap: '6px', color: '#ff4d4f', cursor: 'pointer', alignItems: 'center', textDecoration: 'none' }}
+              onClick={(e) => {
+                // Delete Next.js session cookies if any (AWS ALB handles its own cookie deletion, but just in case)
+                document.cookie.split(";").forEach(function(c) { 
+                  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+                });
+              }}
+            >
+              <LogOut size={16} />
+              <span style={{ fontSize: '0.9rem' }}>Logout</span>
+            </a>
+          </div>
         </div>
       </div>
 
