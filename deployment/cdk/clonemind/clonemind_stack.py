@@ -430,8 +430,7 @@ class CloneMindStack(Stack):
             memory_limit_mib=512,
             cpu=256,
             environment={
-                "PORT": "3000",
-                "MCP_SERVER_URL": "http://172.17.0.1:3000"
+                "PORT": "3000"
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Frontend")
         )
@@ -467,6 +466,13 @@ class CloneMindStack(Stack):
             internet_facing=True,
             vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
         )
+        
+        # Inject dynamic environment variables to Frontend container
+        frontend_container.add_environment("MCP_SERVER_URL", f"http://{lb.load_balancer_dns_name}:3000")
+        frontend_container.add_environment("DOCUMENTS_BUCKET_NAME", documents_bucket.bucket_name)
+        
+        # Grant Frontend access to upload files
+        documents_bucket.grant_read_write(frontend_task.task_role)
         
         # 3. HTTP Listener -> Redirect to HTTPS
         lb.add_listener("HttpListener",

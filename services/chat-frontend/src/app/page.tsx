@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2 } from 'lucide-react';
 
 type Message = {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
 };
 
@@ -12,7 +12,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,7 +22,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isUploading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +40,7 @@ export default function ChatPage() {
         body: JSON.stringify({ 
           message: userMsg,
           // Exclude the message we just sent from history
-          messages: messages 
+          messages: messages.filter(m => m.role !== 'system') 
         }),
       });
 
@@ -53,6 +55,48 @@ export default function ChatPage() {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Connection failed. Please try again.' }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    // Reset input so the same file can be selected again if needed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessages(prev => [...prev, { 
+          role: 'system', 
+          content: `✅ File "${file.name}" uploaded successfully. Digital Brain is currently processing it into your knowledge base.` 
+        }]);
+      } else {
+        setMessages(prev => [...prev, { 
+          role: 'system', 
+          content: `❌ Failed to upload "${file.name}": ${data.error}` 
+        }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, { 
+        role: 'system', 
+        content: `❌ Connection error while uploading "${file.name}".` 
+      }]);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -106,11 +150,13 @@ export default function ChatPage() {
 
           {messages.map((msg, i) => (
             <div key={i} className={`message-row ${msg.role}`}>
-              <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
-              </div>
-              <div className="message-content">
-                <div className="bubble">
+              {msg.role !== 'system' && (
+                <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
+                  {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
+                </div>
+              )}
+              <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
+                <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
                   {msg.content}
                 </div>
               </div>
@@ -131,22 +177,45 @@ export default function ChatPage() {
               </div>
             </div>
           )}
+
+          {isUploading && (
+            <div className="message-row system" style={{ justifyContent: 'center' }}>
+              <div className="bubble" style={{ backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Loader2 size={14} className="animate-spin" /> Uploading document to S3...
+              </div>
+            </div>
+          )}
+          
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
         <div className="input-container">
           <form onSubmit={handleSubmit} className="input-box">
-            <Paperclip size={20} color="var(--text-secondary)" style={{ marginRight: '12px', cursor: 'pointer' }} />
+            {/* Hidden file input */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              style={{ display: 'none' }} 
+              onChange={handleFileUpload} 
+              accept=".pdf,.txt,.docx,.pptx,.csv"
+            />
+            {/* Clickable paperclip */}
+            <Paperclip 
+              size={20} 
+              color="var(--text-secondary)" 
+              style={{ marginRight: '12px', cursor: 'pointer' }} 
+              onClick={() => fileInputRef.current?.click()}
+            />
             <input
               type="text"
               className="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Message Digital Brain..."
-              disabled={isLoading}
+              disabled={isLoading || isUploading}
             />
-            <button type="submit" className="send-btn" disabled={!input.trim() || isLoading}>
+            <button type="submit" className="send-btn" disabled={!input.trim() || isLoading || isUploading}>
               <Send size={16} />
             </button>
           </form>
