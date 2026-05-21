@@ -35,7 +35,7 @@ export default function ChatPage() {
 
   const fetchSessions = async (selectFirst: boolean = true) => {
     try {
-      const res = await fetch('/api/history/sessions');
+      const res = await fetch('/api/history/sessions', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
@@ -56,7 +56,7 @@ export default function ChatPage() {
     setCurrentSessionId(sessionId);
     setIsFetchingHistory(true);
     try {
-      const res = await fetch(`/api/history?sessionId=${sessionId}`);
+      const res = await fetch(`/api/history?sessionId=${sessionId}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
