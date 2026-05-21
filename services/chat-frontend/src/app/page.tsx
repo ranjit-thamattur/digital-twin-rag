@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2 } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type Message = {
@@ -24,6 +24,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +66,7 @@ export default function ChatPage() {
       console.error('Failed to load session messages', e);
     } finally {
       setIsFetchingHistory(false);
+      setIsMobileSidebarOpen(false); // Close sidebar on mobile after selecting
     }
   };
 
@@ -72,6 +74,7 @@ export default function ChatPage() {
     setCurrentSessionId(uuidv4());
     setMessages([]);
     setIsFetchingHistory(false);
+    setIsMobileSidebarOpen(false);
   };
 
   const saveToHistory = async (role: string, content: string, isFirst: boolean = false) => {
@@ -188,13 +191,26 @@ export default function ChatPage() {
 
   return (
     <div className="app-container">
+      {/* Mobile Overlay */}
+      {isMobileSidebarOpen && (
+        <div className="mobile-overlay" onClick={() => setIsMobileSidebarOpen(false)}></div>
+      )}
+
       {/* Sidebar */}
-      <div className="sidebar">
-        <div className="brand">
-          <div className="brand-icon">
-            <Brain size={20} />
+      <div className={`sidebar ${isMobileSidebarOpen ? 'open' : ''}`}>
+        <div className="brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="brand-icon">
+              <Brain size={20} />
+            </div>
+            <span>Digital Brain</span>
           </div>
-          <span>Digital Brain</span>
+          <X 
+            size={24} 
+            className="mobile-close-icon" 
+            onClick={() => setIsMobileSidebarOpen(false)} 
+            style={{ cursor: 'pointer' }}
+          />
         </div>
         
         <button className="new-chat-btn" onClick={startNewChat}>
@@ -235,7 +251,15 @@ export default function ChatPage() {
       {/* Main Chat Area */}
       <div className="main-chat">
         <div className="header">
-          <div>Your Digital Twin</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Menu 
+              size={24} 
+              className="mobile-menu-icon" 
+              onClick={() => setIsMobileSidebarOpen(true)} 
+              style={{ cursor: 'pointer' }}
+            />
+            <div>Your Digital Twin</div>
+          </div>
         </div>
 
         <div className="messages-container">

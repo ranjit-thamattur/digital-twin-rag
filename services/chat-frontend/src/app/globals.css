@@ -313,3 +313,67 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Mobile Responsiveness */
+.mobile-menu-icon,
+.mobile-close-icon {
+  display: none;
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-icon,
+  .mobile-close-icon {
+    display: block;
+  }
+
+  .mobile-overlay {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 280px;
+    height: 100vh;
+    z-index: 50;
+    transition: left 0.3s ease;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  .main-chat {
+    width: 100vw;
+  }
+
+  .messages-container {
+    padding: 20px 15px;
+  }
+
+  .input-container {
+    padding: 15px;
+  }
+
+  .input-box {
+    padding: 6px 12px;
+  }
+
+  .bubble {
+    font-size: 0.9rem;
+    padding: 12px 16px;
+  }
+}
