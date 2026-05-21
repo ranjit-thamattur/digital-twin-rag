@@ -156,7 +156,8 @@ class CloneMindStack(Stack):
                     "http://localhost:8080/oauth/callback",
                     "http://localhost:8080/oauth/oidc/callback",
                     "https://ai.peakpa.com/oauth/callback",
-                    "https://ai.peakpa.com/oauth/oidc/callback"
+                    "https://ai.peakpa.com/oauth/oidc/callback",
+                    "https://ai.peakpa.com/oauth2/idpresponse"
                 ],
                 logout_urls=[
                     "http://localhost:8080",
