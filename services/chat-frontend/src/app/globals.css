@@ -110,6 +110,26 @@ body {
   color: var(--text-primary);
 }
 
+.history-item.active {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-left: 3px solid var(--accent-primary);
+}
+
+.delete-icon {
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+}
+
+.history-item:hover .delete-icon {
+  opacity: 0.6;
+}
+
+.delete-icon:hover {
+  opacity: 1 !important;
+  color: #ff4d4f;
+}
+
 .main-chat {
   flex-grow: 1;
   display: flex;

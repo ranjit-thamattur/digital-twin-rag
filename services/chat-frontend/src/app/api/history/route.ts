@@ -2,13 +2,10 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
-// Initialize DynamoDB Client (automatically uses ECS Task Role)
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
-
 const TABLE_NAME = process.env.CHAT_HISTORY_TABLE_NAME;
 
-// Parse the ALB Cognito JWT to get the user's email
 function extractEmailFromOidc(oidcData: string | null): string | null {
   if (!oidcData) return null;
   try {
@@ -17,40 +14,37 @@ function extractEmailFromOidc(oidcData: string | null): string | null {
     const json = JSON.parse(decoded);
     return json.email || null;
   } catch (e) {
-    console.error('Failed to parse OIDC token:', e);
     return null;
   }
 }
 
-// GET: Fetch user's chat history
+// GET: Fetch messages for a specific session
 export async function GET(request: Request) {
   try {
-    const email = extractEmailFromOidc(request.headers.get('x-amzn-oidc-data')) || request.headers.get('x-user-email') || 'ceo@11xcompany.com';
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
     
-    if (!TABLE_NAME) {
-      console.error('CHAT_HISTORY_TABLE_NAME is missing');
+    if (!sessionId || !TABLE_NAME) {
       return NextResponse.json({ messages: [] });
     }
 
     const command = new QueryCommand({
       TableName: TABLE_NAME,
-      KeyConditionExpression: 'user_email = :email',
+      KeyConditionExpression: 'pk = :pk',
       ExpressionAttributeValues: {
-        ':email': email
+        ':pk': `SESSION#${sessionId}`
       },
       ScanIndexForward: false, // Sort descending to get latest first
-      Limit: 20 // Limit to latest 20 messages (10 user/assistant interactions)
+      Limit: 50 // Limit to latest 50 messages per session
     });
 
     const response = await docClient.send(command);
     
-    // Reverse the items so they are in ascending chronological order for the UI
     const items = response.Items?.reverse() || [];
-    
     const messages = items.map(item => ({
       role: item.role,
       content: item.content,
-      timestamp: item.timestamp
+      timestamp: item.sk.replace('MSG#', '')
     }));
 
     return NextResponse.json({ messages });
@@ -60,37 +54,46 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Save a new message to history
+// POST: Save a new message and update session metadata
 export async function POST(request: Request) {
   try {
     const email = extractEmailFromOidc(request.headers.get('x-amzn-oidc-data')) || request.headers.get('x-user-email') || 'ceo@11xcompany.com';
-    
-    if (!TABLE_NAME) {
-      console.error('CHAT_HISTORY_TABLE_NAME is missing');
-      return NextResponse.json({ success: false });
-    }
+    if (!TABLE_NAME) return NextResponse.json({ success: false });
 
     const body = await request.json();
-    const { role, content } = body;
+    const { sessionId, role, content, isFirstMessage } = body;
 
-    if (!role || !content) {
-      return NextResponse.json({ error: 'Missing role or content' }, { status: 400 });
+    if (!sessionId || !role || !content) {
+      return NextResponse.json({ error: 'Missing sessionId, role, or content' }, { status: 400 });
     }
 
-    // Save exactly with millisecond precision
     const timestamp = new Date().toISOString() + Math.random().toString().slice(1, 6);
 
-    const command = new PutCommand({
+    // 1. Save the message
+    await docClient.send(new PutCommand({
       TableName: TABLE_NAME,
       Item: {
-        user_email: email,
-        timestamp: timestamp,
+        pk: `SESSION#${sessionId}`,
+        sk: `MSG#${timestamp}`,
         role: role,
         content: content
       }
-    });
+    }));
 
-    await docClient.send(command);
+    // 2. If it's the first message, create/update the Session metadata for the sidebar
+    if (isFirstMessage && role === 'user') {
+      const title = content.length > 30 ? content.substring(0, 30) + '...' : content;
+      await docClient.send(new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          pk: `USER#${email}`,
+          sk: `SESSION#${timestamp}`, // Sort key is timestamp so we can query latest sessions easily
+          sessionId: sessionId,
+          title: title,
+          updatedAt: timestamp
+        }
+      }));
+    }
 
     return NextResponse.json({ success: true, timestamp });
   } catch (error) {
@@ -99,31 +102,38 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE: Clear user's chat history (Note: DynamoDB requires deleting items one by one or using batch, here we query then delete)
+// DELETE: Clear a specific session
 export async function DELETE(request: Request) {
   try {
     const email = extractEmailFromOidc(request.headers.get('x-amzn-oidc-data')) || request.headers.get('x-user-email') || 'ceo@11xcompany.com';
-    
-    if (!TABLE_NAME) return NextResponse.json({ success: false });
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
+    const sessionSk = searchParams.get('sessionSk'); // The SK used in the USER#email partition
 
-    // First query all items
+    if (!TABLE_NAME || !sessionId) return NextResponse.json({ success: false });
+
+    // 1. Delete session metadata from user's list
+    if (sessionSk) {
+      await docClient.send(new DeleteCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: `USER#${email}`, sk: sessionSk }
+      }));
+    }
+
+    // 2. Query and delete all messages in the session
     const queryCommand = new QueryCommand({
       TableName: TABLE_NAME,
-      KeyConditionExpression: 'user_email = :email',
-      ExpressionAttributeValues: { ':email': email }
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: { ':pk': `SESSION#${sessionId}` }
     });
     
     const response = await docClient.send(queryCommand);
     const items = response.Items || [];
 
-    // Delete items sequentially (batch write could be used for larger histories)
     for (const item of items) {
       await docClient.send(new DeleteCommand({
         TableName: TABLE_NAME,
-        Key: {
-          user_email: email,
-          timestamp: item.timestamp
-        }
+        Key: { pk: item.pk, sk: item.sk }
       }));
     }
 

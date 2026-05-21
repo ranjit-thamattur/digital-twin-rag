@@ -218,11 +218,11 @@ class CloneMindStack(Stack):
         
         history_table = dynamodb.Table(self, "ChatHistory",
             partition_key=dynamodb.Attribute(
-                name="user_email",
+                name="pk",
                 type=dynamodb.AttributeType.STRING
             ),
             sort_key=dynamodb.Attribute(
-                name="timestamp",
+                name="sk",
                 type=dynamodb.AttributeType.STRING
             ),
             removal_policy=RemovalPolicy.DESTROY,
