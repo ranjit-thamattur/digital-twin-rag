@@ -19,6 +19,7 @@ from aws_cdk import (
     aws_route53_targets as targets,
     aws_certificatemanager as acm,
     aws_elasticloadbalancingv2 as elbv2,
+    aws_elasticloadbalancingv2_actions as elbv2_actions,
     SecretValue,
     RemovalPolicy,
     Duration,
@@ -418,92 +419,31 @@ class CloneMindStack(Stack):
         # ===================================================================
         # 10. WEBUI SERVICE
         # ===================================================================
-        webui_task = ecs.Ec2TaskDefinition(self, "WebUITask", 
+        # ===================================================================
+        frontend_task = ecs.Ec2TaskDefinition(self, "FrontendTask", 
             network_mode=ecs.NetworkMode.BRIDGE
         )
         
-        webui_task.add_volume(
-            name="OpenWebUIVolume",
-            efs_volume_configuration=ecs.EfsVolumeConfiguration(
-                file_system_id=file_system.file_system_id,
-                transit_encryption="ENABLED",
-                authorization_config=ecs.AuthorizationConfig(
-                    access_point_id=webui_ap.access_point_id,
-                    iam="ENABLED"
-                )
-            )
-        )
-        
-        webui_container = webui_task.add_container("WebUI",
-            image=ecs.ContainerImage.from_asset("../docker"),
-            memory_limit_mib=1536,
+        frontend_container = frontend_task.add_container("FrontendContainer",
+            image=ecs.ContainerImage.from_asset("../../services/chat-frontend"),
+            memory_limit_mib=512,
             cpu=256,
             environment={
-                "WEBUI_NAME": "Peak AI (Branded)",
-                "ENABLE_PIPELINE_MODE": "true",
-                "WEBUI_AUTH": "true",
-                "ENABLE_SIGNUP": "false",
-                "ENABLE_LOGIN_FORM": "true",
-                "ENABLE_OAUTH_SIGNUP": "true",
-                "DEFAULT_USER_ROLE": "user",
-                "PORT": "8080",
-                "OAUTH_CLIENT_ID": webui_client.user_pool_client_id,
-                "OAUTH_CLIENT_SECRET": webui_client.user_pool_client_secret.unsafe_unwrap(),
-                "OPENID_PROVIDER_URL": f"https://cognito-idp.{self.region}.amazonaws.com/{user_pool.user_pool_id}/.well-known/openid-configuration",
-                "REDIRECT_URI": "https://ai.peakpa.com/oauth/oidc/callback",
-                "WEBUI_FAVICON_URL": "/static/peak_logo.png",
-                "WEBUI_LOGO_URL": "/static/peak_logo.png",
-                "DEPLOYMENT_ID": "v10-excel-support",
-                "DEPLOY_TIMESTAMP": "2026-04-06-2100",
-                "OAUTH_PROVIDER_NAME": "Peak AI",
-                # Fix Cognito logout: Cognito needs client_id in the logout URL and DOES NOT support id_token_hint
-                # We set both variables to ensure maximal compatibility with OpenWebUI's auth logic
-                "OAUTH_LOGOUT_REDIRECT_URL": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
-                "OPENID_END_SESSION_ENDPOINT": f"https://clonemind-{self.account}.auth.{self.region}.amazoncognito.com/logout?client_id={webui_client.user_pool_client_id}&logout_uri=https://ai.peakpa.com",
-                "SHOW_ADMIN_DETAILS": "false",
-                "WEBUI_SHOW_WHATS_NEW_MODAL": "false",
-                "CUSTOM_FOOTER": "<style>.oauth-provider-button, #oauth-login-button { background-color: #FF8C00 !important; color: white !important; border: none !important; transition: all 0.3s ease; } .oauth-provider-button:hover { background-color: #e67e00 !important; transform: scale(1.02); }</style>Tenants: Please use the 'Continue with Peak AI' button above for secure access.",
+                "PORT": "3000",
+                "MCP_SERVER_URL": "http://172.17.0.1:3000"
             },
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="WebUI")
+            logging=ecs.LogDrivers.aws_logs(stream_prefix="Frontend")
         )
-        webui_container.add_port_mappings(
-            ecs.PortMapping(container_port=8080, host_port=8080)
-        )
-        webui_container.add_mount_points(
-            ecs.MountPoint(
-                container_path="/app/backend/data", 
-                source_volume="OpenWebUIVolume", 
-                read_only=False
-            )
+        frontend_container.add_port_mappings(
+            ecs.PortMapping(container_port=3000, host_port=3000)
         )
         
-        filesync_container = webui_task.add_container("FileSync",
-            image=ecs.ContainerImage.from_asset("../../services/file-sync"),
-            memory_limit_mib=192,
-            cpu=64,
-            environment={
-                "S3_BUCKET": documents_bucket.bucket_name,
-                "TENANT_SERVICE_URL": "http://172.17.0.1:8000"
-            },
-            logging=ecs.LogDrivers.aws_logs(stream_prefix="FileSync")
-        )
-        filesync_container.add_mount_points(
-            ecs.MountPoint(
-                container_path="/app/backend/data", 
-                source_volume="OpenWebUIVolume", 
-                read_only=False
-            )
-        )
-        
-        documents_bucket.grant_read_write(webui_task.task_role)
-        file_system.grant_root_access(webui_task.task_role)
-        
-        webui_service = ecs.Ec2Service(self, "WebUIService", 
+        frontend_service = ecs.Ec2Service(self, "FrontendService", 
             cluster=cluster, 
-            task_definition=webui_task,
+            task_definition=frontend_task,
             desired_count=1,
             min_healthy_percent=0,
-            service_name="webui",
+            service_name="chat-frontend",
             enable_execute_command=True
         )
 
@@ -544,13 +484,22 @@ class CloneMindStack(Stack):
             open=True
         )
         
-        # 5. Target: WebUI Service
-        https_listener.add_targets("WebUITarget",
-            port=8080,
-            targets=[webui_service],
-            health_check=elbv2.HealthCheck(
-                path="/",
-                interval=Duration.seconds(60)
+        # 5. Target: Custom Frontend Service with Cognito Authentication
+        https_listener.add_action("CognitoAuthAction",
+            action=elbv2_actions.AuthenticateCognitoAction(
+                user_pool=user_pool,
+                user_pool_client=webui_client,
+                user_pool_domain=domain,
+                next=elbv2.ListenerAction.forward([
+                    https_listener.add_targets("FrontendTarget",
+                        port=3000,
+                        targets=[frontend_service],
+                        health_check=elbv2.HealthCheck(
+                            path="/",
+                            interval=Duration.seconds(60)
+                        )
+                    ).target_groups[0]
+                ])
             )
         )
         
