@@ -506,24 +506,34 @@ class CloneMindStack(Stack):
             open=True
         )
         
-        # 5. Target: Custom Frontend Service with Cognito Authentication
+        # Create the Target Group first so it can be reused
+        frontend_target = https_listener.add_targets("FrontendTarget",
+            port=3001,
+            protocol=elbv2.ApplicationProtocol.HTTP,
+            targets=[frontend_service],
+            health_check=elbv2.HealthCheck(
+                path="/",
+                interval=Duration.seconds(60)
+            )
+        )
+
+        # 5. Default Action: Cognito Authentication (Protects /*)
         https_listener.add_action("CognitoAuthAction",
             action=elbv2_actions.AuthenticateCognitoAction(
                 user_pool=user_pool,
                 user_pool_client=webui_client,
                 user_pool_domain=user_pool_domain,
-                next=elbv2.ListenerAction.forward([
-                    https_listener.add_targets("FrontendTarget",
-                        port=3001,
-                        protocol=elbv2.ApplicationProtocol.HTTP,
-                        targets=[frontend_service],
-                        health_check=elbv2.HealthCheck(
-                            path="/",
-                            interval=Duration.seconds(60)
-                        )
-                    )
-                ])
+                next=elbv2.ListenerAction.forward([frontend_target])
             )
+        )
+
+        # 6. Bypass Action: Allow unauthenticated access to Login Page & Assets
+        https_listener.add_action("BypassAuthAction",
+            priority=10,
+            conditions=[
+                elbv2.ListenerCondition.path_patterns(["/login*", "/api/auth/verify*", "/_next/*"])
+            ],
+            action=elbv2.ListenerAction.forward([frontend_target])
         )
         
         # 6. HTTP Listener for Ingestion (Port 3000)
