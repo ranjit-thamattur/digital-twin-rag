@@ -274,7 +274,7 @@ export default function ChatPage() {
             </div>
             
             <a 
-              href="https://clonemind-543187302175.auth.us-east-1.amazoncognito.com/logout?client_id=70josbv1q9rjfhgji773k8p3gk&logout_uri=https://ai.peakpa.com/"
+              href="https://clonemind-543187302175.auth.us-east-1.amazoncognito.com/logout?client_id=70josbv1q9rjfhgji773k8p3gk&logout_uri=https://ai.peakpa.com"
               style={{ display: 'flex', gap: '6px', color: '#ff4d4f', cursor: 'pointer', alignItems: 'center', textDecoration: 'none' }}
               onClick={(e) => {
                 // Delete Next.js session cookies if any (AWS ALB handles its own cookie deletion, but just in case)

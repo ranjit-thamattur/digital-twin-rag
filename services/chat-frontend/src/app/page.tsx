@@ -50,13 +50,13 @@ export default function LoginPage() {
       
       {/* Left Side - Marketing / Branding */}
       <div className="login-left">
+        <img 
+          src="/peak_logo_cognito.png" 
+          alt="Peak Performance Advisors" 
+          className="login-logo"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
         <div style={{ zIndex: 10, maxWidth: '500px' }}>
-          <img 
-            src="/peak_logo_cognito.png" 
-            alt="Peak Performance Advisors" 
-            className="login-logo"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
-          />
           <h1 className="login-title">
             Digital Brain
           </h1>

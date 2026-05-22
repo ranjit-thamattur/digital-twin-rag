@@ -408,8 +408,15 @@ body {
 }
 
 .login-logo {
-  width: 250px;
-  margin-bottom: 60px;
+  position: absolute;
+  top: 40px;
+  left: 60px;
+  width: 180px;
+  background-color: white;
+  padding: 15px 25px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  z-index: 20;
 }
 
 .login-title {
@@ -418,6 +425,7 @@ body {
   color: #c4b5fd;
   margin-bottom: 20px;
   line-height: 1.1;
+  margin-top: 40px;
 }
 
 .login-subtitle {
@@ -434,13 +442,15 @@ body {
   }
   .login-left {
     flex: none;
-    padding: 40px 20px;
+    padding: 120px 20px 40px 20px;
     align-items: center;
     text-align: center;
   }
   .login-logo {
-    width: 180px;
-    margin-bottom: 30px;
+    top: 20px;
+    left: 20px;
+    width: 140px;
+    padding: 10px 15px;
   }
   .login-title {
     font-size: 2.5rem;
