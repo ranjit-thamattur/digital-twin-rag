@@ -1,395 +1,190 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import Image from 'next/image';
 
-type Message = {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-};
-
-type Session = {
-  sessionId: string;
-  title: string;
-  sessionSk?: string;
-};
-
-export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  
-  const [input, setInput] = useState('');
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isFetchingHistory, setIsFetchingHistory] = useState(true);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState<string>('Loading...');
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Fetch recent sessions on load
-  useEffect(() => {
-    fetchSessions();
-    fetchUser();
-  }, []);
-
-  const fetchUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setUserEmail(data.email);
-      }
-    } catch (e) {
-      setUserEmail('Unknown');
-    }
-  };
-
-  const fetchSessions = async (selectFirst: boolean = true) => {
-    try {
-      const res = await fetch('/api/history/sessions', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions || []);
-        
-        if (selectFirst && data.sessions && data.sessions.length > 0) {
-          loadSession(data.sessions[0].sessionId);
-        } else if (selectFirst) {
-          startNewChat();
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch sessions', e);
-      startNewChat();
-    }
-  };
-
-  const loadSession = async (sessionId: string) => {
-    setCurrentSessionId(sessionId);
-    setIsFetchingHistory(true);
-    try {
-      const res = await fetch(`/api/history?sessionId=${sessionId}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages || []);
-      }
-    } catch (e) {
-      console.error('Failed to load session messages', e);
-    } finally {
-      setIsFetchingHistory(false);
-      setIsMobileSidebarOpen(false); // Close sidebar on mobile after selecting
-    }
-  };
-
-  const startNewChat = () => {
-    setCurrentSessionId(uuidv4());
-    setMessages([]);
-    setIsFetchingHistory(false);
-    setIsMobileSidebarOpen(false);
-  };
-
-  const saveToHistory = async (role: string, content: string, isFirst: boolean = false) => {
-    try {
-      await fetch('/api/history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionId: currentSessionId, 
-          role, 
-          content,
-          isFirstMessage: isFirst 
-        })
-      });
-      if (isFirst) {
-        // Refresh sidebar after first message
-        setTimeout(() => fetchSessions(false), 500);
-      }
-    } catch (e) {
-      console.error('Failed to save to history', e);
-    }
-  };
-
-  const deleteSession = async (sessionId: string, sessionSk?: string) => {
-    if (!confirm('Are you sure you want to delete this chat?')) return;
-    
-    try {
-      let url = `/api/history?sessionId=${sessionId}`;
-      if (sessionSk) url += `&sessionSk=${sessionSk}`;
-      
-      await fetch(url, { method: 'DELETE' });
-      
-      // Remove from UI
-      setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
-      if (currentSessionId === sessionId) {
-        startNewChat();
-      }
-    } catch (e) {
-      console.error('Failed to delete session', e);
-    }
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isUploading]);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!email) {
+      setError('Please enter your email address');
+      return;
+    }
 
-    const userMsg = input.trim();
-    setInput('');
-    const isFirstMessage = messages.length === 0;
-    
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
-    
-    // Fire and forget save
-    saveToHistory('user', userMsg, isFirstMessage);
+    setError('');
 
     try {
-      const response = await fetch('/api/chat', {
+      const res = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: userMsg,
-          messages: messages.filter(m => m.role !== 'system') 
-        }),
+        body: JSON.stringify({ email })
       });
 
-      const data = await response.json();
-      
-      if (response.ok) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
-        saveToHistory('assistant', data.answer, false);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setError('Account does not exist');
+        } else {
+          setError('Failed to verify account. Please try again.');
+        }
+        setIsLoading(false);
+        return;
       }
+
+      // Success! Redirect to the protected /chat route so AWS ALB can initiate the secure Cognito flow.
+      // Note: ALB does not support passing login_hint dynamically, so users will have to enter email again.
+      window.location.href = '/chat';
+
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection failed. Please try again.' }]);
-    } finally {
+      setError('Connection error. Please check your network.');
       setIsLoading(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessages(prev => [...prev, { role: 'system', content: `✅ File "${file.name}" uploaded successfully. Digital Brain is currently processing it into your knowledge base.` }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'system', content: `❌ Failed to upload "${file.name}": ${data.error}` }]);
-      }
-    } catch (err) {
-      setMessages(prev => [...prev, { role: 'system', content: `❌ Connection error while uploading "${file.name}".` }]);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   return (
-    <div className="app-container">
-      {/* Mobile Overlay */}
-      {isMobileSidebarOpen && (
-        <div className="mobile-overlay" onClick={() => setIsMobileSidebarOpen(false)}></div>
-      )}
-
-      {/* Sidebar */}
-      <div className={`sidebar ${isMobileSidebarOpen ? 'open' : ''}`}>
-        <div className="brand" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="brand-icon">
-              <Brain size={20} />
-            </div>
-            <span>Digital Brain</span>
-          </div>
-          <X 
-            size={24} 
-            className="mobile-close-icon" 
-            onClick={() => setIsMobileSidebarOpen(false)} 
-            style={{ cursor: 'pointer' }}
+    <div style={{ display: 'flex', height: '100dvh', width: '100%', backgroundColor: 'var(--bg-dark)', overflow: 'hidden' }}>
+      
+      {/* Left Side - Marketing / Branding */}
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column',
+        justifyContent: 'center', 
+        padding: '60px',
+        position: 'relative',
+        background: 'radial-gradient(circle at 30% 70%, rgba(139, 92, 246, 0.15), transparent 60%)'
+      }}>
+        <div style={{ zIndex: 10, maxWidth: '500px' }}>
+          <img 
+            src="/peak_logo_cognito.png" 
+            alt="Peak Performance Advisors" 
+            style={{ width: '250px', marginBottom: '60px' }} 
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
-        </div>
-        
-        <button className="new-chat-btn" onClick={startNewChat}>
-          <Plus size={18} /> New Chat
-        </button>
-
-        <div className="chat-history">
-          <div className="history-title">Recent Chats</div>
-          {sessions.map(session => (
-            <div 
-              key={session.sessionId} 
-              className={`history-item ${currentSessionId === session.sessionId ? 'active' : ''}`}
-              onClick={() => loadSession(session.sessionId)}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <MessageSquare size={14} style={{ marginRight: '8px', minWidth: '14px' }}/>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.title}</span>
-              </div>
-              <Trash2 
-                size={14} 
-                className="delete-icon" 
-                onClick={(e) => { e.stopPropagation(); deleteSession(session.sessionId, session.sessionSk); }} 
-              />
-            </div>
-          ))}
-          {sessions.length === 0 && !isFetchingHistory && (
-            <div style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No recent chats.</div>
-          )}
+          <h1 style={{ fontSize: '4rem', fontWeight: 700, color: '#c4b5fd', marginBottom: '20px', lineHeight: 1.1 }}>
+            Digital Brain
+          </h1>
+          <p style={{ fontSize: '2rem', color: '#e5e7eb', lineHeight: 1.3, fontWeight: 300 }}>
+            - Take decisions with a brain of yours
+          </p>
         </div>
 
-        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="avatar" style={{ width: '32px', height: '32px', backgroundColor: 'var(--accent-primary)' }}>
-              <User size={16} color="white" />
-            </div>
-            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-              {userEmail}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}>
-              <Settings size={16} />
-              <span style={{ fontSize: '0.9rem' }}>Settings</span>
-            </div>
-            
-            <a 
-              href="https://clonemind-543187302175.auth.us-east-1.amazoncognito.com/logout?client_id=70josbv1q9rjfhgji773k8p3gk&logout_uri=https://ai.peakpa.com/login"
-              style={{ display: 'flex', gap: '6px', color: '#ff4d4f', cursor: 'pointer', alignItems: 'center', textDecoration: 'none' }}
-              onClick={(e) => {
-                // Delete Next.js session cookies if any (AWS ALB handles its own cookie deletion, but just in case)
-                document.cookie.split(";").forEach(function(c) { 
-                  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-                });
-              }}
-            >
-              <LogOut size={16} />
-              <span style={{ fontSize: '0.9rem' }}>Logout</span>
-            </a>
-          </div>
-        </div>
+        {/* Abstract Neural Network Background Effect */}
+        <div style={{
+          position: 'absolute',
+          bottom: '-10%',
+          left: '-10%',
+          width: '80%',
+          height: '80%',
+          backgroundImage: 'radial-gradient(circle, rgba(139, 92, 246, 0.2) 2px, transparent 2px)',
+          backgroundSize: '40px 40px',
+          opacity: 0.3,
+          zIndex: 1,
+          maskImage: 'linear-gradient(to top right, black, transparent)',
+          WebkitMaskImage: 'linear-gradient(to top right, black, transparent)'
+        }}></div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="main-chat">
-        <div className="header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Menu 
-              size={24} 
-              className="mobile-menu-icon" 
-              onClick={() => setIsMobileSidebarOpen(true)} 
-              style={{ cursor: 'pointer' }}
-            />
-            <div>Your Digital Twin</div>
-          </div>
-        </div>
-
-        <div className="messages-container">
-          {isFetchingHistory ? (
-            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-              <p>Loading conversation...</p>
-            </div>
-          ) : messages.length === 0 ? (
-            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <Brain size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-              <h2>How can I help you today?</h2>
-              <p style={{ marginTop: '8px' }}>Ask me about documents, metrics, or company knowledge.</p>
-            </div>
-          ) : (
-            messages.map((msg, i) => (
-              <div key={i} className={`message-row ${msg.role}`}>
-                {msg.role !== 'system' && (
-                  <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                    {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
-                  </div>
-                )}
-                <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
-                  <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
-                    {msg.content}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+      {/* Right Side - Login Form */}
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        padding: '20px',
+        background: 'linear-gradient(135deg, rgba(20, 20, 25, 0.9) 0%, rgba(15, 15, 20, 0.95) 100%)',
+        position: 'relative'
+      }}>
+        
+        {/* Glassmorphism Panel */}
+        <div style={{
+          width: '100%',
+          maxWidth: '480px',
+          padding: '50px 40px',
+          borderRadius: '24px',
+          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        }}>
           
-          {isLoading && (
-            <div className="message-row ai">
-              <div className="avatar ai">
-                <Brain size={18} color="white" />
-              </div>
-              <div className="message-content">
-                <div className="bubble" style={{ display: 'flex', alignItems: 'center' }}>
-                  <div className="loading-indicator">
-                    <span></span><span></span><span></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '30px' }}>
+            Please enter your email
+          </h2>
 
-          {isUploading && (
-            <div className="message-row system" style={{ justifyContent: 'center' }}>
-              <div className="bubble" style={{ backgroundColor: 'transparent', color: 'var(--text-secondary)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Loader2 size={14} className="animate-spin" /> Uploading document to S3...
-              </div>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Email Address</label>
+              <input 
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@peak-enterprise.com"
+                required
+                style={{
+                  width: '100%',
+                  padding: '16px 20px',
+                  borderRadius: '12px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: 'var(--text-primary)',
+                  fontSize: '1rem',
+                  outline: 'none',
+                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = '#8b5cf6';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(139, 92, 246, 0.2)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
             </div>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </div>
 
-        {/* Input Area */}
-        <div className="input-container">
-          <form onSubmit={handleSubmit} className="input-box">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              onChange={handleFileUpload} 
-              accept=".pdf,.txt,.docx,.pptx,.csv"
-            />
-            <Paperclip 
-              size={20} 
-              color="var(--text-secondary)" 
-              style={{ marginRight: '12px', cursor: 'pointer' }} 
-              onClick={() => fileInputRef.current?.click()}
-            />
-            <input
-              type="text"
-              className="chat-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Message Digital Brain..."
-              disabled={isLoading || isUploading || isFetchingHistory}
-            />
-            <button type="submit" className="send-btn" disabled={!input.trim() || isLoading || isUploading || isFetchingHistory}>
-              <Send size={16} />
+            {error && (
+              <div style={{ color: '#ef4444', fontSize: '0.9rem', marginTop: '-10px' }}>
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              disabled={isLoading}
+              style={{
+                width: '100%',
+                padding: '16px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(90deg, #6d28d9 0%, #4c1d95 100%)',
+                color: 'white',
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.7 : 1,
+                marginTop: '10px',
+                transition: 'transform 0.2s ease, opacity 0.2s ease',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '10px',
+                boxShadow: '0 10px 25px -5px rgba(109, 40, 217, 0.4)'
+              }}
+              onMouseOver={(e) => !isLoading && (e.currentTarget.style.transform = 'translateY(-2px)')}
+              onMouseOut={(e) => !isLoading && (e.currentTarget.style.transform = 'translateY(0)')}
+            >
+              {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'Continue to Sign In'}
             </button>
           </form>
-          <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '12px' }}>
-            Digital Brain can make mistakes. Check important information.
-          </div>
+
         </div>
       </div>
     </div>

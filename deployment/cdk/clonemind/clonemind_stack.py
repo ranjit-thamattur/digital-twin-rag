@@ -531,7 +531,7 @@ class CloneMindStack(Stack):
         https_listener.add_action("BypassAuthAction",
             priority=10,
             conditions=[
-                elbv2.ListenerCondition.path_patterns(["/login*", "/api/auth/verify*", "/_next/*"])
+                elbv2.ListenerCondition.path_patterns(["/", "/api/auth/verify*", "/_next/*", "/peak_logo*"])
             ],
             action=elbv2.ListenerAction.forward([frontend_target])
         )
