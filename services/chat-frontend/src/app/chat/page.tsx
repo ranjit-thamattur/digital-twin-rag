@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type Message = {
@@ -27,6 +27,11 @@ export default function ChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('Loading...');
   
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark'|'light'|'system'>('system');
+  const [isClearingHistory, setIsClearingHistory] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,7 +39,33 @@ export default function ChatPage() {
   useEffect(() => {
     fetchSessions();
     fetchUser();
+    
+    // Load saved theme
+    const savedTheme = localStorage.getItem('theme') as 'dark'|'light'|'system' || 'system';
+    setTheme(savedTheme);
+    applyTheme(savedTheme);
   }, []);
+
+  const applyTheme = (t: 'dark'|'light'|'system') => {
+    if (t === 'dark') {
+      document.documentElement.removeAttribute('data-theme');
+    } else if (t === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      // System
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    }
+  };
+
+  const handleThemeChange = (newTheme: 'dark'|'light'|'system') => {
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    applyTheme(newTheme);
+  };
 
   const fetchUser = async () => {
     try {
@@ -178,6 +209,59 @@ export default function ChatPage() {
     }
   };
 
+  const exportChat = (format: 'txt' | 'csv') => {
+    if (messages.length === 0) return;
+    
+    let content = '';
+    const filename = `digital-brain-chat-${new Date().toISOString().split('T')[0]}.${format}`;
+    
+    if (format === 'txt') {
+      content = messages.map(m => `[${m.role.toUpperCase()}]\n${m.content}\n`).join('\n');
+    } else if (format === 'csv') {
+      content = 'Role,Message\n' + messages.map(m => `"${m.role}","${m.content.replace(/"/g, '""')}"`).join('\n');
+    }
+    
+    const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportPDF = () => {
+    // A clean and simple way to export to PDF without heavy dependencies
+    // is to trigger the browser print dialog while using CSS media queries to hide sidebars.
+    setIsSettingsOpen(false);
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  };
+
+  const clearAllHistory = async () => {
+    if (!confirm('DANGER: Are you sure you want to completely wipe your entire chat history? This cannot be undone.')) return;
+    
+    setIsClearingHistory(true);
+    try {
+      const res = await fetch('/api/history/clear-all', { method: 'DELETE' });
+      if (res.ok) {
+        setSessions([]);
+        setMessages([]);
+        setCurrentSessionId(uuidv4());
+        setIsSettingsOpen(false);
+      } else {
+        alert('Failed to clear history. Please try again.');
+      }
+    } catch (e) {
+      alert('Connection error while clearing history.');
+    } finally {
+      setIsClearingHistory(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -205,6 +289,72 @@ export default function ChatPage() {
 
   return (
     <div className="app-container">
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90%', maxWidth: '500px', backgroundColor: 'var(--bg-sidebar)', borderRadius: '12px', padding: '24px', border: '1px solid var(--border-light)', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Settings</h2>
+              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsSettingsOpen(false)} />
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              
+              {/* Theme Toggle */}
+              <div>
+                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Theme</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => handleThemeChange('system')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${theme === 'system' ? 'var(--accent-primary)' : 'var(--border-light)'}`, backgroundColor: theme === 'system' ? 'rgba(139, 92, 246, 0.1)' : 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Monitor size={16} /> System
+                  </button>
+                  <button onClick={() => handleThemeChange('light')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${theme === 'light' ? 'var(--accent-primary)' : 'var(--border-light)'}`, backgroundColor: theme === 'light' ? 'rgba(139, 92, 246, 0.1)' : 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Sun size={16} /> Light
+                  </button>
+                  <button onClick={() => handleThemeChange('dark')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${theme === 'dark' ? 'var(--accent-primary)' : 'var(--border-light)'}`, backgroundColor: theme === 'dark' ? 'rgba(139, 92, 246, 0.1)' : 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Moon size={16} /> Dark
+                  </button>
+                </div>
+              </div>
+
+              {/* Export Data */}
+              <div>
+                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Export Current Chat</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => exportChat('txt')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', backgroundColor: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={messages.length === 0}>
+                    <Download size={16} /> TXT
+                  </button>
+                  <button onClick={() => exportChat('csv')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', backgroundColor: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={messages.length === 0}>
+                    <Download size={16} /> CSV
+                  </button>
+                  <button onClick={exportPDF} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', backgroundColor: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={messages.length === 0}>
+                    <Download size={16} /> PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Danger Zone */}
+              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
+                <h3 style={{ fontSize: '0.9rem', color: '#ff4d4f', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={16} /> Danger Zone
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                  Permanently delete all of your chat history. This action cannot be undone.
+                </p>
+                <button 
+                  onClick={clearAllHistory}
+                  disabled={isClearingHistory}
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ff4d4f', backgroundColor: 'rgba(255, 77, 79, 0.1)', color: '#ff4d4f', cursor: isClearingHistory ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 500 }}
+                >
+                  {isClearingHistory ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  {isClearingHistory ? 'Deleting...' : 'Clear All History'}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile Overlay */}
       {isMobileSidebarOpen && (
         <div className="mobile-overlay" onClick={() => setIsMobileSidebarOpen(false)}></div>
@@ -268,7 +418,10 @@ export default function ChatPage() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}>
+            <div 
+              style={{ display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}
+              onClick={() => setIsSettingsOpen(true)}
+            >
               <Settings size={16} />
               <span style={{ fontSize: '0.9rem' }}>Settings</span>
             </div>

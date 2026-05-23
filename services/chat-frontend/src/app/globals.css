@@ -12,6 +12,16 @@
   --border-light: rgba(255, 255, 255, 0.08);
 }
 
+[data-theme='light'] {
+  --bg-dark: #f1f5f9;
+  --bg-sidebar: #ffffff;
+  --bg-bubble-user: #e2e8f0;
+  --bg-bubble-ai: transparent;
+  --text-primary: #0f1115;
+  --text-secondary: #475569;
+  --border-light: rgba(0, 0, 0, 0.1);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -24,6 +34,7 @@ body {
   color: var(--text-primary);
   height: 100dvh;
   overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Chat Layout */
@@ -40,6 +51,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 20px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .brand {
@@ -462,5 +474,49 @@ body {
   .login-right {
     flex: 1;
     padding: 40px 20px;
+  }
+}
+
+/* Print Styles for PDF Export */
+@media print {
+  .sidebar, 
+  .input-container, 
+  .header, 
+  .mobile-menu-icon, 
+  .mobile-overlay {
+    display: none !important;
+  }
+  
+  .app-container {
+    height: auto;
+    overflow: visible;
+  }
+  
+  .main-chat {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  
+  .messages-container {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+  
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+  
+  .bubble {
+    color: black !important;
+    border: 1px solid #ccc;
+    background-color: transparent !important;
+    break-inside: avoid;
+  }
+  
+  .message-row {
+    margin-bottom: 20px;
   }
 }
