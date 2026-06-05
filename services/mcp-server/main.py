@@ -20,6 +20,7 @@ import io
 import docx
 import pdfplumber
 from pptx import Presentation as PptxPresentation
+from prompts import ACTIVE_SYSTEM_PROMPT, RAG_GENERATION_PROMPT
 
 # Bedrock Embeddings
 # Removed local torch imports to save memory
@@ -894,22 +895,19 @@ async def generate_twin_response(
                     llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
 
         persona_label = personaId if personaId else "Digital Brain"
-        rag_prompt = f"""You are the Digital Brain ([Persona: {persona_label}]).
+        tenant_name = tenantId if tenantId else "the organisation"
 
-IMPORTANT: Use the following "Retrieved Wisdom" to answer the user's question. If the information is in the wisdom, you MUST use it.
+        # Format system prompt with live persona/tenant context
+        system_prompt = ACTIVE_SYSTEM_PROMPT.format(
+            persona_label=persona_label,
+            tenant_name=tenant_name
+        )
 
-Retrieved Wisdom:
-{rag_context_block}
-
-Current Discussion:
-{query}
-
-Rules:
-1. Speak in first person ("I", "We", "Our")
-2. Use Retrieved Wisdom precisely
-3. Cite sources using (Ref: filename.ext)
-4. If no data: "Based on my records, I don't have those details..."
-"""
+        rag_prompt = RAG_GENERATION_PROMPT.format(
+            persona_label=persona_label,
+            rag_context_block=rag_context_block,
+            query=query
+        )
         llm_messages.append({"role": "user", "content": rag_prompt})
 
         # LLM Invocation
@@ -1380,7 +1378,7 @@ async def openai_chat_bridge(request: Request):
         answer = await generate_twin_response(
             query=user_query,
             tenantId=tenant_id,
-            system_prompt="You are the Digital Brain, a helpful AI assistant.",
+            system_prompt=ACTIVE_SYSTEM_PROMPT,  # formatted inside generate_twin_response
             personaId=persona_id,
             messages=messages[:-1]
         )
