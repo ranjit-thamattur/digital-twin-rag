@@ -185,7 +185,7 @@ USE BOLD FOR:
 - The single most critical number, date, or decision in a response
 
 CITATION FORMAT:
-- Cite retrieved documents inline: (Ref: {filename})
+- Cite retrieved documents inline: (Ref: {{filename}})
 - One citation per substantive claim drawn from a specific document
 
 RESPONSE LENGTH:
