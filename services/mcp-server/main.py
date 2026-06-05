@@ -202,15 +202,21 @@ BUSINESS_KEYWORDS = [
 ]
 
 BASIC_GUARDRAIL_RESPONSE = (
-    "I'm your business AI Twin and I'm focused on helping you with "
-    "work-related queries. Please ask me something related to your "
-    "company, strategy, clients, or knowledge base. 💼"
+    "That's outside what my knowledge base covers. Ask me something "
+    "related to your company, strategy, clients, or documents "
+    "and I'll give you a precise answer."
 )
 
 
 def is_off_topic(query: str, tenant_keywords: Optional[List[str]] = None) -> bool:
     """Returns True if the query is casual/off-topic for a Basic plan tenant."""
     q = query.lower().strip()
+
+    # Always allow session-opening greetings — they route to the LLM for persona intro
+    GREETING_PASSTHROUGH = {"hello", "hi", "hey", "hola", "howdy", "greetings", "good morning",
+                            "good afternoon", "good evening", "sup", "yo"}
+    if q in GREETING_PASSTHROUGH or any(q.startswith(g) for g in GREETING_PASSTHROUGH):
+        return False
 
     all_business_keywords = BUSINESS_KEYWORDS
     if tenant_keywords:
