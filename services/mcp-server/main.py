@@ -853,6 +853,14 @@ async def generate_twin_response(
         actual_plan = metadata.get("plan", plan if plan else "basic")
         tenant_keywords = metadata.get("guardrailKeywords", [])
 
+        # Validate persona against tenant's allowed personas (generic multi-persona support)
+        # DynamoDB fields: allowedPersonas (list), defaultPersona (string)
+        allowed_personas = metadata.get("allowedPersonas", [])
+        default_persona  = metadata.get("defaultPersona", "ceo")
+        if allowed_personas and personaId not in allowed_personas:
+            print(f"🎭 [RAG] Persona '{personaId}' not in allowedPersonas {allowed_personas} → using '{default_persona}'")
+            personaId = default_persona
+
         # Basic Plan: off-topic guardrail
         if actual_plan == "basic" and is_off_topic(query, tenant_keywords):
             print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
@@ -1327,16 +1335,25 @@ async def openai_chat_bridge(request: Request):
                 print(f"🔑 [BRIDGE] Using tenant from Bearer token: {token}")
                 tenant_id = token.lower()
 
-        # 4. Email-based fallback
+        # 4. Email-based fallback — generic for any tenant
         if tenant_id == "default" and user_email and "@" in user_email:
-            domain = user_email.split("@")[1].lower()
-            if "11x" in domain:
-                tenant_id = "tenant-11x"
-                persona_id = "ceo" # Force CEO for 11x emails
+            local, domain = user_email.split("@", 1)
+            domain = domain.lower()
+            local  = local.lower().replace(".", "_").replace("-", "_")
+
+            # Tenant ID: normalise domain root (handle known aliases)
+            DOMAIN_TO_TENANT = {
+                "11xcompany.com": "tenant-11x",
+            }
+            if domain in DOMAIN_TO_TENANT:
+                tenant_id = DOMAIN_TO_TENANT[domain]
             else:
                 clean_domain = domain.split(".")[0]
                 tenant_id = f"tenant-{clean_domain}"
-                persona_id = user_email.split("@")[0]
+
+            # Persona: always derived from email username
+            # Validation against allowedPersonas happens inside generate_twin_response
+            persona_id = local
             print(f"📧 [BRIDGE] Inferred identity from email: {tenant_id}:{persona_id}")
 
         # 5. Model suffix override (digital-brain:tenant_id)
@@ -1369,10 +1386,11 @@ async def openai_chat_bridge(request: Request):
                 persona_id = "ceo"
                 print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED: Forced 11x identity.")
 
-        # 🎭 PERSONA MAPPING: Handle common variants for 11x
-        if "11x" in tenant_id and persona_id in ["global", "ranjitt", "global/any", "user", "any", "none"]:
+        # 🎭 PERSONA FALLBACK: last-resort for unresolvable identity
+        # Fine-grained validation runs inside generate_twin_response via allowedPersonas
+        if tenant_id != "default" and not persona_id:
             persona_id = "ceo"
-            print(f"🎭 [BRIDGE] Remapped persona to: {persona_id}")
+            print(f"🎭 [BRIDGE] No persona resolved → defaulting to 'ceo'")
         
         # 💾 SESSION SAVE: Remember successful non-default identity
         if tenant_id != "default":

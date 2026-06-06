@@ -37,13 +37,17 @@ def get_user_tenant_persona(email: str) -> Tuple[str, str]:
 
 # Backwards compatibility: PERSONA_MAP for offline/fallback mode
 PERSONA_MAP_FALLBACK = {
-    "alice.tenanta@gmail.com": ("tenant-tenanta", "CEO"),
-    "bob.tenanta@gmail.com": ("tenant-tenanta", "manager"),
-    "sarah.tenanta@gmail.com": ("tenant-tenanta", "analyst"),
-    "diana.tenantb@gmail.com": ("tenant-tenantb", "CEO"),
-    "john.tenantb@gmail.com": ("tenant-tenantb", "manager"),
+    "alice.tenanta@gmail.com":   ("tenant-tenanta", "CEO"),
+    "bob.tenanta@gmail.com":     ("tenant-tenanta", "manager"),
+    "sarah.tenanta@gmail.com":   ("tenant-tenanta", "analyst"),
+    "diana.tenantb@gmail.com":   ("tenant-tenantb", "CEO"),
+    "john.tenantb@gmail.com":    ("tenant-tenantb", "manager"),
     "demo.demotenant@gmail.com": ("tenant-demotenant", "CEO"),
+    # Add tenant-specific entries here only for offline/fallback mode.
+    # For production persona management, set allowedPersonas + defaultPersona
+    # in the tenant's DynamoDB metadata record — no code changes needed.
 }
+
 
 def get_user_tenant_persona_with_fallback(email: str) -> Tuple[str, str]:
     """
