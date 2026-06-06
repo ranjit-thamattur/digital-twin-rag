@@ -39,11 +39,11 @@ export async function POST(request: Request) {
       
       if (domain.includes('11x')) {
         tenantId = 'tenant-11x';
-        personaId = 'ceo';
+        personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
       } else {
         const cleanDomain = domain.split('.')[0];
         tenantId = `tenant-${cleanDomain}`;
-        personaId = parts[0];
+        personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
       }
     }
 
