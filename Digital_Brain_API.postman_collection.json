@@ -1,0 +1,598 @@
+{
+  "info": {
+    "name": "Digital Brain — Complete API Collection",
+    "_postman_id": "digital-brain-api-v2",
+    "description": "Complete API collection for the Digital Brain RAG platform.\n\n**Services:**\n- **Tenant Service** (port 8001): Tenant & user management\n- **MCP Server** (port 3000): RAG pipeline, chat completions, knowledge management\n\n**Variables:** Set `tenant_service_url` and `mcp_server_url` in your environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "tenant_service_url",
+      "value": "http://54.84.141.68:8000",
+      "description": "PRODUCTION: Tenant service runs on port 8000 directly on the EC2 instance — NOT behind the ALB. Use the EC2 Elastic IP: http://<ELASTIC_IP>:8000. Not publicly exposed by default — open port 8000 in the EC2 security group first.",
+      "type": "string"
+    },
+    {
+      "key": "mcp_server_url",
+      "value": "http://ai.peakpa.com:3000",
+      "description": "PRODUCTION: MCP Server is behind the ALB on port 3000. HTTP only (no TLS on port 3000). For local dev use http://localhost:3000.",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "tenant-11x",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏢 Tenant Management",
+      "description": "Create, list, update tenants and manage their personas. All requests hit the Tenant Service.",
+      "item": [
+        {
+          "name": "List All Tenants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants"]
+            },
+            "description": "Returns all registered tenants from DynamoDB."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Tenant (basic — default personas)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_name\": \"saas\",\n  \"company_name\": \"SaaS Co\",\n  \"industry\": \"Software\",\n  \"tone\": \"professional\",\n  \"special_instructions\": \"\",\n  \"admin_email\": \"ceo@saascompany.com\",\n  \"admin_password\": \"Secure123!\",\n  \"plan\": \"basic\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants"]
+            },
+            "description": "Creates a new tenant with the default allowedPersonas set: [ceo, manager, analyst, hr_manager]. Admin user is created in Cognito and metadata stored in DynamoDB."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Tenant (premium — custom personas)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenant_name\": \"acme\",\n  \"company_name\": \"ACME Corp\",\n  \"industry\": \"Manufacturing\",\n  \"tone\": \"executive\",\n  \"special_instructions\": \"Focus on operational efficiency and cost reduction.\",\n  \"admin_email\": \"ceo@acmecorp.com\",\n  \"admin_password\": \"Secure123!\",\n  \"plan\": \"premium\",\n  \"allowed_personas\": [\"ceo\", \"coo\", \"vp_sales\", \"hr_manager\", \"finance\"],\n  \"default_persona\": \"ceo\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants"]
+            },
+            "description": "Creates a tenant with custom personas. allowed_personas controls which Qdrant collections are valid for RAG queries. default_persona is used as fallback when the user's persona can't be resolved."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Tenant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Fetch full configuration for a specific tenant including allowedPersonas, users, plan, and metadata."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Tenant — Add Persona",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"allowed_personas\": [\"ceo\", \"manager\", \"analyst\", \"hr_manager\", \"finance\"]\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Add a new persona to a tenant WITHOUT a code deployment. The RAG pipeline reads allowedPersonas from DynamoDB at runtime. Updating this instantly enables users with the new persona."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Tenant — Change Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"premium\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Upgrade tenant from basic to premium. Premium plan gets: 15 RAG results (vs 5), 2048 max tokens (vs 512), 5 message history (vs 3), query rewriting, and reranking."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Tenant — Deactivate",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Deactivate a tenant."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Tenant — Change Default Persona",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"default_persona\": \"manager\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}"]
+            },
+            "description": "Change the fallback persona used when a user's persona can't be resolved."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 User Management",
+      "description": "Add users to tenants and look up their persona/tenant by email.",
+      "item": [
+        {
+          "name": "Add User — CEO",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ceo@11xcompany.com\",\n  \"password\": \"Secure123!\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Smith\",\n  \"persona\": \"ceo\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}/users",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}", "users"]
+            },
+            "description": "Creates a Cognito user and links them to the tenant with the ceo persona. Returns 400 if 'ceo' is not in the tenant's allowedPersonas."
+          },
+          "response": []
+        },
+        {
+          "name": "Add User — HR Manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"hrmanager@11xcompany.com\",\n  \"password\": \"Secure123!\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Doe\",\n  \"persona\": \"hr_manager\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}/users",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}", "users"]
+            },
+            "description": "Creates an HR Manager user. Will be validated against tenant's allowedPersonas — returns 400 if hr_manager is not in the list.\n\nTo enable first:\nPUT /api/tenants/{id} { \"allowed_personas\": [..., \"hr_manager\"] }"
+          },
+          "response": []
+        },
+        {
+          "name": "Add User — Custom Persona",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"vpsales@11xcompany.com\",\n  \"password\": \"Secure123!\",\n  \"first_name\": \"Mike\",\n  \"last_name\": \"Johnson\",\n  \"persona\": \"vp_sales\"\n}"
+            },
+            "url": {
+              "raw": "{{tenant_service_url}}/api/tenants/{{tenant_id}}/users",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "tenants", "{{tenant_id}}", "users"]
+            },
+            "description": "Add any custom persona user. Persona must exist in tenant's allowedPersonas first."
+          },
+          "response": []
+        },
+        {
+          "name": "Lookup User by Email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{tenant_service_url}}/api/user/lookup?email=ceo@11xcompany.com",
+              "host": ["{{tenant_service_url}}"],
+              "path": ["api", "user", "lookup"],
+              "query": [
+                { "key": "email", "value": "ceo@11xcompany.com" }
+              ]
+            },
+            "description": "Used by the RAG pipeline to resolve tenant_id and persona_id from a user's email. Returns tenantId, personaId, plan, tone, and specialInstructions."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🧠 RAG — Chat Completions",
+      "description": "OpenAI-compatible chat endpoint used by OpenWebUI and direct API clients. Routes to the correct tenant/persona knowledge base.",
+      "item": [
+        {
+          "name": "Chat — Identify as CEO (email header)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-email", "value": "ceo@11xcompany.com" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"digital-brain\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What is our current growth strategy?\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/chat/completions",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "The x-user-email header drives tenant + persona resolution:\nceo@11xcompany.com → tenant-11x / ceo\n\nThe RAG pipeline queries the 'tenant_11x_ceo' Qdrant collection and responds in the CEO's voice."
+          },
+          "response": []
+        },
+        {
+          "name": "Chat — Identify as HR Manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-email", "value": "hrmanager@11xcompany.com" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"digital-brain\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What is our hiring policy for senior roles?\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/chat/completions",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "hrmanager@11xcompany.com → tenant-11x / hr_manager\nQueries 'tenant_11x_hr_manager' Qdrant collection."
+          },
+          "response": []
+        },
+        {
+          "name": "Chat — Identify via Tenant Header",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-tenant-id", "value": "tenant-11x" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"digital-brain\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What are our Q3 priorities?\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/chat/completions",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Explicitly pass tenant via x-tenant-id header. Persona defaults to defaultPersona from DynamoDB."
+          },
+          "response": []
+        },
+        {
+          "name": "Chat — Identify via Model Suffix",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"digital-brain:tenant-11x\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Hello\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/chat/completions",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Pass tenant via the model name using 'digital-brain:{tenant_id}' format. Useful for OpenWebUI model selection."
+          },
+          "response": []
+        },
+        {
+          "name": "Chat — Multi-turn Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-email", "value": "ceo@11xcompany.com" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"digital-brain\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"What is our growth strategy?\" },\n    { \"role\": \"assistant\", \"content\": \"Our primary focus is repeatable pipeline. Everything else — headcount, tooling, partnerships — is downstream of that.\" },\n    { \"role\": \"user\", \"content\": \"How does that connect to our EMEA expansion plans?\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/chat/completions",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Multi-turn conversation. Up to 3 messages of history used for basic plan, 5 for premium."
+          },
+          "response": []
+        },
+        {
+          "name": "List Available Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mcp_server_url}}/v1/models",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["v1", "models"]
+            },
+            "description": "Returns the list of Digital Brain models available for OpenWebUI selection."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📚 Knowledge Management",
+      "description": "Ingest documents and search the knowledge base via the MCP tool bridge.",
+      "item": [
+        {
+          "name": "Ingest Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Q1 2026 Strategic Update: Our primary acquisition target is NorthSea Drilling Partners. We have committed $4.2 billion. This increases our offshore footprint by 35%.\",\n  \"tenantId\": \"tenant-11x\",\n  \"personaId\": \"ceo\",\n  \"metadata\": {\n    \"filename\": \"ceo-q1-strategy.txt\",\n    \"source\": \"manual\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/ingest_knowledge",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "ingest_knowledge"]
+            },
+            "description": "Ingest a document chunk into the correct tenant/persona Qdrant collection. The tenantId + personaId determine the collection name."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Knowledge Base",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"acquisition strategy\",\n  \"tenantId\": \"tenant-11x\",\n  \"personaId\": \"ceo\",\n  \"limit\": 5\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/search_knowledge_base",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "search_knowledge_base"]
+            },
+            "description": "Direct vector search against a tenant/persona's Qdrant collection. Returns top matching document chunks."
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Twin Response (direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"What is our position on the NorthSea acquisition?\",\n  \"tenantId\": \"tenant-11x\",\n  \"system_prompt\": \"\",\n  \"personaId\": \"ceo\",\n  \"messages\": [],\n  \"plan\": \"premium\"\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/generate_twin_response",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "generate_twin_response"]
+            },
+            "description": "Call the full RAG pipeline directly (without OpenAI compatibility layer). system_prompt can be empty — the active prompt from prompts.py is used."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Semantic Cache (tenant)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"tenant-11x\",\n  \"personaId\": \"ceo\"\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/clear_semantic_cache",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "clear_semantic_cache"]
+            },
+            "description": "Clear the semantic (Redis) cache for a specific tenant/persona. Forces fresh RAG queries on next request."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Tenant Knowledge",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"tenant-11x\",\n  \"personaId\": \"ceo\"\n}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/clear_tenant_knowledge",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "clear_tenant_knowledge"]
+            },
+            "description": "⚠️ Destructive — deletes the Qdrant collection for this tenant/persona. All ingested documents are permanently removed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔧 Health & Diagnostics",
+      "description": "Health checks, stats, and system diagnostics for the MCP server.",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mcp_server_url}}/health",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["health"]
+            },
+            "description": "Returns service health and Redis connectivity status."
+          },
+          "response": []
+        },
+        {
+          "name": "Root Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mcp_server_url}}/",
+              "host": ["{{mcp_server_url}}"],
+              "path": [""]
+            },
+            "description": "Returns service name, version, and embedding provider."
+          },
+          "response": []
+        },
+        {
+          "name": "Usage Stats & Cost Tracker",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mcp_server_url}}/stats",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["stats"]
+            },
+            "description": "Returns embedding call counts, total tokens used, cache stats, and estimated AWS Bedrock costs."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cost Stats (MCP tool)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/get_cost_stats",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "get_cost_stats"]
+            },
+            "description": "Returns cost stats via the MCP tool bridge."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Embedding Cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{mcp_server_url}}/call/clear_embedding_cache",
+              "host": ["{{mcp_server_url}}"],
+              "path": ["call", "clear_embedding_cache"]
+            },
+            "description": "Clears the in-memory embedding cache. Use after switching embedding providers."
+          },
+          "response": []
+        },
+        {
+          "name": "Tenant Service Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{tenant_service_url}}/",
+              "host": ["{{tenant_service_url}}"],
+              "path": [""]
+            },
+            "description": "Serves the Admin Portal HTML or basic health response from the Tenant Service."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

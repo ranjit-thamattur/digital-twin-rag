@@ -107,11 +107,18 @@ class CloneMindStack(Stack):
         # ===================================================================
         eip = ec2.CfnEIP(self, "CloneMindEIP", domain="vpc")
 
-        # Auto-associate EIP on instance startup via user data
+        # Auto-associate EIP on instance startup via user data.
+        # Retry loop handles the race condition where the IAM instance profile
+        # is not fully propagated when user-data first runs at boot.
         asg.add_user_data(
             "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
             "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
-            f"aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id {eip.attr_allocation_id} --region $REGION --allow-reassociation",
+            "echo 'Associating Elastic IP...' | logger -t eip-associate",
+            "for i in 1 2 3 4 5; do",
+            f"  aws ec2 associate-address --instance-id $INSTANCE_ID --allocation-id {eip.attr_allocation_id} --region $REGION --allow-reassociation && echo 'EIP associated OK' | logger -t eip-associate && break",
+            "  echo \"EIP attempt $i failed, retrying in 10s...\" | logger -t eip-associate",
+            "  sleep 10",
+            "done",
             # Add hourly Docker cleanup to prevent disk issues
             "echo '0 * * * * root /usr/bin/docker image prune -af >> /var/log/docker-prune.log 2>&1' > /etc/cron.d/docker-cleanup"
         )
@@ -674,6 +681,12 @@ def lambda_handler(event, context):
             ec2.Peer.any_ipv4(),
             ec2.Port.tcp(6333),
             "Allow Qdrant Dashboard access"
+        )
+        # Allow admin access to Tenant Service API
+        instance_sg.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(8000),
+            "Allow Tenant Service admin API access"
         )
         # If other services need to be accessed via ALB, add them here.
         # But initially we are only exposing WebUI at root.
