@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type Message = {
@@ -31,6 +31,11 @@ export default function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<'dark'|'light'|'system'>('system');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
+  
+  // Upload Modal State
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadAsCommon, setUploadAsCommon] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -262,28 +267,40 @@ export default function ChatPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setIsUploading(true);
+    
+    setSelectedFile(file);
+    setIsUploadModalOpen(true);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const confirmUpload = async () => {
+    if (!selectedFile) return;
+
+    setIsUploadModalOpen(false);
+    setIsUploading(true);
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', selectedFile);
+      formData.append('isCommon', String(uploadAsCommon));
+
       const response = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await response.json();
 
       if (response.ok) {
-        setMessages(prev => [...prev, { role: 'system', content: `✅ File "${file.name}" uploaded successfully. Digital Brain is currently processing it into your knowledge base.` }]);
+        setMessages(prev => [...prev, { role: 'system', content: `✅ File "${selectedFile.name}" uploaded successfully ${uploadAsCommon ? '(Shared with entire company)' : '(Private)'}. Digital Brain is currently processing it into your knowledge base.` }]);
       } else {
-        setMessages(prev => [...prev, { role: 'system', content: `❌ Failed to upload "${file.name}": ${data.error}` }]);
+        setMessages(prev => [...prev, { role: 'system', content: `❌ Failed to upload "${selectedFile.name}": ${data.error}` }]);
       }
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'system', content: `❌ Connection error while uploading "${file.name}".` }]);
+      setMessages(prev => [...prev, { role: 'system', content: `❌ Connection error while uploading "${selectedFile.name}".` }]);
     } finally {
       setIsUploading(false);
+      setSelectedFile(null);
+      setUploadAsCommon(false); // Reset
     }
   };
 
@@ -350,6 +367,59 @@ export default function ChatPage() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {isUploadModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh', backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
+          <div style={{ width: '90%', maxWidth: '400px', backgroundColor: 'var(--bg-sidebar)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Upload size={20} color="var(--accent-primary)"/> Upload Document
+              </h2>
+              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsUploadModalOpen(false)} />
+            </div>
+
+            <div style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '32px 16px', textAlign: 'center', marginBottom: '20px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ marginBottom: '12px', color: 'var(--text-primary)', fontWeight: 500, fontSize: '1.1rem', wordBreak: 'break-all' }}>
+                {selectedFile?.name || 'No file selected'}
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : ''}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
+              <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Share with entire company</span>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                <input 
+                  type="checkbox" 
+                  checked={uploadAsCommon} 
+                  onChange={(e) => setUploadAsCommon(e.target.checked)} 
+                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} 
+                />
+                <div style={{ width: '40px', height: '24px', backgroundColor: uploadAsCommon ? 'var(--accent-primary)' : 'var(--border-light)', borderRadius: '12px', transition: 'background-color 0.2s', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: '2px', left: uploadAsCommon ? '18px' : '2px', width: '20px', height: '20px', backgroundColor: '#fff', borderRadius: '50%', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                </div>
+              </label>
+            </div>
+            
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.4' }}>
+              {uploadAsCommon 
+                ? 'Everyone in the company will be able to query information from this document.' 
+                : 'Only you will be able to query information from this document.'}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => setIsUploadModalOpen(false)} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border-light)', backgroundColor: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}>
+                Cancel
+              </button>
+              <button onClick={confirmUpload} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: 'none', backgroundColor: 'var(--accent-primary)', color: 'white', cursor: 'pointer', fontWeight: 500, boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)' }}>
+                Upload File
+              </button>
             </div>
           </div>
         </div>
@@ -513,7 +583,7 @@ export default function ChatPage() {
               type="file" 
               ref={fileInputRef} 
               style={{ display: 'none' }} 
-              onChange={handleFileUpload} 
+              onChange={handleFileSelect} 
               accept=".pdf,.txt,.docx,.pptx,.csv"
             />
             <Paperclip 

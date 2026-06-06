@@ -49,12 +49,18 @@ export async function POST(request: Request) {
 
     console.log(`[Upload API] Authenticated User: ${email} -> Tenant: ${tenantId} | Persona: ${personaId}`);
 
-    // 3. Process the file
+    // 3. Process the file and parameters
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const isCommon = formData.get('isCommon') === 'true';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
+    }
+
+    // Override personaId if uploading to common
+    if (isCommon) {
+      personaId = 'common';
     }
 
     const bytes = await file.arrayBuffer();

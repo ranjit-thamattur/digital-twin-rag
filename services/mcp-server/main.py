@@ -642,11 +642,11 @@ async def search_knowledge_base(
 
         vector = await get_embedding(search_query)
 
-        # Build filter (strict isolation by collection + personaId)
+        # Build filter (strict isolation by collection, but allow specific persona + common)
         must_filters = [
             models.FieldCondition(
                 key="personaId",
-                match=models.MatchValue(value=active_persona)
+                match=models.MatchAny(any=[active_persona, "common"])
             )
         ]
 
@@ -685,25 +685,7 @@ async def search_knowledge_base(
 
             formatted_results.append(f"{citation} (Persona: {hit_persona})\nCONTENT: {text}\n---")
 
-        # FIX: fallback to global uses normalize_collection_name (no missing prefix bug)
-        if not formatted_results and active_persona != "global" and not filename:
-            print(f"⚠ [SEARCH] No results for persona '{active_persona}'. Falling back to global.")
-            global_collection = normalize_collection_name(tenantId, "global")
-            if qdrant.collection_exists(global_collection):
-                global_filter = models.Filter(
-                    must=[models.FieldCondition(key="personaId", match=models.MatchValue(value="global"))]
-                )
-                search_result = await asyncio.to_thread(
-                    robust_qdrant_search,
-                    collection_name=global_collection,
-                    vector=vector,
-                    limit=limit,
-                    query_filter=global_filter
-                )
-                for res in search_result:
-                    text = res.payload.get("text", "")
-                    source = res.payload.get("filename", "Global Source")
-                    formatted_results.append(f"DOCUMENT: {source} (Persona: global)\nCONTENT: {text}\n---")
+
 
         if return_raw:
             return search_result
