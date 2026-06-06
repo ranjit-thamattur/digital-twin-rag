@@ -72,7 +72,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"tenant_name\": \"acme\",\n  \"company_name\": \"ACME Corp\",\n  \"industry\": \"Manufacturing\",\n  \"tone\": \"executive\",\n  \"special_instructions\": \"Focus on operational efficiency and cost reduction.\",\n  \"admin_email\": \"ceo@acmecorp.com\",\n  \"admin_password\": \"Secure123!\",\n  \"plan\": \"premium\",\n  \"allowed_personas\": [\"ceo\", \"coo\", \"vp_sales\", \"hr_manager\", \"finance\"],\n  \"default_persona\": \"ceo\"\n}"
+              "raw": "{\n  \"tenant_name\": \"acme\",\n  \"company_name\": \"ACME Corp\",\n  \"industry\": \"Manufacturing\",\n  \"admin_email\": \"ceo@acmecorp.com\",\n  \"admin_password\": \"Secure123!\",\n  \"plan\": \"premium\",\n  \"allowed_personas\": [\"ceo\", \"coo\", \"vp_sales\", \"hr_manager\", \"finance\"],\n  \"default_persona\": \"ceo\"\n}"
             },
             "url": {
               "raw": "{{tenant_service_url}}/api/tenants",
@@ -439,7 +439,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"What is our position on the NorthSea acquisition?\",\n  \"tenantId\": \"tenant-11x\",\n  \"system_prompt\": \"\",\n  \"personaId\": \"ceo\",\n  \"messages\": [],\n  \"plan\": \"premium\"\n}"
+              "raw": "{\n  \"query\": \"What is our position on the NorthSea acquisition?\",\n  \"tenantId\": \"tenant-11x\",\n  \"personaId\": \"ceo\",\n  \"messages\": [],\n  \"plan\": \"premium\"\n}"
             },
             "url": {
               "raw": "{{mcp_server_url}}/call/generate_twin_response",

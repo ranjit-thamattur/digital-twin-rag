@@ -38,8 +38,6 @@ class TenantCreate(BaseModel):
     tenant_name: str
     company_name: str
     industry: str
-    tone: str = "professional"
-    special_instructions: str = ""
     admin_email: str
     admin_password: str
     plan: str = "basic"  # "basic" or "premium"
@@ -55,8 +53,6 @@ class UserCreate(BaseModel):
 
 class TenantUpdate(BaseModel):
     is_active: Optional[bool] = None
-    tone: Optional[str] = None
-    special_instructions: Optional[str] = None
     industry: Optional[str] = None
     company_name: Optional[str] = None
     plan: Optional[str] = None          # "basic" or "premium"
@@ -156,8 +152,6 @@ async def create_tenant(tenant: TenantCreate):
                 "tenantName":          tenant.tenant_name,
                 "companyName":         tenant.company_name,
                 "industry":            tenant.industry,
-                "tone":                tenant.tone,
-                "specialInstructions": tenant.special_instructions,
                 "adminEmail":          tenant.admin_email,
                 "isActive":            True,
                 "plan":                tenant.plan,
@@ -207,12 +201,6 @@ async def update_tenant(tenant_id: str, update: TenantUpdate):
         if update.is_active is not None:
             update_expr += "isActive = :act, "
             attr_values[":act"] = update.is_active
-        if update.tone is not None:
-            update_expr += "tone = :tone, "
-            attr_values[":tone"] = update.tone
-        if update.special_instructions is not None:
-            update_expr += "specialInstructions = :inst, "
-            attr_values[":inst"] = update.special_instructions
         if update.industry is not None:
             update_expr += "industry = :ind, "
             attr_values[":ind"] = update.industry
