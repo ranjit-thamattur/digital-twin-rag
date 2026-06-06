@@ -30,6 +30,10 @@ dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TENANT_TABLE)
 
 # Pydantic Models
+# Default personas provisioned for every new tenant
+DEFAULT_ALLOWED_PERSONAS = ["ceo", "manager", "analyst", "hr_manager"]
+DEFAULT_PERSONA         = "ceo"
+
 class TenantCreate(BaseModel):
     tenant_name: str
     company_name: str
@@ -39,6 +43,8 @@ class TenantCreate(BaseModel):
     admin_email: str
     admin_password: str
     plan: str = "basic"  # "basic" or "premium"
+    allowed_personas: List[str] = DEFAULT_ALLOWED_PERSONAS
+    default_persona: str = DEFAULT_PERSONA
 
 class UserCreate(BaseModel):
     email: str
@@ -53,7 +59,9 @@ class TenantUpdate(BaseModel):
     special_instructions: Optional[str] = None
     industry: Optional[str] = None
     company_name: Optional[str] = None
-    plan: Optional[str] = None  # "basic" or "premium"
+    plan: Optional[str] = None          # "basic" or "premium"
+    allowed_personas: Optional[List[str]] = None
+    default_persona: Optional[str] = None
 
 class StatusUpdate(BaseModel):
     is_active: bool
@@ -135,26 +143,30 @@ async def create_tenant(tenant: TenantCreate):
 
         # 2. Store Tenant Metadata in DynamoDB
         print(f"Step 2: Storing metadata for {tenant_id} in DynamoDB table '{TENANT_TABLE}'...")
+
+        # Normalise personas to lowercase for consistent Qdrant collection naming
+        allowed_personas = [p.lower() for p in tenant.allowed_personas]
+        default_persona  = tenant.default_persona.lower()
+        if default_persona not in allowed_personas:
+            allowed_personas.insert(0, default_persona)
+
         table.put_item(
             Item={
-                "tenantId": tenant_id,
-                "tenantName": tenant.tenant_name,
-                "companyName": tenant.company_name,
-                "industry": tenant.industry,
-                "tone": tenant.tone,
+                "tenantId":            tenant_id,
+                "tenantName":          tenant.tenant_name,
+                "companyName":         tenant.company_name,
+                "industry":            tenant.industry,
+                "tone":                tenant.tone,
                 "specialInstructions": tenant.special_instructions,
-                "adminEmail": tenant.admin_email,
-                "isActive": True,
-                "plan": tenant.plan,  # "basic" or "premium"
-                "createdAt": datetime.now().isoformat(),
+                "adminEmail":          tenant.admin_email,
+                "isActive":            True,
+                "plan":                tenant.plan,
+                "allowedPersonas":     allowed_personas,   # used by RAG pipeline
+                "defaultPersona":      default_persona,    # fallback when persona unknown
+                "createdAt":           datetime.now().isoformat(),
                 "users": [
-                    {"email": tenant.admin_email, "persona": "CEO"}
+                    {"email": tenant.admin_email, "persona": default_persona}
                 ],
-                "personas": {
-                    "CEO": {"focus": "strategic", "style": "executive"},
-                    "manager": {"focus": "operational", "style": "actionable"},
-                    "analyst": {"focus": "data", "style": "technical"}
-                }
             }
         )
         print("Step 3: DynamoDB write successful.")
@@ -190,7 +202,8 @@ async def update_tenant(tenant_id: str, update: TenantUpdate):
     try:
         update_expr = "SET "
         attr_values = {}
-        
+        expr_names  = {}
+
         if update.is_active is not None:
             update_expr += "isActive = :act, "
             attr_values[":act"] = update.is_active
@@ -209,17 +222,20 @@ async def update_tenant(tenant_id: str, update: TenantUpdate):
         if update.plan is not None:
             update_expr += "#pl = :plan, "
             attr_values[":plan"] = update.plan
-            
+            expr_names["#pl"] = "plan"
+        if update.allowed_personas is not None:
+            normalised = [p.lower() for p in update.allowed_personas]
+            update_expr += "allowedPersonas = :ap, "
+            attr_values[":ap"] = normalised
+        if update.default_persona is not None:
+            update_expr += "defaultPersona = :dp, "
+            attr_values[":dp"] = update.default_persona.lower()
+
         if not attr_values:
             return {"success": True, "message": "No changes requested"}
-            
+
         update_expr = update_expr.rstrip(", ")
 
-        # Use ExpressionAttributeNames to handle reserved word 'plan'
-        expr_names = {}
-        if update.plan is not None:
-            expr_names["#pl"] = "plan"
-        
         table.update_item(
             Key={"tenantId": tenant_id},
             UpdateExpression=update_expr,
@@ -232,8 +248,30 @@ async def update_tenant(tenant_id: str, update: TenantUpdate):
 
 @app.post("/api/tenants/{tenant_id}/users")
 async def add_user_to_tenant(tenant_id: str, user: UserCreate):
-    """Create additional Cognito user and link to tenant"""
+    """Create additional Cognito user and link to tenant.
+    Validates the requested persona against the tenant's allowedPersonas.
+    """
     try:
+        # 0. Fetch tenant and validate persona
+        tenant_resp = table.get_item(Key={"tenantId": tenant_id})
+        tenant_item = tenant_resp.get("Item")
+        if not tenant_item:
+            raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
+
+        allowed_personas = tenant_item.get("allowedPersonas", [])
+        default_persona  = tenant_item.get("defaultPersona", "ceo")
+        persona = user.persona.lower()
+
+        if allowed_personas and persona not in allowed_personas:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Persona '{persona}' is not allowed for tenant '{tenant_id}'. "
+                    f"Allowed: {allowed_personas}. "
+                    f"To add a new persona, update the tenant's allowedPersonas first."
+                )
+            )
+
         # 1. Create in Cognito
         success = create_cognito_user(
             user.email,
@@ -242,22 +280,23 @@ async def add_user_to_tenant(tenant_id: str, user: UserCreate):
             user.last_name,
             tenant_id
         )
-        
         if not success:
             raise HTTPException(status_code=500, detail="Failed to create Cognito user")
-            
+
         # 2. Add to DynamoDB 'users' list
         table.update_item(
             Key={"tenantId": tenant_id},
             UpdateExpression="SET #u = list_append(if_not_exists(#u, :empty_list), :new_user)",
             ExpressionAttributeNames={"#u": "users"},
             ExpressionAttributeValues={
-                ":new_user": [{"email": user.email, "persona": user.persona}],
+                ":new_user":    [{"email": user.email, "persona": persona}],
                 ":empty_list": []
             }
         )
-        
-        return {"success": True, "message": f"User {user.email} added to tenant"}
+
+        return {"success": True, "message": f"User {user.email} added to tenant as '{persona}'"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
