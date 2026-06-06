@@ -272,7 +272,7 @@ export default function ChatPage() {
     if (!file) return;
     
     setSelectedFile(file);
-    setIsUploadModalOpen(true);
+    // Modal is already open
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -383,12 +383,15 @@ export default function ChatPage() {
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsUploadModalOpen(false)} />
             </div>
 
-            <div style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '32px 16px', textAlign: 'center', marginBottom: '20px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+            <div 
+              style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '32px 16px', textAlign: 'center', marginBottom: '20px', backgroundColor: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <div style={{ marginBottom: '12px', color: 'var(--text-primary)', fontWeight: 500, fontSize: '1.1rem', wordBreak: 'break-all' }}>
-                {selectedFile?.name || 'No file selected'}
+                {selectedFile?.name || 'Click here to browse your computer'}
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : ''}
+                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, TXT, DOCX, PPTX, CSV'}
               </div>
             </div>
 
@@ -590,7 +593,7 @@ export default function ChatPage() {
               size={20} 
               color="var(--text-secondary)" 
               style={{ marginRight: '12px', cursor: 'pointer' }} 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setIsUploadModalOpen(true)}
             />
             <input
               type="text"
