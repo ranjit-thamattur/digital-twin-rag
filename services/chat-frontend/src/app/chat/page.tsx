@@ -391,7 +391,7 @@ export default function ChatPage() {
                 {selectedFile?.name || 'Click here to browse your computer'}
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, TXT, DOCX, PPTX, CSV'}
+                {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, TXT, DOCX, PPTX, CSV, XLSX'}
               </div>
             </div>
 
@@ -587,7 +587,7 @@ export default function ChatPage() {
               ref={fileInputRef} 
               style={{ display: 'none' }} 
               onChange={handleFileSelect} 
-              accept=".pdf,.txt,.docx,.pptx,.csv"
+              accept=".pdf,.txt,.docx,.pptx,.csv,.xlsx,.xls"
             />
             <Paperclip 
               size={20} 
