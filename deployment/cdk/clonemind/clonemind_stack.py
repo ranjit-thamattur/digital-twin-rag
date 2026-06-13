@@ -457,6 +457,12 @@ class CloneMindStack(Stack):
         frontend_container.add_port_mappings(
             ecs.PortMapping(container_port=3000, host_port=3001)
         )
+        frontend_task.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["polly:SynthesizeSpeech"],
+                resources=["*"]
+            )
+        )
         
         frontend_service = ecs.Ec2Service(self, "FrontendService", 
             cluster=cluster, 

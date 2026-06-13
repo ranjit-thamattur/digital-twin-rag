@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type Message = {
@@ -37,6 +37,14 @@ export default function ChatPage() {
   const [uploadAsCommon, setUploadAsCommon] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
+  // Voice Mode State
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [voiceState, setVoiceState] = useState<'listening'|'thinking'|'speaking'>('listening');
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [detectedLang, setDetectedLang] = useState('en-US');
+  const recognitionRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -213,6 +221,160 @@ export default function ChatPage() {
       setIsLoading(false);
     }
   };
+
+  // --- Voice Mode Logic ---
+  const startListening = () => {
+    setVoiceState('listening');
+    setLiveTranscript('');
+    
+    // @ts-ignore - webkitSpeechRecognition is not standard TS
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in your browser. Please try Chrome or Edge.");
+      endVoiceMode();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US'; // Default, will capture anything really but can be updated
+
+    recognition.onresult = (event: any) => {
+      let final = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      setLiveTranscript(final || interim);
+    };
+
+    recognition.onend = () => {
+      // Need a way to read the latest liveTranscript state here
+      // But it's captured in closure, so we just use a small hack or rely on useEffect if it was complex
+      // For simplicity, we just use the final text
+    };
+
+    recognition.onerror = (e: any) => {
+      console.error("Speech recognition error:", e.error);
+      if (e.error === 'no-speech' && document.querySelector('.voice-overlay')) {
+        try { recognition.start(); } catch(err) {}
+      } else {
+        endVoiceMode();
+      }
+    };
+
+    // Fix closure issue with onend
+    const origOnEnd = recognition.onend;
+    recognition.onend = () => {
+      // We read the DOM element if we can't get the state directly in closure
+      const transcriptDiv = document.querySelector('.voice-transcript');
+      const text = transcriptDiv?.textContent || '';
+      
+      if (text.trim() && text !== '...') {
+        handleVoiceSubmit(text.trim());
+      } else {
+        if (document.querySelector('.voice-overlay') && document.querySelector('.voice-orb.listening')) {
+          try { recognition.start(); } catch(e) {}
+        }
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleVoiceSubmit = async (transcript: string) => {
+    setVoiceState('thinking');
+    
+    const isFirstMessage = messages.length === 0;
+    setMessages(prev => [...prev, { role: 'user', content: transcript }]);
+    saveToHistory('user', transcript, isFirstMessage);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: transcript,
+          messages: messages.filter(m => m.role !== 'system') 
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        saveToHistory('assistant', data.answer, false);
+        await speakResponse(data.answer, transcript);
+      } else {
+        await speakResponse("I'm sorry, I encountered an error.", transcript);
+      }
+    } catch (err) {
+      await speakResponse("Connection failed. Please try again.", transcript);
+    }
+  };
+
+  const speakResponse = async (text: string, originalTranscript: string) => {
+    setVoiceState('speaking');
+    try {
+      const hasHindi = /[\u0900-\u097F]/.test(originalTranscript);
+      const langToPass = hasHindi ? 'hi-IN' : 'en-US';
+
+      const res = await fetch('/api/voice/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, lang: langToPass })
+      });
+      
+      if (!res.ok) throw new Error('TTS Failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      
+      audio.onended = () => {
+        if (document.querySelector('.voice-overlay')) {
+          startListening();
+        }
+      };
+      
+      await audio.play();
+    } catch (e) {
+      console.error("TTS playback error:", e);
+      if (document.querySelector('.voice-overlay')) {
+        startListening();
+      }
+    }
+  };
+
+  const endVoiceMode = () => {
+    setIsVoiceMode(false);
+    setVoiceState('listening');
+    setLiveTranscript('');
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
+
+  // -------------------------
 
   const exportChat = (format: 'txt' | 'csv') => {
     if (messages.length === 0) return;
@@ -595,6 +757,12 @@ export default function ChatPage() {
               style={{ marginRight: '12px', cursor: 'pointer' }} 
               onClick={() => setIsUploadModalOpen(true)}
             />
+            <Mic 
+              size={20}
+              color="var(--accent-primary)"
+              style={{ marginRight: '8px', cursor: 'pointer' }}
+              onClick={() => { setIsVoiceMode(true); setTimeout(startListening, 100); }}
+            />
             <input
               type="text"
               className="chat-input"
@@ -612,6 +780,25 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+      
+      {/* Voice Mode Overlay */}
+      {isVoiceMode && (
+        <div className="voice-overlay">
+          <div className={`voice-orb ${voiceState}`} />
+          
+          <div className="voice-status">
+            {voiceState === 'listening' && 'Listening...'}
+            {voiceState === 'thinking' && 'Thinking...'}
+            {voiceState === 'speaking' && 'Speaking...'}
+          </div>
+          
+          <div className="voice-transcript">{liveTranscript || '...'}</div>
+          
+          <button className="voice-end-btn" onClick={endVoiceMode}>
+            End Conversation
+          </button>
+        </div>
+      )}
     </div>
   );
 }

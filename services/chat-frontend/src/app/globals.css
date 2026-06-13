@@ -520,3 +520,94 @@ body {
     margin-bottom: 20px;
   }
 }
+
+/* ==================== VOICE MODE ==================== */
+.voice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+
+.voice-orb {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-primary), var(--accent-secondary));
+  transition: background 0.5s ease, box-shadow 0.5s ease;
+}
+
+/* Listening — purple pulse */
+.voice-orb.listening {
+  animation: orb-listen 1.5s ease-in-out infinite;
+  box-shadow: 0 0 80px rgba(139,92,246,0.5), 0 0 160px rgba(139,92,246,0.2);
+}
+
+/* Thinking — blue breathe */
+.voice-orb.thinking {
+  background: radial-gradient(circle, #3b82f6, #1d4ed8);
+  animation: orb-think 2s ease-in-out infinite;
+  box-shadow: 0 0 80px rgba(59,130,246,0.5);
+}
+
+/* Speaking — green wave */
+.voice-orb.speaking {
+  background: radial-gradient(circle, #10b981, #059669);
+  animation: orb-speak 0.8s ease-in-out infinite;
+  box-shadow: 0 0 80px rgba(16,185,129,0.5);
+}
+
+@keyframes orb-listen {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes orb-think {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+@keyframes orb-speak {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.08); }
+  60% { transform: scale(0.96); }
+}
+
+.voice-status {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 500;
+}
+
+.voice-transcript {
+  max-width: 600px;
+  text-align: center;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 60px;
+  padding: 0 20px;
+}
+
+.voice-end-btn {
+  margin-top: 40px;
+  padding: 12px 32px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.voice-end-btn:hover {
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+}
