@@ -796,15 +796,17 @@ export default function ChatPage() {
               style={{ marginRight: '12px', cursor: 'pointer' }} 
               onClick={() => setIsUploadModalOpen(true)}
             />
-            <Mic 
-              size={20}
-              color="var(--accent-primary)"
-              style={{ marginRight: '8px', cursor: 'pointer' }}
+            <button
+              type="button"
+              className="voice-feature-btn"
               onClick={() => { 
                 setIsVoiceMode(true); 
                 startListening(); 
               }}
-            />
+            >
+              <Mic size={16} />
+              Voice
+            </button>
             <input
               type="text"
               className="chat-input"
