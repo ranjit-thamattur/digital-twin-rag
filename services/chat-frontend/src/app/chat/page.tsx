@@ -41,6 +41,7 @@ export default function ChatPage() {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [voiceState, setVoiceState] = useState<'listening'|'thinking'|'speaking'>('listening');
   const [liveTranscript, setLiveTranscript] = useState('');
+  const [voiceLang, setVoiceLang] = useState('en-US'); // User STT language
   const [detectedLang, setDetectedLang] = useState('en-US');
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -238,7 +239,7 @@ export default function ChatPage() {
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
-    recognition.lang = 'en-US'; // Default, will capture anything really but can be updated
+    recognition.lang = voiceLang; // Use the selected language
 
     recognition.onresult = (event: any) => {
       let final = '';
@@ -824,6 +825,35 @@ export default function ChatPage() {
       {/* Voice Mode Overlay */}
       {isVoiceMode && (
         <div className="voice-overlay">
+          
+          <div style={{ position: 'absolute', top: '24px', right: '24px', zIndex: 210 }}>
+            <select 
+              value={voiceLang}
+              onChange={(e) => {
+                setVoiceLang(e.target.value);
+                if (recognitionRef.current) {
+                  recognitionRef.current.lang = e.target.value;
+                }
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.3)',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                outline: 'none',
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
+            >
+              <option value="en-US">🇺🇸 English</option>
+              <option value="hi-IN">🇮🇳 Hindi (हिंदी)</option>
+              <option value="ml-IN">🇮🇳 Malayalam (മലയാളം)</option>
+              <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
+              <option value="ar-SA">🇸🇦 Arabic (العربية)</option>
+            </select>
+          </div>
+
           <div className={`voice-orb ${voiceState}`} />
           
           <div className="voice-status">

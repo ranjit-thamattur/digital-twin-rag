@@ -224,8 +224,6 @@ def is_off_topic(query: str, tenant_keywords: Optional[List[str]] = None) -> boo
 
     if any(p in q for p in OFF_TOPIC_PATTERNS):
         return True
-    if len(q.split()) <= 2 and not any(k in q for k in all_business_keywords):
-        return True
     return False
 
 
