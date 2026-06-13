@@ -404,20 +404,23 @@ export default function ChatPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       
-      if (audioRef.current) {
-        audioRef.current.pause();
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
       }
       
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      
-      audio.onended = () => {
+      audioRef.current.src = url;
+      audioRef.current.onended = () => {
         if (document.querySelector('.voice-overlay')) {
           startListening();
         }
       };
       
-      await audio.play();
+      audioRef.current.play().catch(e => {
+        console.error("Audio playback failed", e);
+        if (document.querySelector('.voice-overlay')) {
+          startListening();
+        }
+      });
     } catch (e) {
       console.error("TTS playback error:", e);
       if (document.querySelector('.voice-overlay')) {
@@ -826,6 +829,19 @@ export default function ChatPage() {
               className="voice-feature-btn"
               onClick={() => { 
                 setIsVoiceMode(true); 
+                
+                // Safari Auto-play workaround: Bless the audio contexts during the trusted click event
+                if (!audioRef.current) {
+                  audioRef.current = new Audio();
+                }
+                audioRef.current.play().catch(() => {});
+                audioRef.current.pause();
+                
+                if (window.speechSynthesis) {
+                  const unlock = new SpeechSynthesisUtterance('');
+                  window.speechSynthesis.speak(unlock);
+                }
+
                 startListening(); 
               }}
             >
