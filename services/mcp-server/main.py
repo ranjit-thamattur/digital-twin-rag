@@ -467,13 +467,19 @@ def ensure_collection(collection_name: str, vector_size: int):
 # SEMANTIC CACHE
 # ─────────────────────────────────────────────
 
+import re
+def detect_query_language(text: str) -> str:
+    if re.search(r'[\u0D00-\u0D7F]', text): return 'ml'
+    if re.search(r'[\u0B80-\u0BFF]', text): return 'ta'
+    if re.search(r'[\u0900-\u097F]', text): return 'hi'
+    return 'en'
+
 async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str] = None) -> Optional[str]:
     """Check if a semantically similar question exists in the persona-specific cache."""
     if os.getenv("DISABLE_SEMANTIC_CACHE", "false").lower() == "true":
         return None
 
     try:
-        # FIX: use normalize_collection_name — single source of truth
         tenantId = tenantId.strip().lower()
         clean_query = query.strip().strip('*').strip('_').strip()
         if not clean_query:
@@ -484,12 +490,23 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
         vector = await get_embedding(clean_query)
         ensure_collection(cache_collection, len(vector))
 
+        query_lang = detect_query_language(clean_query)
+        
+        # Build language filter
+        lang_filter = models.Filter(must=[
+            models.FieldCondition(
+                key="lang",
+                match=models.MatchValue(value=query_lang)
+            )
+        ])
+
         results = await asyncio.to_thread(
             robust_qdrant_search,
             collection_name=cache_collection,
             vector=vector,
             limit=1,
-            score_threshold=0.96
+            score_threshold=0.96,
+            query_filter=lang_filter
         )
 
         log_entry = {
@@ -562,6 +579,7 @@ async def save_to_semantic_cache(query: str, answer: str, tenantId: str, persona
             "query": query,
             "tenantId": tenantId.lower(),
             "personaId": active_persona,
+            "lang": detect_query_language(clean_query),
             "cache_id": cache_id,
             "created_at": time.time()
         }
