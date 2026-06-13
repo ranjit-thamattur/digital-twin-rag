@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const audioBytes = await response.AudioStream.transformToByteArray();
 
     // Return the audio as an MP3 binary response
-    return new Response(audioBytes, {
+    return new Response(audioBytes as any, {
       headers: {
         'Content-Type': 'audio/mpeg',
         'Cache-Control': 'no-cache',

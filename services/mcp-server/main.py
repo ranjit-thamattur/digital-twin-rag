@@ -185,7 +185,7 @@ OFF_TOPIC_PATTERNS = [
     "who is your favourite", "what's the weather", "weather today",
     "hello there", "what can you do", "write an email to my friend",
     "translate this", "play a game", "what are your hobbies",
-    "who are you", "what are you", "do you like", "can you sing",
+    "do you like", "can you sing",
     "give me a recipe", "what is the meaning of life", "tell me something fun",
     "entertain me", "make me laugh", "write a rap", "write a poem"
 ]
