@@ -836,6 +836,18 @@ export default function ChatPage() {
                 setVoiceLang(e.target.value);
                 if (recognitionRef.current) {
                   recognitionRef.current.lang = e.target.value;
+                  // If it's currently listening, we need to restart it for the new language to take effect immediately
+                  if (voiceState === 'listening') {
+                    try {
+                      recognitionRef.current.stop();
+                      // onend will fire, but just in case, we can manually restart if needed, 
+                      // or rely on the user to speak. Usually stop() triggers onend which might close the overlay.
+                      // Let's just set the lang, stop it, and immediately start again.
+                      setTimeout(() => {
+                        try { recognitionRef.current.start(); } catch(e){}
+                      }, 200);
+                    } catch(err) {}
+                  }
                 }
               }}
               style={{
