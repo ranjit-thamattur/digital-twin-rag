@@ -337,16 +337,17 @@ export default function ChatPage() {
         spokenText = "Okay."; // Fallback if the response was purely emojis
       }
 
-      // 2. Detect language based on BOTH the user's prompt AND the AI's response
-      const hasHindi = /[\u0900-\u097F]/.test(originalTranscript) || /[\u0900-\u097F]/.test(spokenText);
+      // 2. Detect language based on BOTH the user's prompt AND the AI's response OR explicitly selected dropdown
+      const hasHindi = voiceLang === 'hi-IN' || /[\u0900-\u097F]/.test(originalTranscript) || /[\u0900-\u097F]/.test(spokenText);
       
       // Detect if there are characters outside basic ASCII, standard punctuation, and Devanagari (Hindi)
       // This will catch Tamil, Malayalam, Arabic, Chinese, etc.
-      const hasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript) || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
+      const hasOtherScript = voiceLang === 'ml-IN' || voiceLang === 'ta-IN' || voiceLang === 'ar-SA' || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript) || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
 
       if (hasOtherScript && !hasHindi && window.speechSynthesis) {
         console.log("Detected non-Polly language. Using native browser TTS.");
         const utterance = new SpeechSynthesisUtterance(spokenText);
+        utterance.lang = voiceLang; // Force browser to use correct accent/language
         
         utterance.onend = () => {
           if (document.querySelector('.voice-overlay')) {
