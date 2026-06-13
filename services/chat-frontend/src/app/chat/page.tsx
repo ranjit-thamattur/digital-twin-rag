@@ -369,6 +369,25 @@ export default function ChatPage() {
         // Otherwise, let the browser auto-detect the best voice for the script.
         if (voiceLang !== 'en-US' && voiceLang !== 'hi-IN') {
           utterance.lang = voiceLang;
+          
+          // Try to select the highest quality premium voice available on the device
+          const voices = window.speechSynthesis.getVoices();
+          // Look for a Google cloud voice or a native premium voice matching the language
+          let bestVoice = voices.find(v => v.lang.replace('_', '-') === voiceLang && v.name.includes('Google'));
+          if (!bestVoice) {
+            bestVoice = voices.find(v => v.lang.replace('_', '-') === voiceLang);
+          }
+          // Fallback to just matching the language prefix (e.g. 'ml' for Malayalam)
+          if (!bestVoice) {
+            bestVoice = voices.find(v => v.lang.startsWith(voiceLang.split('-')[0]));
+          }
+          
+          if (bestVoice) {
+            utterance.voice = bestVoice;
+          }
+          
+          // Slightly slower rate sounds more natural for browser TTS
+          utterance.rate = 0.9;
         }
         
         utterance.onend = () => {
