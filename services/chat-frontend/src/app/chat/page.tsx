@@ -381,6 +381,11 @@ export default function ChatPage() {
           if (!bestVoice) {
             bestVoice = voices.find(v => v.lang.startsWith(voiceLang.split('-')[0]));
           }
+          // Final fallback to English if the device lacks the native voice entirely
+          if (!bestVoice) {
+            console.log(`No native voice found for ${voiceLang}. Falling back to English voice.`);
+            bestVoice = voices.find(v => v.lang.startsWith('en'));
+          }
           
           if (bestVoice) {
             utterance.voice = bestVoice;
