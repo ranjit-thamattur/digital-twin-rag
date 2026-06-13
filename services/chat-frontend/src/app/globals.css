@@ -579,7 +579,7 @@ body {
 
 .voice-status {
   font-size: 1.2rem;
-  color: var(--text-secondary);
+  color: #a1a1aa; /* Fixed light grey */
   text-transform: uppercase;
   letter-spacing: 2px;
   font-weight: 500;
@@ -588,21 +588,24 @@ body {
 .voice-transcript {
   max-width: 600px;
   text-align: center;
-  font-size: 1.4rem;
-  color: var(--text-primary);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #ffffff; /* Always white */
   line-height: 1.6;
   min-height: 60px;
   padding: 0 20px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5); /* Adds contrast */
 }
 
 .voice-end-btn {
   margin-top: 40px;
   padding: 12px 32px;
   border-radius: 24px;
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
+  color: #ffffff; /* Always white */
+  font-size: 1rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
