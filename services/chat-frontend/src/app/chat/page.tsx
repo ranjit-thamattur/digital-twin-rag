@@ -354,17 +354,22 @@ export default function ChatPage() {
         spokenText = "Okay."; // Fallback if the response was purely emojis
       }
 
-      // 2. Detect language based on BOTH the user's prompt AND the AI's response OR explicitly selected dropdown
-      const hasHindi = voiceLang === 'hi-IN' || /[\u0900-\u097F]/.test(originalTranscript) || /[\u0900-\u097F]/.test(spokenText);
-      
-      // Detect if there are characters outside basic ASCII, standard punctuation, and Devanagari (Hindi)
-      // This will catch Tamil, Malayalam, Arabic, Chinese, etc.
-      const hasOtherScript = voiceLang === 'ml-IN' || voiceLang === 'ta-IN' || voiceLang === 'ar-SA' || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript) || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
+      // 2. Check the ACTUAL script of the response text
+      const textHasDevanagari = /[\u0900-\u097F]/.test(spokenText);
+      // This regex detects any characters that are NOT Latin, standard punctuation, or Devanagari.
+      // So it will detect actual Malayalam, Tamil, Arabic text.
+      const textHasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
 
-      if (hasOtherScript && !hasHindi && window.speechSynthesis) {
-        console.log("Detected non-Polly language. Using native browser TTS.");
+      // If the text ACTUALLY contains Malayalam/Tamil/Arabic, use Native Browser TTS!
+      if (textHasOtherScript && window.speechSynthesis) {
+        console.log("Detected non-Polly language in text. Using native browser TTS.");
         const utterance = new SpeechSynthesisUtterance(spokenText);
-        utterance.lang = voiceLang; // Force browser to use correct accent/language
+        
+        // Only force the dropdown language if it's one of our expected native languages.
+        // Otherwise, let the browser auto-detect the best voice for the script.
+        if (voiceLang !== 'en-US' && voiceLang !== 'hi-IN') {
+          utterance.lang = voiceLang;
+        }
         
         utterance.onend = () => {
           if (document.querySelector('.voice-overlay')) {
@@ -383,7 +388,10 @@ export default function ChatPage() {
         return;
       }
 
-      const langToPass = hasHindi ? 'hi-IN' : 'en-US';
+      // If we reach here, the text is purely Latin (English) OR Devanagari (Hindi).
+      // If the user selected Hindi OR the text contains Devanagari, use Kajal.
+      const useKajal = textHasDevanagari || voiceLang === 'hi-IN';
+      const langToPass = useKajal ? 'hi-IN' : 'en-US';
 
       const res = await fetch('/api/voice/tts', {
         method: 'POST',
