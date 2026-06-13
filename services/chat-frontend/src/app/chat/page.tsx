@@ -19,27 +19,27 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
-  
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('Loading...');
-  
+
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [theme, setTheme] = useState<'dark'|'light'|'system'>('system');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('system');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
-  
+
   // Upload Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadAsCommon, setUploadAsCommon] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
+
   // Voice Mode State
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceState, setVoiceState] = useState<'listening'|'thinking'|'speaking'>('listening');
+  const [voiceState, setVoiceState] = useState<'listening' | 'thinking' | 'speaking'>('listening');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [voiceLang, setVoiceLang] = useState('en-US'); // User STT language
   const [detectedLang, setDetectedLang] = useState('en-US');
@@ -54,14 +54,14 @@ export default function ChatPage() {
   useEffect(() => {
     fetchSessions();
     fetchUser();
-    
+
     // Load saved theme
-    const savedTheme = localStorage.getItem('theme') as 'dark'|'light'|'system' || 'system';
+    const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | 'system' || 'system';
     setTheme(savedTheme);
     applyTheme(savedTheme);
   }, []);
 
-  const applyTheme = (t: 'dark'|'light'|'system') => {
+  const applyTheme = (t: 'dark' | 'light' | 'system') => {
     if (t === 'dark') {
       document.documentElement.removeAttribute('data-theme');
     } else if (t === 'light') {
@@ -76,7 +76,7 @@ export default function ChatPage() {
     }
   };
 
-  const handleThemeChange = (newTheme: 'dark'|'light'|'system') => {
+  const handleThemeChange = (newTheme: 'dark' | 'light' | 'system') => {
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
     applyTheme(newTheme);
@@ -100,7 +100,7 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
-        
+
         if (selectFirst && data.sessions && data.sessions.length > 0) {
           loadSession(data.sessions[0].sessionId);
         } else if (selectFirst) {
@@ -142,11 +142,11 @@ export default function ChatPage() {
       await fetch('/api/history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sessionId: currentSessionId, 
-          role, 
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          role,
           content,
-          isFirstMessage: isFirst 
+          isFirstMessage: isFirst
         })
       });
       if (isFirst) {
@@ -160,13 +160,13 @@ export default function ChatPage() {
 
   const deleteSession = async (sessionId: string, sessionSk?: string) => {
     if (!confirm('Are you sure you want to delete this chat?')) return;
-    
+
     try {
       let url = `/api/history?sessionId=${sessionId}`;
       if (sessionSk) url += `&sessionSk=${sessionSk}`;
-      
+
       await fetch(url, { method: 'DELETE' });
-      
+
       // Remove from UI
       setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
       if (currentSessionId === sessionId) {
@@ -192,10 +192,10 @@ export default function ChatPage() {
     const userMsg = input.trim();
     setInput('');
     const isFirstMessage = messages.length === 0;
-    
+
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
-    
+
     // Fire and forget save
     saveToHistory('user', userMsg, isFirstMessage);
 
@@ -203,14 +203,14 @@ export default function ChatPage() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: userMsg,
-          messages: messages.filter(m => m.role !== 'system') 
+          messages: messages.filter(m => m.role !== 'system')
         }),
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
         saveToHistory('assistant', data.answer, false);
@@ -228,7 +228,7 @@ export default function ChatPage() {
   const startListening = () => {
     setVoiceState('listening');
     setLiveTranscript('');
-    
+
     // @ts-ignore - webkitSpeechRecognition is not standard TS
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -264,7 +264,7 @@ export default function ChatPage() {
     recognition.onerror = (e: any) => {
       console.error("Speech recognition error:", e.error);
       if (e.error === 'no-speech' && document.querySelector('.voice-overlay')) {
-        try { recognition.start(); } catch(err) {}
+        try { recognition.start(); } catch (err) { }
       } else if (e.error === 'aborted') {
         // Ignored. This happens intentionally when we stop() it to change the language.
         // It will be restarted by the dropdown onChange handler.
@@ -275,7 +275,7 @@ export default function ChatPage() {
         // We do NOT call endVoiceMode() here anymore to prevent the window from unexpectedly crashing.
         // We will attempt to restart it after 2 seconds so the user can read the error.
         setTimeout(() => {
-           try { recognition.start(); } catch(err) {}
+          try { recognition.start(); } catch (err) { }
         }, 2000);
       }
     };
@@ -285,19 +285,19 @@ export default function ChatPage() {
     recognition.onend = () => {
       if (isSwitchingLanguageRef.current) {
         isSwitchingLanguageRef.current = false;
-        try { recognition.start(); } catch(e) {}
+        try { recognition.start(); } catch (e) { }
         return;
       }
 
       // We read the DOM element if we can't get the state directly in closure
       const transcriptDiv = document.querySelector('.voice-transcript');
       const text = transcriptDiv?.textContent || '';
-      
+
       if (text.trim() && text !== '...') {
         handleVoiceSubmit(text.trim());
       } else {
         if (document.querySelector('.voice-overlay') && document.querySelector('.voice-orb.listening')) {
-          try { recognition.start(); } catch(e) {}
+          try { recognition.start(); } catch (e) { }
         }
       }
     };
@@ -312,7 +312,7 @@ export default function ChatPage() {
 
   const handleVoiceSubmit = async (transcript: string) => {
     setVoiceState('thinking');
-    
+
     const isFirstMessage = messages.length === 0;
     setMessages(prev => [...prev, { role: 'user', content: transcript }]);
     saveToHistory('user', transcript, isFirstMessage);
@@ -321,14 +321,14 @@ export default function ChatPage() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: transcript,
-          messages: messages.filter(m => m.role !== 'system') 
+          messages: messages.filter(m => m.role !== 'system')
         }),
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
         saveToHistory('assistant', data.answer, false);
@@ -349,70 +349,13 @@ export default function ChatPage() {
       // Strip common emojis and symbols that choke TTS engines or falsely trigger language detection
       spokenText = spokenText.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
       spokenText = spokenText.trim();
-      
+
       if (!spokenText) {
         spokenText = "Okay."; // Fallback if the response was purely emojis
       }
 
       // 2. Check the ACTUAL script of the response text
       const textHasDevanagari = /[\u0900-\u097F]/.test(spokenText);
-      // This regex detects any characters that are NOT Latin, standard punctuation, or Devanagari.
-      // So it will detect actual Malayalam, Tamil, Arabic text.
-      const textHasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
-
-      // If the text ACTUALLY contains Malayalam/Tamil/Arabic, use Native Browser TTS!
-      if (textHasOtherScript && window.speechSynthesis) {
-        console.log("Detected non-Polly language in text. Using native browser TTS.");
-        const utterance = new SpeechSynthesisUtterance(spokenText);
-        
-        // Only force the dropdown language if it's one of our expected native languages.
-        // Otherwise, let the browser auto-detect the best voice for the script.
-        if (voiceLang !== 'en-US' && voiceLang !== 'hi-IN') {
-          utterance.lang = voiceLang;
-          
-          // Try to select the highest quality premium voice available on the device
-          const voices = window.speechSynthesis.getVoices();
-          // Look for a Google cloud voice or a native premium voice matching the language
-          let bestVoice = voices.find(v => v.lang.replace('_', '-') === voiceLang && v.name.includes('Google'));
-          if (!bestVoice) {
-            bestVoice = voices.find(v => v.lang.replace('_', '-') === voiceLang);
-          }
-          // Fallback to just matching the language prefix (e.g. 'ml' for Malayalam)
-          if (!bestVoice) {
-            bestVoice = voices.find(v => v.lang.startsWith(voiceLang.split('-')[0]));
-          }
-          // Final fallback to English if the device lacks the native voice entirely
-          if (!bestVoice) {
-            console.log(`No native voice found for ${voiceLang}. Falling back to English voice.`);
-            bestVoice = voices.find(v => v.lang.startsWith('en'));
-          }
-          
-          if (bestVoice) {
-            utterance.voice = bestVoice;
-          }
-          
-          // Slightly slower rate sounds more natural for browser TTS
-          utterance.rate = 0.9;
-        }
-        
-        utterance.onend = () => {
-          if (document.querySelector('.voice-overlay')) {
-            startListening();
-          }
-        };
-        
-        utterance.onerror = (e) => {
-          console.error("Browser TTS error", e);
-          if (document.querySelector('.voice-overlay')) {
-            startListening();
-          }
-        };
-        
-        window.speechSynthesis.speak(utterance);
-        return;
-      }
-
-      // If we reach here, the text is purely Latin (English) OR Devanagari (Hindi).
       // If the user selected Hindi OR the text contains Devanagari, use Kajal.
       const useKajal = textHasDevanagari || voiceLang === 'hi-IN';
       const langToPass = useKajal ? 'hi-IN' : 'en-US';
@@ -422,23 +365,23 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: spokenText, lang: langToPass })
       });
-      
+
       if (!res.ok) throw new Error('TTS Failed');
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      
+
       if (!audioRef.current) {
         audioRef.current = new Audio();
       }
-      
+
       audioRef.current.src = url;
       audioRef.current.onended = () => {
         if (document.querySelector('.voice-overlay')) {
           startListening();
         }
       };
-      
+
       audioRef.current.play().catch(e => {
         console.error("Audio playback failed", e);
         if (document.querySelector('.voice-overlay')) {
@@ -469,16 +412,16 @@ export default function ChatPage() {
 
   const exportChat = (format: 'txt' | 'csv') => {
     if (messages.length === 0) return;
-    
+
     let content = '';
     const filename = `digital-brain-chat-${new Date().toISOString().split('T')[0]}.${format}`;
-    
+
     if (format === 'txt') {
       content = messages.map(m => `[${m.role.toUpperCase()}]\n${m.content}\n`).join('\n');
     } else if (format === 'csv') {
       content = 'Role,Message\n' + messages.map(m => `"${m.role}","${m.content.replace(/"/g, '""')}"`).join('\n');
     }
-    
+
     const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -501,7 +444,7 @@ export default function ChatPage() {
 
   const clearAllHistory = async () => {
     if (!confirm('DANGER: Are you sure you want to completely wipe your entire chat history? This cannot be undone.')) return;
-    
+
     setIsClearingHistory(true);
     try {
       const res = await fetch('/api/history/clear-all', { method: 'DELETE' });
@@ -523,7 +466,7 @@ export default function ChatPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setSelectedFile(file);
     // Modal is already open
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -567,9 +510,9 @@ export default function ChatPage() {
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Settings</h2>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsSettingsOpen(false)} />
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              
+
               {/* Theme Toggle */}
               <div>
                 <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Theme</h3>
@@ -610,7 +553,7 @@ export default function ChatPage() {
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
                   Permanently delete all of your chat history. This action cannot be undone.
                 </p>
-                <button 
+                <button
                   onClick={clearAllHistory}
                   disabled={isClearingHistory}
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ff4d4f', backgroundColor: 'rgba(255, 77, 79, 0.1)', color: '#ff4d4f', cursor: isClearingHistory ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 500 }}
@@ -631,12 +574,12 @@ export default function ChatPage() {
           <div style={{ width: '90%', maxWidth: '400px', backgroundColor: 'var(--bg-sidebar)', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Upload size={20} color="var(--accent-primary)"/> Upload Document
+                <Upload size={20} color="var(--accent-primary)" /> Upload Document
               </h2>
               <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setIsUploadModalOpen(false)} />
             </div>
 
-            <div 
+            <div
               style={{ border: '2px dashed var(--border-light)', borderRadius: '12px', padding: '32px 16px', textAlign: 'center', marginBottom: '20px', backgroundColor: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
               onClick={() => fileInputRef.current?.click()}
             >
@@ -651,21 +594,21 @@ export default function ChatPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
               <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Share with entire company</span>
               <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
-                <input 
-                  type="checkbox" 
-                  checked={uploadAsCommon} 
-                  onChange={(e) => setUploadAsCommon(e.target.checked)} 
-                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} 
+                <input
+                  type="checkbox"
+                  checked={uploadAsCommon}
+                  onChange={(e) => setUploadAsCommon(e.target.checked)}
+                  style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
                 />
                 <div style={{ width: '40px', height: '24px', backgroundColor: uploadAsCommon ? 'var(--accent-primary)' : 'var(--border-light)', borderRadius: '12px', transition: 'background-color 0.2s', position: 'relative' }}>
                   <div style={{ position: 'absolute', top: '2px', left: uploadAsCommon ? '18px' : '2px', width: '20px', height: '20px', backgroundColor: '#fff', borderRadius: '50%', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
                 </div>
               </label>
             </div>
-            
+
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.4' }}>
-              {uploadAsCommon 
-                ? 'Everyone in the company will be able to query information from this document.' 
+              {uploadAsCommon
+                ? 'Everyone in the company will be able to query information from this document.'
                 : 'Only you will be able to query information from this document.'}
             </div>
 
@@ -695,14 +638,14 @@ export default function ChatPage() {
             </div>
             <span>Digital Brain</span>
           </div>
-          <X 
-            size={24} 
-            className="mobile-close-icon" 
-            onClick={() => setIsMobileSidebarOpen(false)} 
+          <X
+            size={24}
+            className="mobile-close-icon"
+            onClick={() => setIsMobileSidebarOpen(false)}
             style={{ cursor: 'pointer' }}
           />
         </div>
-        
+
         <button className="new-chat-btn" onClick={startNewChat}>
           <Plus size={18} /> New Chat
         </button>
@@ -710,20 +653,20 @@ export default function ChatPage() {
         <div className="chat-history">
           <div className="history-title">Recent Chats</div>
           {sessions.map(session => (
-            <div 
-              key={session.sessionId} 
+            <div
+              key={session.sessionId}
               className={`history-item ${currentSessionId === session.sessionId ? 'active' : ''}`}
               onClick={() => loadSession(session.sessionId)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <MessageSquare size={14} style={{ marginRight: '8px', minWidth: '14px' }}/>
+                <MessageSquare size={14} style={{ marginRight: '8px', minWidth: '14px' }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.title}</span>
               </div>
-              <Trash2 
-                size={14} 
-                className="delete-icon" 
-                onClick={(e) => { e.stopPropagation(); deleteSession(session.sessionId, session.sessionSk); }} 
+              <Trash2
+                size={14}
+                className="delete-icon"
+                onClick={(e) => { e.stopPropagation(); deleteSession(session.sessionId, session.sessionSk); }}
               />
             </div>
           ))}
@@ -733,7 +676,7 @@ export default function ChatPage() {
         </div>
 
         <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div className="avatar" style={{ width: '32px', height: '32px', backgroundColor: 'var(--accent-primary)' }}>
               <User size={16} color="white" />
@@ -744,15 +687,15 @@ export default function ChatPage() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div 
+            <div
               style={{ display: 'flex', gap: '10px', color: 'var(--text-secondary)', cursor: 'pointer', alignItems: 'center' }}
               onClick={() => setIsSettingsOpen(true)}
             >
               <Settings size={16} />
               <span style={{ fontSize: '0.9rem' }}>Settings</span>
             </div>
-            
-            <a 
+
+            <a
               href="/api/auth/logout"
               style={{ display: 'flex', gap: '6px', color: '#ff4d4f', cursor: 'pointer', alignItems: 'center', textDecoration: 'none' }}
             >
@@ -767,10 +710,10 @@ export default function ChatPage() {
       <div className="main-chat">
         <div className="header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Menu 
-              size={24} 
-              className="mobile-menu-icon" 
-              onClick={() => setIsMobileSidebarOpen(true)} 
+            <Menu
+              size={24}
+              className="mobile-menu-icon"
+              onClick={() => setIsMobileSidebarOpen(true)}
               style={{ cursor: 'pointer' }}
             />
             <div>Your Digital Twin</div>
@@ -805,7 +748,7 @@ export default function ChatPage() {
               </div>
             ))
           )}
-          
+
           {isLoading && (
             <div className="message-row ai">
               <div className="avatar ai">
@@ -828,45 +771,45 @@ export default function ChatPage() {
               </div>
             </div>
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
         <div className="input-container">
           <form onSubmit={handleSubmit} className="input-box">
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              onChange={handleFileSelect} 
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
               accept=".pdf,.txt,.docx,.pptx,.csv,.xlsx,.xls"
             />
-            <Paperclip 
-              size={20} 
-              color="var(--text-secondary)" 
-              style={{ marginRight: '12px', cursor: 'pointer' }} 
+            <Paperclip
+              size={20}
+              color="var(--text-secondary)"
+              style={{ marginRight: '12px', cursor: 'pointer' }}
               onClick={() => setIsUploadModalOpen(true)}
             />
             <button
               type="button"
               className="voice-feature-btn"
-              onClick={() => { 
-                setIsVoiceMode(true); 
-                
+              onClick={() => {
+                setIsVoiceMode(true);
+
                 // Safari Auto-play workaround: Bless the audio contexts during the trusted click event
                 if (!audioRef.current) {
                   audioRef.current = new Audio();
                 }
-                audioRef.current.play().catch(() => {});
+                audioRef.current.play().catch(() => { });
                 audioRef.current.pause();
-                
+
                 if (window.speechSynthesis) {
                   const unlock = new SpeechSynthesisUtterance('');
                   window.speechSynthesis.speak(unlock);
                 }
 
-                startListening(); 
+                startListening();
               }}
             >
               <Mic size={16} />
@@ -889,13 +832,13 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-      
+
       {/* Voice Mode Overlay */}
       {isVoiceMode && (
         <div className="voice-overlay">
-          
+
           <div style={{ position: 'absolute', top: '24px', right: '24px', zIndex: 210 }}>
-            <select 
+            <select
               value={voiceLang}
               onChange={(e) => {
                 setVoiceLang(e.target.value);
@@ -906,7 +849,7 @@ export default function ChatPage() {
                     isSwitchingLanguageRef.current = true;
                     try {
                       recognitionRef.current.stop();
-                    } catch(err) {}
+                    } catch (err) { }
                   }
                 }
               }}
@@ -930,15 +873,15 @@ export default function ChatPage() {
           </div>
 
           <div className={`voice-orb ${voiceState}`} />
-          
+
           <div className="voice-status">
             {voiceState === 'listening' && 'Listening...'}
             {voiceState === 'thinking' && 'Thinking...'}
             {voiceState === 'speaking' && 'Speaking...'}
           </div>
-          
+
           <div className="voice-transcript">{liveTranscript || '...'}</div>
-          
+
           <button className="voice-end-btn" onClick={endVoiceMode}>
             End Conversation
           </button>

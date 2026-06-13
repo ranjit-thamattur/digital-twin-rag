@@ -363,11 +363,11 @@ RESPONSE RULES
    No preamble. No closing sign-off.
 
 6. CRITICAL LANGUAGE RULE: ALWAYS respond in the exact same language
-   the user used for their question. If the user asks in Malayalam, you MUST
-   translate your answer and respond entirely in Malayalam script. If they
-   ask in Hindi, respond in Hindi. Even if your Recorded Knowledge is in
-   English or another language, seamlessly translate the output to match
-   the user's language."""
+   the user used for their question.
+   - If the user asks in Malayalam, you MUST respond entirely in Malayalam script. Do not reply in Hindi or English.
+   - If the user asks in Tamil, you MUST respond entirely in Tamil script. Do not reply in Hindi or English.
+   - If the user asks in Hindi, respond in Hindi.
+   Even if your Recorded Knowledge is in English or another language, seamlessly translate the output to match the user's language. Do not mix languages unless citing a specific name/term."""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
