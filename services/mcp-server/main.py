@@ -505,7 +505,7 @@ async def get_semantic_cache(query: str, tenantId: str, personaId: Optional[str]
             collection_name=cache_collection,
             vector=vector,
             limit=1,
-            score_threshold=0.96,
+            score_threshold=0.99,
             query_filter=lang_filter
         )
 
@@ -863,6 +863,11 @@ async def generate_twin_response(
         if actual_plan == "basic" and is_off_topic(query, tenant_keywords):
             print(f"🚫 [GUARDRAIL] Basic plan blocked off-topic query: '{query[:60]}'")
             return BASIC_GUARDRAIL_RESPONSE
+
+        # Cache Clear Backdoor
+        if query.strip().lower() == "/clear":
+            await clear_semantic_cache_for_tenant(tenantId)
+            return "Semantic cache has been fully cleared for your tenant. You can now ask questions normally!"
 
         # Per-plan limits
         rag_limit   = 5    if actual_plan == "basic" else 15
