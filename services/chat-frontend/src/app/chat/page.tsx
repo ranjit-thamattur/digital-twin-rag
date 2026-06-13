@@ -264,6 +264,9 @@ export default function ChatPage() {
       console.error("Speech recognition error:", e.error);
       if (e.error === 'no-speech' && document.querySelector('.voice-overlay')) {
         try { recognition.start(); } catch(err) {}
+      } else if (e.error === 'aborted') {
+        // Ignored. This happens intentionally when we stop() it to change the language.
+        // It will be restarted by the dropdown onChange handler.
       } else {
         endVoiceMode();
       }
