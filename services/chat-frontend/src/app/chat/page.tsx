@@ -269,7 +269,14 @@ export default function ChatPage() {
         // Ignored. This happens intentionally when we stop() it to change the language.
         // It will be restarted by the dropdown onChange handler.
       } else {
-        endVoiceMode();
+        // Instead of instantly closing the window, show the error so the user can see it
+        setLiveTranscript(`STT Error: ${e.error}. Please try again.`);
+        setVoiceState('listening');
+        // We do NOT call endVoiceMode() here anymore to prevent the window from unexpectedly crashing.
+        // We will attempt to restart it after 2 seconds so the user can read the error.
+        setTimeout(() => {
+           try { recognition.start(); } catch(err) {}
+        }, 2000);
       }
     };
 
