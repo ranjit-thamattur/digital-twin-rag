@@ -327,6 +327,31 @@ export default function ChatPage() {
     setVoiceState('speaking');
     try {
       const hasHindi = /[\u0900-\u097F]/.test(originalTranscript);
+      // Detect if there are characters outside basic ASCII, standard punctuation, and Devanagari (Hindi)
+      // This will catch Tamil, Malayalam, Arabic, Chinese, etc.
+      const hasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript);
+
+      if (hasOtherScript && window.speechSynthesis) {
+        console.log("Detected non-Polly language. Using native browser TTS.");
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        utterance.onend = () => {
+          if (document.querySelector('.voice-overlay')) {
+            startListening();
+          }
+        };
+        
+        utterance.onerror = (e) => {
+          console.error("Browser TTS error", e);
+          if (document.querySelector('.voice-overlay')) {
+            startListening();
+          }
+        };
+        
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+
       const langToPass = hasHindi ? 'hi-IN' : 'en-US';
 
       const res = await fetch('/api/voice/tts', {
@@ -761,7 +786,10 @@ export default function ChatPage() {
               size={20}
               color="var(--accent-primary)"
               style={{ marginRight: '8px', cursor: 'pointer' }}
-              onClick={() => { setIsVoiceMode(true); setTimeout(startListening, 100); }}
+              onClick={() => { 
+                setIsVoiceMode(true); 
+                startListening(); 
+              }}
             />
             <input
               type="text"
