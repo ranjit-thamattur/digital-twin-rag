@@ -45,6 +45,7 @@ export default function ChatPage() {
   const [detectedLang, setDetectedLang] = useState('en-US');
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isSwitchingLanguageRef = useRef(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -275,6 +276,12 @@ export default function ChatPage() {
     // Fix closure issue with onend
     const origOnEnd = recognition.onend;
     recognition.onend = () => {
+      if (isSwitchingLanguageRef.current) {
+        isSwitchingLanguageRef.current = false;
+        try { recognition.start(); } catch(e) {}
+        return;
+      }
+
       // We read the DOM element if we can't get the state directly in closure
       const transcriptDiv = document.querySelector('.voice-transcript');
       const text = transcriptDiv?.textContent || '';
@@ -841,14 +848,9 @@ export default function ChatPage() {
                   recognitionRef.current.lang = e.target.value;
                   // If it's currently listening, we need to restart it for the new language to take effect immediately
                   if (voiceState === 'listening') {
+                    isSwitchingLanguageRef.current = true;
                     try {
                       recognitionRef.current.stop();
-                      // onend will fire, but just in case, we can manually restart if needed, 
-                      // or rely on the user to speak. Usually stop() triggers onend which might close the overlay.
-                      // Let's just set the lang, stop it, and immediately start again.
-                      setTimeout(() => {
-                        try { recognitionRef.current.start(); } catch(e){}
-                      }, 200);
                     } catch(err) {}
                   }
                 }
