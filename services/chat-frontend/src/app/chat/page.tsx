@@ -326,14 +326,26 @@ export default function ChatPage() {
   const speakResponse = async (text: string, originalTranscript: string) => {
     setVoiceState('speaking');
     try {
-      const hasHindi = /[\u0900-\u097F]/.test(originalTranscript);
+      // 1. Clean the text for speaking (remove semantic cache label and emojis)
+      let spokenText = text.replace(/\(Source: Semantic Cache.*?\)/g, '');
+      // Strip common emojis and symbols that choke TTS engines or falsely trigger language detection
+      spokenText = spokenText.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+      spokenText = spokenText.trim();
+      
+      if (!spokenText) {
+        spokenText = "Okay."; // Fallback if the response was purely emojis
+      }
+
+      // 2. Detect language based on BOTH the user's prompt AND the AI's response
+      const hasHindi = /[\u0900-\u097F]/.test(originalTranscript) || /[\u0900-\u097F]/.test(spokenText);
+      
       // Detect if there are characters outside basic ASCII, standard punctuation, and Devanagari (Hindi)
       // This will catch Tamil, Malayalam, Arabic, Chinese, etc.
-      const hasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript);
+      const hasOtherScript = /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(originalTranscript) || /[^\u0000-\u007F\u0900-\u097F\u2000-\u206F\u00A0-\u00FF]/.test(spokenText);
 
-      if (hasOtherScript && window.speechSynthesis) {
+      if (hasOtherScript && !hasHindi && window.speechSynthesis) {
         console.log("Detected non-Polly language. Using native browser TTS.");
-        const utterance = new SpeechSynthesisUtterance(text);
+        const utterance = new SpeechSynthesisUtterance(spokenText);
         
         utterance.onend = () => {
           if (document.querySelector('.voice-overlay')) {
@@ -357,7 +369,7 @@ export default function ChatPage() {
       const res = await fetch('/api/voice/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, lang: langToPass })
+        body: JSON.stringify({ text: spokenText, lang: langToPass })
       });
       
       if (!res.ok) throw new Error('TTS Failed');
