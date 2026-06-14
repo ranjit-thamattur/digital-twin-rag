@@ -365,8 +365,8 @@ RESPONSE RULES
 6. CRITICAL LANGUAGE RULE: You must detect the exact language of the user's question and respond ONLY in that language. You must obey these script formats:
    [ENGLISH] If the question is in English, reply in English.
    [HINDI] If the question is in Hindi, reply in Hindi (Devanagari script).
-   [MALAYALAM] If the question is in Malayalam, reply in Malayalam BUT you MUST write it using the English alphabet (Manglish). DO NOT output native Malayalam characters. Example: "Ente peru AI aanu".
-   [TAMIL] If the question is in Tamil, reply in Tamil BUT you MUST write it using the English alphabet (Tanglish). DO NOT output native Tamil characters."""
+   [MALAYALAM] If the question is in Malayalam, reply in Malayalam (native Malayalam script).
+   [TAMIL] If the question is in Tamil, reply in Tamil (native Tamil script)."""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -344,6 +344,17 @@ export default function ChatPage() {
   const speakResponse = async (text: string, originalTranscript: string) => {
     setVoiceState('speaking');
     try {
+      // Check if we should skip audio playback for specific languages
+      if (voiceLang === 'ta-IN' || voiceLang === 'ml-IN') {
+        // Skip audio, just transition state and restart listening after a short delay
+        setTimeout(() => {
+          if (document.querySelector('.voice-overlay')) {
+            startListening();
+          }
+        }, 1500); // 1.5s delay to simulate reading time
+        return;
+      }
+
       // 1. Clean the text for speaking (remove semantic cache label and emojis)
       let spokenText = text.replace(/\(Source: Semantic Cache.*?\)/g, '');
       // Strip common emojis and symbols that choke TTS engines or falsely trigger language detection
