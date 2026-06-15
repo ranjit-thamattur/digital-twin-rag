@@ -899,11 +899,16 @@ async def generate_twin_response(
             rag_context_block = "Note: No specific records found in the knowledge base for this query."
         else:
             formatted_blocks = []
+            seen_files = set()
             for idx, res in enumerate(final_hits, start=1):
                 src = res.payload.get("filename", "Unknown")
                 txt = res.payload.get("text", "")
                 formatted_blocks.append(f"DOCUMENT [{idx}]: {src}\nCONTENT: {txt}\n---")
-                memory_used.append({"id": idx, "filename": src, "snippet": txt[:200] + "..."})
+                
+                if src not in seen_files:
+                    seen_files.add(src)
+                    memory_used.append({"id": idx, "filename": src, "snippet": txt[:200] + "..."})
+                    
             rag_context_block = "\n".join(formatted_blocks)
 
         # 3. LLM Generation
