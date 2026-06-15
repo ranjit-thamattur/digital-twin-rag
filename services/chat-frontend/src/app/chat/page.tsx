@@ -352,14 +352,61 @@ export default function ChatPage() {
   const speakResponse = async (text: string, originalTranscript: string) => {
     setVoiceState('speaking');
     try {
-      // User requested to disable all TTS audio and only return the script.
-      // We simulate reading time and restart listening.
-      setTimeout(() => {
+      // Check if we should skip audio playback for specific languages
+      if (voiceLang === 'ta-IN' || voiceLang === 'ml-IN') {
+        // Skip audio, just transition state and restart listening after a short delay
+        setTimeout(() => {
+          if (document.querySelector('.voice-overlay')) {
+            startListening();
+          }
+        }, 1500); // 1.5s delay to simulate reading time
+        return;
+      }
+
+      // 1. Clean the text for speaking (remove semantic cache label and emojis)
+      let spokenText = text.replace(/\(Source: Semantic Cache.*?\)/g, '');
+      // Strip common emojis and symbols that choke TTS engines or falsely trigger language detection
+      spokenText = spokenText.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+      spokenText = spokenText.trim();
+
+      if (!spokenText) {
+        spokenText = "Okay."; // Fallback if the response was purely emojis
+      }
+
+      // 2. Check the ACTUAL script of the response text
+      const textHasDevanagari = /[\u0900-\u097F]/.test(spokenText);
+      // If the user selected Hindi OR the text contains Devanagari, use Kajal.
+      const useKajal = textHasDevanagari || voiceLang === 'hi-IN';
+      const langToPass = useKajal ? 'hi-IN' : 'en-US';
+
+      const res = await fetch('/api/voice/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: spokenText, lang: langToPass })
+      });
+
+      if (!res.ok) throw new Error('TTS Failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+
+      audioRef.current.src = url;
+      audioRef.current.onended = () => {
         if (document.querySelector('.voice-overlay')) {
           startListening();
         }
-      }, 1500); // 1.5s delay
-      return;
+      };
+
+      audioRef.current.play().catch(e => {
+        console.error("Audio playback failed", e);
+        if (document.querySelector('.voice-overlay')) {
+          startListening();
+        }
+      });
     } catch (e) {
       console.error("TTS playback error:", e);
       if (document.querySelector('.voice-overlay')) {
@@ -717,10 +764,10 @@ export default function ChatPage() {
                     {msg.content}
                   </div>
                   {msg.role === 'assistant' && msg.memoryUsed && msg.memoryUsed.length > 0 && (
-                    <div 
+                    <div
                       onClick={() => setActiveMemoryMessageIndex(activeMemoryMessageIndex === i ? null : i)}
-                      style={{ 
-                        display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', 
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px',
                         fontSize: '0.75rem', color: 'var(--accent-primary)', cursor: 'pointer',
                         padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(139, 92, 246, 0.1)',
                         width: 'fit-content', opacity: 0.8, transition: 'opacity 0.2s'
@@ -728,7 +775,7 @@ export default function ChatPage() {
                       onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
                       onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
                     >
-                      <Brain size={12} /> 
+                      <Brain size={12} />
                       {activeMemoryMessageIndex === i ? "Hide Brain State" : "View Brain State"}
                     </div>
                   )}
@@ -883,12 +930,12 @@ export default function ChatPage() {
           pointerEvents: 'none', zIndex: 50, display: 'flex', justifyContent: 'flex-end'
         }}>
           {/* Mobile backdrop */}
-          <div 
+          <div
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.4)', pointerEvents: 'auto' }}
             className="mobile-only"
             onClick={() => setActiveMemoryMessageIndex(null)}
           />
-          
+
           <div className="memory-panel" style={{
             width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-sidebar)',
             borderLeft: '1px solid var(--border-light)', pointerEvents: 'auto',
@@ -922,9 +969,10 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-          
+
           {/* CSS for responsiveness inline */}
-          <style dangerouslySetInnerHTML={{__html: `
+          <style dangerouslySetInnerHTML={{
+            __html: `
             @media (max-width: 768px) {
               .memory-panel {
                 position: absolute;
