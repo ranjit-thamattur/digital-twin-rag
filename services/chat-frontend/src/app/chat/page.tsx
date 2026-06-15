@@ -4,9 +4,16 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
+type MemoryItem = {
+  id: number;
+  filename: string;
+  snippet?: string;
+};
+
 type Message = {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  memoryUsed?: MemoryItem[];
 };
 
 type Session = {
@@ -31,6 +38,7 @@ export default function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('system');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
+  const [activeMemoryMessageIndex, setActiveMemoryMessageIndex] = useState<number | null>(null);
 
   // Upload Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -212,7 +220,7 @@ export default function ChatPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: data.answer, memoryUsed: data.memoryUsed }]);
         saveToHistory('assistant', data.answer, false);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
@@ -330,7 +338,7 @@ export default function ChatPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: data.answer, memoryUsed: data.memoryUsed }]);
         saveToHistory('assistant', data.answer, false);
         await speakResponse(data.answer, transcript);
       } else {
@@ -755,6 +763,22 @@ export default function ChatPage() {
                   <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
                     {msg.content}
                   </div>
+                  {msg.role === 'assistant' && msg.memoryUsed && msg.memoryUsed.length > 0 && (
+                    <div 
+                      onClick={() => setActiveMemoryMessageIndex(activeMemoryMessageIndex === i ? null : i)}
+                      style={{ 
+                        display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', 
+                        fontSize: '0.75rem', color: 'var(--accent-primary)', cursor: 'pointer',
+                        padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        width: 'fit-content', opacity: 0.8, transition: 'opacity 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+                    >
+                      <Brain size={12} /> 
+                      {activeMemoryMessageIndex === i ? "Hide Brain State" : "View Brain State"}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -896,6 +920,74 @@ export default function ChatPage() {
           <button className="voice-end-btn" onClick={endVoiceMode}>
             End Conversation
           </button>
+        </div>
+      )}
+
+      {/* Hidden Memory Side Panel / Bottom Sheet */}
+      {activeMemoryMessageIndex !== null && messages[activeMemoryMessageIndex]?.memoryUsed && (
+        <div className="memory-panel-overlay" style={{
+          position: 'fixed', top: 0, right: 0, width: '100%', height: '100dvh',
+          pointerEvents: 'none', zIndex: 50, display: 'flex', justifyContent: 'flex-end'
+        }}>
+          {/* Mobile backdrop */}
+          <div 
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.4)', pointerEvents: 'auto' }}
+            className="mobile-only"
+            onClick={() => setActiveMemoryMessageIndex(null)}
+          />
+          
+          <div className="memory-panel" style={{
+            width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-sidebar)',
+            borderLeft: '1px solid var(--border-light)', pointerEvents: 'auto',
+            display: 'flex', flexDirection: 'column', height: '100%',
+            boxShadow: '-10px 0 25px rgba(0,0,0,0.2)', transition: 'transform 0.3s ease',
+            zIndex: 51
+          }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Brain size={18} color="var(--accent-primary)" /> Brain Memory
+              </h3>
+              <X size={20} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} onClick={() => setActiveMemoryMessageIndex(null)} />
+            </div>
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Documents accessed to generate this response:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {messages[activeMemoryMessageIndex].memoryUsed!.map((mem, idx) => (
+                  <div key={idx} style={{ padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', wordBreak: 'break-word' }}>
+                      <Paperclip size={14} style={{ flexShrink: 0 }} /> {mem.filename}
+                    </div>
+                    {mem.snippet && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: '1.5', fontStyle: 'italic', paddingLeft: '8px', borderLeft: '2px solid var(--border-light)' }}>
+                        "{mem.snippet}"
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* CSS for responsiveness inline */}
+          <style dangerouslySetInnerHTML={{__html: `
+            @media (max-width: 768px) {
+              .memory-panel {
+                position: absolute;
+                bottom: 0;
+                top: auto;
+                height: 60vh;
+                max-width: 100%;
+                border-left: none;
+                border-top: 1px solid var(--border-light);
+                border-radius: 16px 16px 0 0;
+              }
+            }
+            @media (min-width: 769px) {
+              .mobile-only { display: none !important; }
+            }
+          `}} />
         </div>
       )}
     </div>

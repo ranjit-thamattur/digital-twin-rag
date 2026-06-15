@@ -843,7 +843,7 @@ async def generate_twin_response(
     personaId: Optional[str] = None,
     messages: Optional[List[dict]] = None,
     plan: Optional[str] = "basic"
-) -> str:
+) -> Any:
     """Full Advanced RAG Pipeline (Bedrock Edition)"""
     try:
         # 0. Fetch Tenant Metadata
@@ -894,14 +894,16 @@ async def generate_twin_response(
             final_hits = await rerank_results(query, raw_hits, top_n=5)
 
         # Format context block
+        memory_used = []
         if not final_hits:
             rag_context_block = "Note: No specific records found in the knowledge base for this query."
         else:
             formatted_blocks = []
-            for res in final_hits:
+            for idx, res in enumerate(final_hits, start=1):
                 src = res.payload.get("filename", "Unknown")
                 txt = res.payload.get("text", "")
-                formatted_blocks.append(f"DOCUMENT: {src}\nCONTENT: {txt}\n---")
+                formatted_blocks.append(f"DOCUMENT [{idx}]: {src}\nCONTENT: {txt}\n---")
+                memory_used.append({"id": idx, "filename": src, "snippet": txt[:200] + "..."})
             rag_context_block = "\n".join(formatted_blocks)
 
         # 3. LLM Generation
@@ -948,7 +950,7 @@ async def generate_twin_response(
         if not any(t in answer.lower() for t in negative_triggers):
             await save_to_semantic_cache(query, answer, tenantId, personaId)
 
-        return answer
+        return {"answer": answer, "memory_used": memory_used}
 
     except Exception as e:
         print(f"❌ RAG Error: {str(e)}")
@@ -1402,13 +1404,18 @@ async def openai_chat_bridge(request: Request):
 
         print(f"👤 [BRIDGE] Final Identity -> Tenant: {tenant_id} | Persona: {persona_id}")
 
-        answer = await generate_twin_response(
+        response_data = await generate_twin_response(
             query=user_query,
             tenantId=tenant_id,
             system_prompt=ACTIVE_SYSTEM_PROMPT,  # formatted inside generate_twin_response
             personaId=persona_id,
             messages=messages[:-1]
         )
+        
+        if isinstance(response_data, dict):
+            answer = response_data.get("answer", "")
+        else:
+            answer = str(response_data)
 
         return JSONResponse({
             "id": f"chatcmpl-{uuid.uuid4()}",

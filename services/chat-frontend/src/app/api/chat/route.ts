@@ -78,9 +78,20 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json();
-    const answer = data.content || "Digital Brain returned an empty response.";
+    
+    let answer = "Digital Brain returned an empty response.";
+    let memoryUsed = [];
 
-    return NextResponse.json({ answer });
+    if (data.content) {
+      if (typeof data.content === 'object') {
+        answer = data.content.answer || answer;
+        memoryUsed = data.content.memory_used || [];
+      } else {
+        answer = data.content;
+      }
+    }
+
+    return NextResponse.json({ answer, memoryUsed });
 
   } catch (error) {
     console.error('Chat API Error:', error);
