@@ -439,6 +439,20 @@ export default function ChatPage() {
     window.location.href = '/api/auth/google-drive';
   };
 
+  const handleDisconnectDrive = async () => {
+    if (!confirm('Are you sure you want to disconnect Google Drive? Real-time syncing will stop.')) return;
+    try {
+      const res = await fetch('/api/auth/google-drive/disconnect', { method: 'DELETE' });
+      if (res.ok) {
+        setIsGoogleDriveConnected(false);
+      } else {
+        alert('Failed to disconnect. Please try again.');
+      }
+    } catch (e) {
+      alert('Network error. Please try again.');
+    }
+  };
+
   const endVoiceMode = () => {
     setIsVoiceMode(false);
     setVoiceState('listening');
@@ -609,8 +623,16 @@ export default function ChatPage() {
                     </div>
                     
                     {isGoogleDriveConnected ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '0.85rem', fontWeight: 500 }}>
-                        <Check size={16} /> Connected (Syncing real-time)
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '0.85rem', fontWeight: 500 }}>
+                          <Check size={16} /> Connected (Syncing real-time)
+                        </div>
+                        <button
+                          onClick={handleDisconnectDrive}
+                          style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: 'transparent', color: '#ff4d4f', border: '1px solid #ff4d4f', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}
+                        >
+                          Disconnect
+                        </button>
                       </div>
                     ) : (
                       <button 

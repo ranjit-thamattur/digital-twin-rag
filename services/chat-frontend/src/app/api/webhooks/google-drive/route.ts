@@ -20,17 +20,21 @@ export async function POST(req: NextRequest) {
     }
 
     // --- ARCHITECTURE FLOW ---
-    // 1. You would look up the tenantId in your DB using the `channelId`
-    //    e.g., SELECT tenant_id FROM webhooks WHERE channel_id = ?
+    // 1. Look up the database record using `channelId` to find who this webhook belongs to
+    //    e.g., SELECT tenant_id, persona_id FROM webhooks WHERE channel_id = ?
     
-    // 2. Fetch the refresh_token for that tenantId from DynamoDB
+    // 2. Fetch the refresh_token for that specific tenant & persona from DynamoDB
     
     // 3. Exchange the refresh_token for a fresh access_token
     
     // 4. Download the updated file from Google Drive using the access_token
     
-    // 5. Upload the raw file to S3
-    //    e.g., s3Client.putObject({ Bucket: S3_BUCKET, Key: `${tenantId}/${personaId}/filename.pdf`, Body: fileBuffer })
+    // 5. CRITICAL: Upload the raw file into the isolated S3 folder for that exact persona
+    //    e.g., s3Client.putObject({ 
+    //             Bucket: S3_BUCKET, 
+    //             Key: `${tenantId}/${personaId}/filename.pdf`, // e.g. "tenant-123/ceo/Project_Alpha.pdf"
+    //             Body: fileBuffer 
+    //          })
     
     // NOTE: This webhook endpoint must return 200 OK immediately so Google doesn't think it timed out.
     // Actual file processing should happen in a background queue/worker.
