@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type MemoryItem = {
@@ -39,6 +39,10 @@ export default function ChatPage() {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('system');
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [activeMemoryMessageIndex, setActiveMemoryMessageIndex] = useState<number | null>(null);
+  
+  // Connectors State
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
 
   // Upload Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -57,6 +61,20 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check URL params for successful Google Drive connection
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('gdrive_connected') === 'true') {
+        setIsGoogleDriveConnected(true);
+        // Optionally open settings automatically to show success
+        setIsSettingsOpen(true);
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
 
   // Fetch recent sessions on load
   useEffect(() => {
@@ -415,6 +433,12 @@ export default function ChatPage() {
     }
   };
 
+  const handleConnectDrive = () => {
+    setIsConnectingDrive(true);
+    // Redirect browser to our actual backend OAuth initiate route
+    window.location.href = '/api/auth/google-drive';
+  };
+
   const endVoiceMode = () => {
     setIsVoiceMode(false);
     setVoiceState('listening');
@@ -561,6 +585,44 @@ export default function ChatPage() {
                   <button onClick={exportPDF} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-light)', backgroundColor: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={messages.length === 0}>
                     <Download size={16} /> PDF
                   </button>
+                </div>
+              </div>
+
+              {/* Connectors */}
+              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
+                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Connectors</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid var(--border-light)', borderRadius: '8px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {/* Fake Google Drive Icon */}
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M8.59003 4.23001L4.27002 11.75C4.05002 12.13 4.05002 12.6 4.27002 12.98L8.60004 20.48C8.82004 20.86 9.23004 21.1 9.67004 21.1H18.33C18.77 21.1 19.18 20.86 19.4 20.48L23.73 12.98C23.95 12.6 23.95 12.13 23.73 11.75L19.4 4.24C19.18 3.86 18.77 3.62001 18.33 3.62001H9.67004C9.23004 3.61001 8.81003 3.85001 8.59003 4.23001Z" fill="#FFC107"/>
+                          <path d="M12.44 14.86H4.27002C4.05002 14.86 3.84 14.98 3.73 15.17C3.62 15.36 3.62 15.59 3.73 15.78L8.06 23.28C8.28 23.66 8.69001 23.9 9.13001 23.9H17.8L12.44 14.86Z" fill="#1976D2"/>
+                          <path d="M11.66 4.88001C11.44 4.5 11.03 4.26001 10.59 4.26001H1.92001C1.70001 4.26001 1.49001 4.38001 1.38001 4.57001C1.27001 4.76001 1.27001 4.99001 1.38001 5.18001L5.70001 12.68L11.66 4.88001Z" fill="#4CAF50"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: '1rem', fontWeight: 500, margin: 0, color: 'var(--text-primary)' }}>Google Drive</h4>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Sync policies & documents real-time</p>
+                      </div>
+                    </div>
+                    
+                    {isGoogleDriveConnected ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '0.85rem', fontWeight: 500 }}>
+                        <Check size={16} /> Connected (Syncing real-time)
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={handleConnectDrive}
+                        disabled={isConnectingDrive}
+                        style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--accent-primary)', color: 'white', border: 'none', cursor: isConnectingDrive ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        {isConnectingDrive ? <Loader2 size={14} className="animate-spin" /> : <LinkIcon size={14} />}
+                        {isConnectingDrive ? 'Connecting...' : 'Connect'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
