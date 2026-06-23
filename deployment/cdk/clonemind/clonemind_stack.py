@@ -450,7 +450,26 @@ class CloneMindStack(Stack):
             memory_limit_mib=512,
             cpu=256,
             environment={
-                "PORT": "3000"
+                "PORT": "3000",
+                # Google OAuth credentials for Google Drive integration
+                # Set these via: aws ssm put-parameter --name /digital-brain/GOOGLE_CLIENT_ID --value "your-id" --type SecureString
+                #                aws ssm put-parameter --name /digital-brain/GOOGLE_CLIENT_SECRET --value "your-secret" --type SecureString
+            },
+            secrets={
+                "GOOGLE_CLIENT_ID": ecs.Secret.from_ssm_parameter(
+                    ssm.StringParameter.from_secure_string_parameter_attributes(
+                        frontend_task, "GoogleClientId",
+                        parameter_name="/digital-brain/GOOGLE_CLIENT_ID",
+                        version=1
+                    )
+                ),
+                "GOOGLE_CLIENT_SECRET": ecs.Secret.from_ssm_parameter(
+                    ssm.StringParameter.from_secure_string_parameter_attributes(
+                        frontend_task, "GoogleClientSecret",
+                        parameter_name="/digital-brain/GOOGLE_CLIENT_SECRET",
+                        version=1
+                    )
+                ),
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Frontend")
         )
