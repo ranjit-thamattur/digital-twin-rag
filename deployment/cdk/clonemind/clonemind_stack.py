@@ -474,6 +474,10 @@ class CloneMindStack(Stack):
             },
             logging=ecs.LogDrivers.aws_logs(stream_prefix="Frontend")
         )
+        
+        # Grant DynamoDB permissions to the frontend so it can save OAuth tokens
+        tenant_table.grant_read_write_data(frontend_task.task_role)
+        
         frontend_container.add_port_mappings(
             ecs.PortMapping(container_port=3000, host_port=3001)
         )
