@@ -451,6 +451,7 @@ class CloneMindStack(Stack):
             cpu=256,
             environment={
                 "PORT": "3000",
+                "NEXT_PUBLIC_APP_URL": "https://ai.peakpa.com",
                 # Google OAuth credentials for Google Drive integration
                 # Set these via: aws ssm put-parameter --name /digital-brain/GOOGLE_CLIENT_ID --value "your-id" --type SecureString
                 #                aws ssm put-parameter --name /digital-brain/GOOGLE_CLIENT_SECRET --value "your-secret" --type SecureString
