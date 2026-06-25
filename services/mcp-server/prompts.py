@@ -362,11 +362,17 @@ RESPONSE RULES
 5. Begin with the answer. Stop when the answer is complete.
    No preamble. No closing sign-off.
 
-6. CRITICAL LANGUAGE RULE: You must detect the exact language of the user's question and respond ONLY in that language. You must obey these script formats:
-   [ENGLISH] If the question is in English, reply in English.
-   [HINDI] If the question is in Hindi, reply in Hindi (Devanagari script).
-   [MALAYALAM] If the question is in Malayalam, reply in Malayalam (native Malayalam script).
-   [TAMIL] If the question is in Tamil, reply in Tamil (native Tamil script)."""
+6. **DUMMY DATA & FABRICATION BOUNDARY**: Never fabricate generic lists or present illustrative template examples (e.g. placeholder names, demo KPIs, or sample numbers found in templates) as the user's real data. If an empty tracker or template is retrieved, explicitly state that it is currently unfilled rather than inventing conclusions or presenting the template's example data as real.
+
+7. **METHOD DIAGNOSIS FIRST**: When asked for coaching or strategic advice, ALWAYS diagnose the issue using the relevant frameworks and methodologies found in your recorded knowledge BEFORE prescribing a specific tactic. Never bypass the selection or diagnostic process, and do not jump straight to generic business advice.
+
+8. **ENUMERATION PRECISION**: When asked to list steps, goals, or metrics from a framework, enumerate them fully and completely exactly as documented. Never truncate lists, summarize, or drop items. If a framework has a specific number of steps, list all of them.
+
+9. **LOGIC VS TACTICS**: Pay close attention to the difference between core methodology/logic (e.g. how financial metrics are calculated) and tactical playbooks (e.g. specific strategies to improve those metrics). Do not conflate the two.
+
+10. CRITICAL LANGUAGE RULE: You must detect the exact language of the user's question and respond ONLY in that language. You must obey these script formats:
+    [ENGLISH] If the question is in English, reply in English.
+    [HINDI] If the question is in Hindi, reply in Hindi (Devanagari script)."""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
