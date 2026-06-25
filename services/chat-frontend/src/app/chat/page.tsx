@@ -221,7 +221,7 @@ export default function ChatPage() {
 
     const userMsg = input.trim();
     setInput('');
-    const isFirstMessage = messages.length === 0;
+    const isFirstMessage = messages.length <= 1;
 
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
@@ -343,7 +343,7 @@ export default function ChatPage() {
   const handleVoiceSubmit = async (transcript: string) => {
     setVoiceState('thinking');
 
-    const isFirstMessage = messages.length === 0;
+    const isFirstMessage = messages.length <= 1;
     setMessages(prev => [...prev, { role: 'user', content: transcript }]);
     saveToHistory('user', transcript, isFirstMessage);
 
