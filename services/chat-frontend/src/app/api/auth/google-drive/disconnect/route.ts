@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const client = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION || 'us-east-1' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -23,13 +23,12 @@ export async function DELETE(req: NextRequest) {
       || req.headers.get('x-user-email')
       || 'default_tenant';
 
-    // 1. Delete the refresh token from DynamoDB
-    await docClient.send(new DeleteCommand({
-      TableName: process.env.INTEGRATIONS_TABLE || 'TenantIntegrations',
-      Key: {
-        tenantId: tenantId,
-        provider: 'google_drive',
-      }
+    // 1. Remove the Google Drive attributes from the tenant's row in DynamoDB
+    const tenantTable = process.env.TENANT_TABLE || 'clonemind-tenants';
+    await docClient.send(new UpdateCommand({
+      TableName: tenantTable,
+      Key: { tenantId: tenantId },
+      UpdateExpression: 'REMOVE googleDriveToken, googleDriveStatus, googleDriveConnectedAt, googleDrivePageToken, googleDriveChannelId, googleDriveResourceId, googleDriveFolderId'
     }));
 
     // 2. Optionally: revoke the token from Google's side too
