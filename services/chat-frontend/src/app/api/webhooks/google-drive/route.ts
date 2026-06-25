@@ -88,7 +88,20 @@ async function processGoogleDriveChanges(channelId: string) {
             // 5. Upload to S3 (isolated to this tenant/persona)
             // Assuming the default persona is 'ceo' for now if not specified.
             const personaId = tenant.defaultPersona || 'ceo';
-            const s3Key = `${tenantId}/${personaId}/${file.name}`;
+            
+            // Map email to S3 tenant prefix
+            let s3TenantId = 'default_tenant';
+            if (tenantId && tenantId.includes('@')) {
+              const domain = tenantId.split('@')[1];
+              if (domain === '11x.ai') {
+                s3TenantId = 'tenant-11x';
+              } else {
+                const cleanDomain = domain.split('.')[0];
+                s3TenantId = `tenant-${cleanDomain}`;
+              }
+            }
+            
+            const s3Key = `${s3TenantId}/${personaId}/${file.name}`;
 
             await s3Client.send(new PutObjectCommand({
               Bucket: s3Bucket,
