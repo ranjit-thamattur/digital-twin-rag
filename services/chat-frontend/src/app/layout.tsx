@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Peak Digital Brain",
   description: "Enterprise Knowledge Platform",
+  verification: {
+    google: "GwhloubXUZpm3_baaEAYtQVJCg1mLyxlVNZr2HV-mWQ"
+  }
 };
 
 export default function RootLayout({
