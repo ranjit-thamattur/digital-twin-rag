@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { google } from 'googleapis';
+import { v4 as uuidv4 } from 'uuid';
 
 // Initialize DynamoDB Client
 const client = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION || 'us-east-1' });
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/chat?gdrive_error=token_exchange_failed`);
     }
 
-    const { refresh_token } = tokens;
+    const { refresh_token, access_token } = tokens;
 
     // 2. Resolve the tenantId from the Cognito OIDC token (set by the ALB)
     //    Falls back to the x-user-email header for local dev
@@ -67,23 +69,57 @@ export async function GET(req: NextRequest) {
       || req.headers.get('x-user-email')
       || 'default_tenant';
 
-    // 3. Save the refresh_token into the EXISTING clonemind-tenants DynamoDB table
-    //    We store it as a new attribute on the tenant's row (no new table needed!)
+    // 3. Register the Webhook (Push Notifications) with Google Drive
+    let pageToken = null;
+    let channelId = null;
+    let resourceId = null;
+    
+    try {
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+      oauth2Client.setCredentials(tokens);
+      const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+      // Get the start page token to track future changes
+      const startPageTokenRes = await drive.changes.getStartPageToken();
+      pageToken = startPageTokenRes.data.startPageToken;
+      
+      channelId = uuidv4();
+      const webhookUrl = `${appUrl}/api/webhooks/google-drive`;
+
+      // Subscribe to changes
+      const watchRes = await drive.changes.watch({
+        pageToken: pageToken,
+        requestBody: {
+          id: channelId,
+          type: 'web_hook',
+          address: webhookUrl,
+          payload: true
+        }
+      });
+      resourceId = watchRes.data.resourceId;
+      console.log(`Registered Google Drive watch for tenant ${tenantId}. Channel: ${channelId}`);
+    } catch (watchErr) {
+      console.error('Failed to register Google Drive watch. Domain might not be verified in Google Search Console.', watchErr);
+      // We continue even if watch fails, so we at least save the refresh_token
+    }
+
+    // 4. Save the refresh_token, pageToken, and channelId into the EXISTING clonemind-tenants DynamoDB table
     if (refresh_token) {
       const tenantTable = process.env.TENANT_TABLE || 'clonemind-tenants';
       await docClient.send(new UpdateCommand({
         TableName: tenantTable,
-        // The tenant row key is the tenantId from the user lookup
-        // For now we store it keyed on the user email as a safe fallback
         Key: { tenantId: tenantId },
-        UpdateExpression: 'SET googleDriveToken = :token, googleDriveConnectedAt = :ts, googleDriveStatus = :status',
+        UpdateExpression: 'SET googleDriveToken = :token, googleDriveConnectedAt = :ts, googleDriveStatus = :status, googleDrivePageToken = :pt, googleDriveChannelId = :cid, googleDriveResourceId = :rid',
         ExpressionAttributeValues: {
           ':token': refresh_token,
           ':ts': new Date().toISOString(),
-          ':status': 'CONNECTED'
+          ':status': 'CONNECTED',
+          ':pt': pageToken || null,
+          ':cid': channelId || null,
+          ':rid': resourceId || null
         }
       }));
-      console.log(`Saved Google Drive refresh token for tenant: ${tenantId}`);
+      console.log(`Saved Google Drive credentials for tenant: ${tenantId}`);
     }
 
     // 4. Redirect back to the chat settings with success flag
