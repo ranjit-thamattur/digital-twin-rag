@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
 
       // Subscribe to changes
       const watchRes = await drive.changes.watch({
-        pageToken: pageToken,
+        pageToken: pageToken || undefined,
         requestBody: {
           id: channelId,
           type: 'web_hook',
