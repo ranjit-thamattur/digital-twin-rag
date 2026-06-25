@@ -572,6 +572,15 @@ class CloneMindStack(Stack):
             ],
             action=elbv2.ListenerAction.forward([frontend_target])
         )
+
+        # 7. Webhook Bypass Action: Allow unauthenticated access to Webhooks
+        https_listener.add_action("WebhookBypassAction",
+            priority=11,
+            conditions=[
+                elbv2.ListenerCondition.path_patterns(["/api/webhooks/google-drive*"])
+            ],
+            action=elbv2.ListenerAction.forward([frontend_target])
+        )
         
         # 6. HTTP Listener for Ingestion (Port 3000)
         # Lambda calls this to forward S3 events to MCP
