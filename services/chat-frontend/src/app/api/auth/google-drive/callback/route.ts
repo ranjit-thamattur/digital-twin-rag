@@ -69,15 +69,27 @@ export async function GET(req: NextRequest) {
       || req.headers.get('x-user-email')
       || 'default_tenant';
 
-    // 3. Register the Webhook (Push Notifications) with Google Drive
+    // 3. Register the Webhook (Push Notifications) and Create Sync Folder
     let pageToken = null;
     let channelId = null;
     let resourceId = null;
+    let folderId = null;
     
     try {
       const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
       oauth2Client.setCredentials(tokens);
       const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+      // Create the "Digital Brain Sync" folder
+      const folderRes = await drive.files.create({
+        requestBody: {
+          name: 'Digital Brain Sync',
+          mimeType: 'application/vnd.google-apps.folder'
+        },
+        fields: 'id'
+      });
+      folderId = folderRes.data.id;
+      console.log(`Created sync folder ${folderId} for tenant ${tenantId}`);
 
       // Get the start page token to track future changes
       const startPageTokenRes = await drive.changes.getStartPageToken();
@@ -103,20 +115,21 @@ export async function GET(req: NextRequest) {
       // We continue even if watch fails, so we at least save the refresh_token
     }
 
-    // 4. Save the refresh_token, pageToken, and channelId into the EXISTING clonemind-tenants DynamoDB table
+    // 4. Save the credentials and folder ID into the EXISTING clonemind-tenants DynamoDB table
     if (refresh_token) {
       const tenantTable = process.env.TENANT_TABLE || 'clonemind-tenants';
       await docClient.send(new UpdateCommand({
         TableName: tenantTable,
         Key: { tenantId: tenantId },
-        UpdateExpression: 'SET googleDriveToken = :token, googleDriveConnectedAt = :ts, googleDriveStatus = :status, googleDrivePageToken = :pt, googleDriveChannelId = :cid, googleDriveResourceId = :rid',
+        UpdateExpression: 'SET googleDriveToken = :token, googleDriveConnectedAt = :ts, googleDriveStatus = :status, googleDrivePageToken = :pt, googleDriveChannelId = :cid, googleDriveResourceId = :rid, googleDriveFolderId = :fid',
         ExpressionAttributeValues: {
           ':token': refresh_token,
           ':ts': new Date().toISOString(),
           ':status': 'CONNECTED',
           ':pt': pageToken || null,
           ':cid': channelId || null,
-          ':rid': resourceId || null
+          ':rid': resourceId || null,
+          ':fid': folderId || null
         }
       }));
       console.log(`Saved Google Drive credentials for tenant: ${tenantId}`);

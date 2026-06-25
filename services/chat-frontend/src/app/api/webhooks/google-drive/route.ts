@@ -35,9 +35,10 @@ async function processGoogleDriveChanges(channelId: string) {
     const tenantId = tenant.tenantId;
     const refreshToken = tenant.googleDriveToken;
     let pageToken = tenant.googleDrivePageToken;
+    const syncFolderId = tenant.googleDriveFolderId;
 
-    if (!refreshToken || !pageToken) {
-      console.log(`Webhook: Tenant ${tenantId} missing token or pageToken`);
+    if (!refreshToken || !pageToken || !syncFolderId) {
+      console.log(`Webhook: Tenant ${tenantId} missing token, pageToken, or folderId`);
       return;
     }
 
@@ -56,7 +57,7 @@ async function processGoogleDriveChanges(channelId: string) {
         includeRemoved: false,
         includeItemsFromAllDrives: true,
         supportsAllDrives: true,
-        fields: 'nextPageToken, newStartPageToken, changes(fileId, file(name, mimeType))'
+        fields: 'nextPageToken, newStartPageToken, changes(fileId, file(name, mimeType, parents))'
       });
 
       const changes = changesRes.data.changes || [];
@@ -66,6 +67,12 @@ async function processGoogleDriveChanges(channelId: string) {
           const file = change.file;
           // Skip folders
           if (file.mimeType === 'application/vnd.google-apps.folder') continue;
+
+          // Skip files not in the Digital Brain Sync folder
+          if (!file.parents || !file.parents.includes(syncFolderId)) {
+            console.log(`Webhook: Skipping ${file.name} - not in sync folder`);
+            continue;
+          }
 
           console.log(`Webhook: Downloading changed file ${file.name} for tenant ${tenantId}`);
 
