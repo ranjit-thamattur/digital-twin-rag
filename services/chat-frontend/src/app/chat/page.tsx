@@ -989,8 +989,6 @@ export default function ChatPage() {
             >
               <option value="en-US">🇺🇸 English</option>
               <option value="hi-IN">🇮🇳 Hindi (हिंदी)</option>
-              <option value="ml-IN">🇮🇳 Malayalam (മലയാളം)</option>
-              <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
               <option value="ar-SA">🇸🇦 Arabic (العربية)</option>
             </select>
           </div>
