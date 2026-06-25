@@ -72,6 +72,10 @@ export default function ChatPage() {
         setIsSettingsOpen(true);
         // Clean up URL
         window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (urlParams.get('gdrive_error') === 'missing_sync_folder') {
+        alert("Failed to connect: Please create a folder named 'Digital Brain Sync' in the root of your Google Drive first!");
+        setIsSettingsOpen(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
   }, []);

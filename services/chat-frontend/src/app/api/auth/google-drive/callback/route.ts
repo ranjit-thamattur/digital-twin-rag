@@ -80,16 +80,21 @@ export async function GET(req: NextRequest) {
       oauth2Client.setCredentials(tokens);
       const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
-      // Create the "Digital Brain Sync" folder
-      const folderRes = await drive.files.create({
-        requestBody: {
-          name: 'Digital Brain Sync',
-          mimeType: 'application/vnd.google-apps.folder'
-        },
-        fields: 'id'
+      // Search for the "Digital Brain Sync" folder
+      // We only have drive.readonly scope, so we cannot create it automatically.
+      const folderRes = await drive.files.list({
+        q: "name='Digital Brain Sync' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        fields: 'files(id)',
+        spaces: 'drive'
       });
-      folderId = folderRes.data.id;
-      console.log(`Created sync folder ${folderId} for tenant ${tenantId}`);
+      
+      if (folderRes.data.files && folderRes.data.files.length > 0) {
+        folderId = folderRes.data.files[0].id;
+        console.log(`Found sync folder ${folderId} for tenant ${tenantId}`);
+      } else {
+        console.warn(`Sync folder not found for tenant ${tenantId}. User must create it first.`);
+        return NextResponse.redirect(`${appUrl}/chat?gdrive_error=missing_sync_folder`);
+      }
 
       // Get the start page token to track future changes
       const startPageTokenRes = await drive.changes.getStartPageToken();
