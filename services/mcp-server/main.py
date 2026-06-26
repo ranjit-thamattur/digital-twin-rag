@@ -877,7 +877,7 @@ async def generate_twin_response(
         # 1. Check Semantic Cache
         cached_answer = await get_semantic_cache(query, tenantId, personaId)
         if cached_answer:
-            return f"{cached_answer}\n\n(Source: Semantic Cache 🚀)"
+            return cached_answer
 
         # 2. Advanced RAG Flow
         search_query = query
