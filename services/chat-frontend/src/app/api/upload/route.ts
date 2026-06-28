@@ -60,6 +60,17 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    if (buffer.length === 0) {
+      return NextResponse.json({ error: 'File is empty and cannot be uploaded.' }, { status: 400 });
+    }
+
+    if (file.name.match(/\.(txt|md|csv|json)$/i)) {
+      const content = buffer.toString('utf-8').trim();
+      if (content.length === 0) {
+         return NextResponse.json({ error: 'File contains only whitespace and cannot be uploaded.' }, { status: 400 });
+      }
+    }
+
     // 4. Upload to S3
     const bucketName = process.env.DOCUMENTS_BUCKET_NAME;
     if (!bucketName) {

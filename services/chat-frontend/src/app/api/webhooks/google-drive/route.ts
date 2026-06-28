@@ -85,6 +85,19 @@ async function processGoogleDriveChanges(channelId: string) {
             
             const fileBuffer = Buffer.from(fileRes.data as ArrayBuffer);
 
+            if (fileBuffer.length === 0) {
+              console.log(`Webhook: Skipping ${file.name} - file is empty (0 bytes)`);
+              continue;
+            }
+
+            if (file.name && file.name.match(/\.(txt|md|csv|json)$/i)) {
+              const content = fileBuffer.toString('utf-8').trim();
+              if (content.length === 0) {
+                console.log(`Webhook: Skipping ${file.name} - text file contains only whitespace`);
+                continue;
+              }
+            }
+
             // 5. Upload to S3 (isolated to this tenant/persona)
             // Assuming the default persona is 'ceo' for now if not specified.
             const personaId = tenant.defaultPersona || 'ceo';
