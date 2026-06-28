@@ -1354,9 +1354,6 @@ async def openai_chat_bridge(request: Request):
             # Tenant ID: normalise domain root
             clean_domain = domain.split(".")[0]
             tenant_id = f"tenant-{clean_domain}"
-                clean_domain = domain.split(".")[0]
-                tenant_id = f"tenant-{clean_domain}"
-
             # Persona: always derived from email username
             # Validation against allowedPersonas happens inside generate_twin_response
             persona_id = local
