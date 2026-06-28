@@ -36,15 +36,9 @@ export async function POST(request: Request) {
     if (email && email.includes('@')) {
       const parts = email.split('@');
       const domain = parts[1].toLowerCase();
-      
-      if (domain.includes('11x')) {
-        tenantId = 'tenant-11x';
-        personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
-      } else {
-        const cleanDomain = domain.split('.')[0];
-        tenantId = `tenant-${cleanDomain}`;
-        personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
-      }
+      const cleanDomain = domain.split('.')[0];
+      tenantId = `tenant-${cleanDomain}`;
+      personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
     }
 
     console.log(`[Upload API] Authenticated User: ${email} -> Tenant: ${tenantId} | Persona: ${personaId}`);

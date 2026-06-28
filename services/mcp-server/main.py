@@ -1351,13 +1351,9 @@ async def openai_chat_bridge(request: Request):
             domain = domain.lower()
             local  = local.lower().replace(".", "_").replace("-", "_")
 
-            # Tenant ID: normalise domain root (handle known aliases)
-            DOMAIN_TO_TENANT = {
-                "11xcompany.com": "tenant-11x",
-            }
-            if domain in DOMAIN_TO_TENANT:
-                tenant_id = DOMAIN_TO_TENANT[domain]
-            else:
+            # Tenant ID: normalise domain root
+            clean_domain = domain.split(".")[0]
+            tenant_id = f"tenant-{clean_domain}"
                 clean_domain = domain.split(".")[0]
                 tenant_id = f"tenant-{clean_domain}"
 
@@ -1387,14 +1383,6 @@ async def openai_chat_bridge(request: Request):
                 c_tenant, c_persona = cached_identity.split(":")
                 tenant_id, persona_id = c_tenant, c_persona
                 print(f"🧠 [BRIDGE] SESSION RECALLED: {tenant_id}:{persona_id}")
-
-        # 🛡️ FAIL-SAFE: Check if '11x' is mentioned ANYWHERE in the conversation history
-        if tenant_id == "default":
-            full_context = " ".join([m.get("content", "") for m in messages]).lower()
-            if "11x" in full_context:
-                tenant_id = "tenant-11x"
-                persona_id = "ceo"
-                print(f"🛡️ [BRIDGE] FAIL-SAFE TRIGGERED: Forced 11x identity.")
 
         # 🎭 PERSONA FALLBACK: last-resort for unresolvable identity
         # Fine-grained validation runs inside generate_twin_response via allowedPersonas

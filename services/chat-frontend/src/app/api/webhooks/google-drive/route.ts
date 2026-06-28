@@ -93,12 +93,8 @@ async function processGoogleDriveChanges(channelId: string) {
             let s3TenantId = 'default_tenant';
             if (tenantId && tenantId.includes('@')) {
               const domain = tenantId.split('@')[1];
-              if (domain === '11x.ai') {
-                s3TenantId = 'tenant-11x';
-              } else {
-                const cleanDomain = domain.split('.')[0];
-                s3TenantId = `tenant-${cleanDomain}`;
-              }
+              const cleanDomain = domain.split('.')[0];
+              s3TenantId = `tenant-${cleanDomain}`;
             }
             
             const s3Key = `${s3TenantId}/${personaId}/${file.name}`;
