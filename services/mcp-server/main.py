@@ -874,10 +874,10 @@ async def generate_twin_response(
         max_tokens  = 512  if actual_plan == "basic" else 2048
         history_len = 3    if actual_plan == "basic" else 5
 
-        # 1. Check Semantic Cache
-        cached_answer = await get_semantic_cache(query, tenantId, personaId)
-        if cached_answer:
-            return cached_answer
+        # 1. Check Semantic Cache (Disabled by request)
+        # cached_answer = await get_semantic_cache(query, tenantId, personaId)
+        # if cached_answer:
+        #     return cached_answer
 
         # 2. Advanced RAG Flow
         search_query = query
@@ -950,10 +950,10 @@ async def generate_twin_response(
             )
             answer = response.choices[0].message.content
 
-        # 4. Save to Cache
-        negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
-        if not any(t in answer.lower() for t in negative_triggers):
-            await save_to_semantic_cache(query, answer, tenantId, personaId)
+        # 4. Save to Cache (Disabled by request)
+        # negative_triggers = ["don't have those details", "no specific records found", "don't have information"]
+        # if not any(t in answer.lower() for t in negative_triggers):
+        #     await save_to_semantic_cache(query, answer, tenantId, personaId)
 
         return {"answer": answer, "memory_used": memory_used}
 
