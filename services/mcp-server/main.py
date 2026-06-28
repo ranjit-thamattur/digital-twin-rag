@@ -919,7 +919,7 @@ async def generate_twin_response(
                     llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
 
         persona_label = personaId if personaId else "Digital Brain"
-        tenant_name = tenantId if tenantId else "the organisation"
+        tenant_name = tenantId.replace("tenant-", "") if tenantId else "the organisation"
 
         # Format system prompt with live persona/tenant context
         system_prompt = ACTIVE_SYSTEM_PROMPT.format(
