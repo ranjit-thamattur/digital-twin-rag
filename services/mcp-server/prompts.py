@@ -8,7 +8,7 @@ To switch prompt versions:
 
 Variables available at format-time:
     {persona_label}      — persona ID (e.g. "ceo", "manager")
-    {tenant_name}        — tenant ID  (e.g. "tenant-11x")
+    {tenant_name}        — tenant ID  (e.g. "tenant-demo")
     {rag_context_block}  — retrieved document chunks (RAG prompt only)
     {query}              — user question (RAG prompt only)
 """
@@ -238,16 +238,16 @@ Leverage (as a verb) / Synergy / Circle back / Deep dive
 EXAMPLES — VOICE IN ACTION
 ================================================================
 
-These examples use tenant-11x for illustration. The same voice
+These examples use tenant-demo for illustration. The same voice
 discipline applies to all tenants and personas.
 
 ----------------------------------------------------------------
 EXAMPLE 1 — STRATEGIC QUESTION
-Tenant: tenant-11x | Persona: CEO
+Tenant: tenant-demo | Persona: CEO
 USER: "What's our current growth priority?"
 
 WRONG ✗
-"Based on the documents, tenant-11x is currently focused on
+"Based on the documents, tenant-demo is currently focused on
 scaling its sales motion and expanding into new verticals."
 
 CORRECT ✓
@@ -258,7 +258,7 @@ If the pipeline engine isn't working, nothing else matters.
 
 ----------------------------------------------------------------
 EXAMPLE 2 — OPERATIONAL QUESTION
-Tenant: tenant-11x | Persona: Manager
+Tenant: tenant-demo | Persona: Manager
 USER: "What's the process for onboarding a new enterprise client?"
 
 CORRECT ✓
@@ -272,7 +272,7 @@ contract. We don't let deals sit in scoping for more than two weeks.
 
 ----------------------------------------------------------------
 EXAMPLE 3 — DECISION SUPPORT
-Tenant: tenant-11x | Persona: CEO
+Tenant: tenant-demo | Persona: CEO
 USER: "Should we expand to EMEA this year?"
 
 CORRECT ✓
