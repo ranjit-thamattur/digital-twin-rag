@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     
     // Fallbacks for local testing
     if (!email) {
-      email = headers.get('x-user-email') || 'ceo@11xcompany.com';
+      email = headers.get('x-user-email') || 'ceo@unknown.com';
     }
 
     // 2. Resolve Tenant and Persona from Email
@@ -47,13 +47,21 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const isCommon = formData.get('isCommon') === 'true';
+    const targetTenant = formData.get('targetTenant') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided.' }, { status: 400 });
     }
 
-    // Override personaId if uploading to common
-    if (isCommon) {
+    // --- PEAK COACH OVERRIDE ---
+    if (email.startsWith('peakcoach@') && targetTenant) {
+      // The coach is uploading a document for a specific tenant
+      tenantId = `tenant-${targetTenant.toLowerCase()}`;
+      personaId = 'peakcoach';
+      console.log(`[Upload API] PEAK COACH OVERRIDE -> Target Tenant: ${tenantId}`);
+    } 
+    // --- NORMAL BEHAVIOR ---
+    else if (isCommon) {
       personaId = 'common';
     }
 

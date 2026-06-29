@@ -48,6 +48,11 @@ export default function ChatPage() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadAsCommon, setUploadAsCommon] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  
+  // Peak Coach Admin State
+  const [activeTenants, setActiveTenants] = useState<string[]>([]);
+  const [targetTenant, setTargetTenant] = useState<string>('');
+  const isPeakCoach = userEmail.startsWith('peakcoach@');
 
   // Voice Mode State
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -61,6 +66,18 @@ export default function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch tenants if user is peak coach
+  useEffect(() => {
+    if (isPeakCoach && isUploadModalOpen) {
+      fetch('/api/tenants')
+        .then(res => res.json())
+        .then(data => {
+          if (data.tenants) setActiveTenants(data.tenants);
+        })
+        .catch(err => console.error("Failed to fetch tenants:", err));
+    }
+  }, [isPeakCoach, isUploadModalOpen]);
 
   // Check URL params for successful Google Drive connection
   useEffect(() => {
@@ -543,6 +560,9 @@ export default function ChatPage() {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('isCommon', String(uploadAsCommon));
+      if (isPeakCoach && targetTenant) {
+        formData.append('targetTenant', targetTenant);
+      }
 
       const response = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await response.json();
@@ -697,6 +717,25 @@ export default function ChatPage() {
                 {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : 'PDF, TXT, DOCX, PPTX, CSV, XLSX'}
               </div>
             </div>
+
+            {isPeakCoach && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Target Tenant (Admin)</label>
+                <select 
+                  value={targetTenant} 
+                  onChange={(e) => setTargetTenant(e.target.value)}
+                  style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-light)', color: 'var(--text-primary)', outline: 'none' }}
+                >
+                  <option value="" disabled>Select a client...</option>
+                  {activeTenants.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  Document will be securely uploaded to the Peak Coach isolated database for this tenant.
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
               <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Share with entire company</span>
