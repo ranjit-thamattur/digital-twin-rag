@@ -14,12 +14,29 @@ type Message = {
   role: 'user' | 'assistant' | 'system';
   content: string;
   memoryUsed?: MemoryItem[];
+  type?: 'confirmation_required' | 'chief_response';
+  workflow?: {
+    workflow_id: string;
+    label: string;
+    icon: string;
+    roles: string[];
+    event: string;
+    message: string;
+  };
 };
 
 type Session = {
   sessionId: string;
   title: string;
   sessionSk?: string;
+};
+
+const ROLE_ICONS: Record<string, string> = {
+  hr:      "📋 HR",
+  finance: "💰 Finance",
+  sales:   "🎯 Sales",
+  admin:   "🔑 Admin",
+  coach:   "📅 AI Coach"
 };
 
 export default function ChatPage() {
@@ -253,6 +270,78 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMsg,
           messages: messages.filter(m => m.role !== 'system')
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.type === 'confirmation_required') {
+          // Add confirmation card to state without saving to DB history
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: data.workflow.message || 'Confirmation required',
+            type: 'confirmation_required',
+            workflow: data.workflow
+          }]);
+        } else {
+          setMessages(prev => [...prev, { role: 'assistant', content: data.answer, memoryUsed: data.memoryUsed }]);
+          saveToHistory('assistant', data.answer, false);
+        }
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection failed. Please try again.' }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirm = async (workflow: any) => {
+    setIsLoading(true);
+    // Remove the confirmation card from messages list
+    setMessages(prev => prev.filter(m => m.type !== 'confirmation_required'));
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: workflow.event,
+          messages: messages.filter(m => m.role !== 'system' && m.type !== 'confirmation_required'),
+          confirmed: true
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.answer, memoryUsed: data.memoryUsed }]);
+        saveToHistory('assistant', data.answer, false);
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${data.error}` }]);
+      }
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection failed. Please try again.' }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDecline = async (originalQuery: string) => {
+    setIsLoading(true);
+    // Remove the confirmation card from messages list
+    setMessages(prev => prev.filter(m => m.type !== 'confirmation_required'));
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: originalQuery,
+          messages: messages.filter(m => m.role !== 'system' && m.type !== 'confirmation_required'),
+          confirmed: false
         }),
       });
 
@@ -879,36 +968,79 @@ export default function ChatPage() {
               <p style={{ marginTop: '8px' }}>Ask me about documents, metrics, or company knowledge.</p>
             </div>
           ) : (
-            messages.map((msg, i) => (
-              <div key={i} className={`message-row ${msg.role}`}>
-                {msg.role !== 'system' && (
-                  <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
-                    {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
+            messages.map((msg, i) => {
+              if (msg.type === 'confirmation_required' && msg.workflow) {
+                return (
+                  <div key={i} className="message-row ai">
+                    <div className="avatar ai">
+                      <Brain size={18} color="white" />
+                    </div>
+                    <div className="message-content">
+                      <div className="confirmation-card">
+                        <div className="confirmation-header">
+                          <span style={{ fontSize: '1.2rem' }}>{msg.workflow.icon}</span>
+                          <span className="confirmation-label">{msg.workflow.label}</span>
+                        </div>
+                        <div className="confirmation-event">
+                          "{msg.workflow.event}"
+                        </div>
+                        <div>
+                          <p style={{ fontSize: '0.85rem', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+                            This event will run coordinated processes across:
+                          </p>
+                          <div className="confirmation-roles">
+                            {msg.workflow.roles.map((role) => (
+                              <span key={role} className="role-badge">
+                                {ROLE_ICONS[role] || role.toUpperCase()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="confirmation-actions">
+                          <button className="btn-confirm" onClick={() => handleConfirm(msg.workflow!)}>
+                            Yes, Coordinate
+                          </button>
+                          <button className="btn-decline" onClick={() => handleDecline(msg.workflow!.event)}>
+                            No, Just Answer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
-                <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
-                  <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
-                    {msg.content}
-                  </div>
-                  {msg.role === 'assistant' && msg.memoryUsed && msg.memoryUsed.length > 0 && (
-                    <div
-                      onClick={() => setActiveMemoryMessageIndex(activeMemoryMessageIndex === i ? null : i)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px',
-                        fontSize: '0.75rem', color: 'var(--accent-primary)', cursor: 'pointer',
-                        padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(139, 92, 246, 0.1)',
-                        width: 'fit-content', opacity: 0.8, transition: 'opacity 0.2s'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
-                    >
-                      <Brain size={12} />
-                      {activeMemoryMessageIndex === i ? "Hide Brain State" : "View Brain State"}
+                );
+              }
+
+              return (
+                <div key={i} className={`message-row ${msg.role}`}>
+                  {msg.role !== 'system' && (
+                    <div className={`avatar ${msg.role === 'assistant' ? 'ai' : ''}`}>
+                      {msg.role === 'user' ? <User size={18} /> : <Brain size={18} color="white" />}
                     </div>
                   )}
+                  <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
+                    <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
+                      {msg.content}
+                    </div>
+                    {msg.role === 'assistant' && msg.memoryUsed && msg.memoryUsed.length > 0 && (
+                      <div
+                        onClick={() => setActiveMemoryMessageIndex(activeMemoryMessageIndex === i ? null : i)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px',
+                          fontSize: '0.75rem', color: 'var(--accent-primary)', cursor: 'pointer',
+                          padding: '4px 8px', borderRadius: '4px', backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                          width: 'fit-content', opacity: 0.8, transition: 'opacity 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+                      >
+                        <Brain size={12} />
+                        {activeMemoryMessageIndex === i ? "Hide Brain State" : "View Brain State"}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
 
           {isLoading && (

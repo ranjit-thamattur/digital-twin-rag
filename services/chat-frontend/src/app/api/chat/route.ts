@@ -17,12 +17,13 @@ function extractEmailFromOidc(oidcData: string | null): string | null {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, messages } = body;
+    // confirmed: true when user clicks "Yes, coordinate" on a confirmation card
+    const { message, messages, confirmed = false } = body;
 
     // 1. Get Identity from AWS ALB Cognito Headers
     const headers = request.headers;
     let email = extractEmailFromOidc(headers.get('x-amzn-oidc-data'));
-    
+
     // Fallbacks for local testing
     if (!email) {
       email = headers.get('x-user-email') || 'ceo@11xcompany.com'; // Default mock for local dev
@@ -38,31 +39,33 @@ export async function POST(request: Request) {
     if (email && email.includes('@')) {
       const parts = email.split('@');
       const domain = parts[1].toLowerCase();
-      
       const cleanDomain = domain.split('.')[0];
       tenantId = `tenant-${cleanDomain}`;
       personaId = parts[0] === 'hr' ? 'hr_manager' : parts[0];
     }
 
-    console.log(`[API] Routing to -> Tenant: ${tenantId} | Persona: ${personaId}`);
+    console.log(`[API] Routing -> Tenant: ${tenantId} | Persona: ${personaId} | Confirmed: ${confirmed}`);
 
-    // 3. Forward to Internal MCP Server
+    // 3. All messages route through Chief of Staff AI
+    //    - No workflow match  → Digital Brain answers silently (user sees no difference)
+    //    - Workflow match, confirmed=false → confirmation card returned (no action taken)
+    //    - Workflow match, confirmed=true  → multi-role fan-out executes
     const mcpUrl = process.env.MCP_SERVER_URL || 'http://mcp-server:3000';
-    
+
     const payload = {
-      query: message,
+      query:     message,
       tenantId,
       personaId,
-      system_prompt: "You are the Digital Brain, a professional AI assistant. Answer based only on the Retrieved Wisdom provided to you. Speak in first person. Cite sources.",
-      messages: messages || []
+      messages:  messages || [],
+      confirmed,             // ← false until user explicitly approves
     };
 
-    const response = await fetch(`${mcpUrl}/call/generate_twin_response`, {
+    const response = await fetch(`${mcpUrl}/call/chief_of_staff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      // 3 minute timeout for RAG
-      signal: AbortSignal.timeout(180000) 
+      // 5 min timeout — multi-role coordination takes longer than single-role RAG
+      signal: AbortSignal.timeout(300000)
     });
 
     if (!response.ok) {
@@ -72,16 +75,28 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json();
-    
-    let answer = "Digital Brain returned an empty response.";
-    let memoryUsed = [];
+    const content = data.content;
 
-    if (data.content) {
-      if (typeof data.content === 'object') {
-        answer = data.content.answer || answer;
-        memoryUsed = data.content.memory_used || [];
+    // Confirmation card — workflow matched but not yet confirmed
+    // Return as-is to the frontend so it can render the confirmation UI
+    if (content?.type === 'confirmation_required') {
+      console.log(`[API] Confirmation required for workflow: ${content.workflow_id}`);
+      return NextResponse.json({
+        type:     'confirmation_required',
+        workflow: content,
+      });
+    }
+
+    // Normal answer — either Digital Brain (no match) or Chief of Staff (confirmed)
+    let answer = 'Digital Brain returned an empty response.';
+    let memoryUsed: any[] = [];
+
+    if (content) {
+      if (typeof content === 'object') {
+        answer     = content.answer      || answer;
+        memoryUsed = content.memory_used || [];
       } else {
-        answer = data.content;
+        answer = content;
       }
     }
 

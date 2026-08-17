@@ -107,7 +107,7 @@ export async function POST(request: Request) {
 // DELETE: Clear a specific session
 export async function DELETE(request: Request) {
   try {
-    const email = extractEmailFromOidc(request.headers.get('x-amzn-oidc-data')) || request.headers.get('x-user-email') || 'ceo@11xcompany.com';
+    const email = extractEmailFromOidc(request.headers.get('x-amzn-oidc-data')) || request.headers.get('x-user-email') || 'ceo@unknown.com';
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
     const sessionSk = searchParams.get('sessionSk'); // The SK used in the USER#email partition

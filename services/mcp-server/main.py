@@ -20,7 +20,7 @@ import io
 import docx
 import pdfplumber
 from pptx import Presentation as PptxPresentation
-from prompts import ACTIVE_SYSTEM_PROMPT, RAG_GENERATION_PROMPT
+from prompts import ACTIVE_SYSTEM_PROMPT, RAG_GENERATION_PROMPT, CHIEF_OF_STAFF_SYSTEM_PROMPT
 
 # Bedrock Embeddings
 # Removed local torch imports to save memory
@@ -127,6 +127,94 @@ cost_tracker = {
 
 # Global debug log for cache operations
 cache_debug_log = []
+
+
+# ─────────────────────────────────────────────
+# CHIEF OF STAFF AI — WORKFLOW TEMPLATES
+# Keyword-based matching. No LLM involved in routing.
+# Add / remove workflows here to configure org event detection.
+# ─────────────────────────────────────────────
+
+WORKFLOW_TEMPLATES = {
+    "HIRE_EVENT": {
+        "triggers": ["hired", "joining", "new hire", "onboard", "recruited",
+                     "appointed", "we hired", "just hired", "new employee",
+                     "new team member", "new staff"],
+        "roles":   ["hr", "finance", "sales", "admin", "coach"],
+        "label":   "New Hire Coordination",
+        "icon":    "👤"
+    },
+    "CLIENT_SIGNED": {
+        "triggers": ["signed", "new client", "contract signed", "deal closed",
+                     "onboarded client", "client onboard", "new customer",
+                     "client signed", "deal signed"],
+        "roles":   ["sales", "finance", "admin", "coach"],
+        "label":   "New Client Onboarding",
+        "icon":    "🤝"
+    },
+    "BUDGET_APPROVED": {
+        "triggers": ["budget approved", "budget allocated", "funds approved",
+                     "approved the budget", "budget confirmed", "funding approved"],
+        "roles":   ["finance", "admin"],
+        "label":   "Budget Approval Coordination",
+        "icon":    "💰"
+    },
+    "PRODUCT_LAUNCH": {
+        "triggers": ["launching", "going live", "new product", "new feature",
+                     "release date", "we are launching", "product launch",
+                     "releasing", "ship the", "shipping"],
+        "roles":   ["sales", "finance", "admin"],
+        "label":   "Product Launch Coordination",
+        "icon":    "🚀"
+    },
+    "TEAM_CHANGE": {
+        "triggers": ["promoted", "restructure", "reporting to", "new role",
+                     "transferred", "team change", "role change", "promotion",
+                     "new manager", "org change"],
+        "roles":   ["hr", "finance", "admin"],
+        "label":   "Team Change Coordination",
+        "icon":    "🔄"
+    }
+}
+
+ROLE_ICONS = {
+    "hr":      "📋 HR",
+    "finance": "💰 Finance",
+    "sales":   "🎯 Sales",
+    "admin":   "🔑 Admin",
+    "coach":   "📅 AI Coach"
+}
+
+
+def match_workflow(query: str) -> Optional[dict]:
+    """Pure keyword-based workflow matcher — no LLM, no guessing.
+    Returns the first matching workflow template dict, or None."""
+    q = query.lower()
+    for workflow_id, template in WORKFLOW_TEMPLATES.items():
+        if any(trigger in q for trigger in template["triggers"]):
+            return {"workflow_id": workflow_id, **template}
+    return None
+
+
+def format_chief_output(matched: dict, roles: list, responses: list) -> dict:
+    """Formats multi-role responses as labelled sections.
+    NEVER merges or synthesizes across roles."""
+    lines = [f"**Chief of Staff coordinated: {matched['label']}**\n"]
+    for role, response in zip(roles, responses):
+        icon = ROLE_ICONS.get(role, role.upper())
+        if isinstance(response, Exception):
+            lines.append(f"{icon}\nUnable to retrieve — {str(response)}\n")
+        else:
+            if isinstance(response, dict):
+                answer = response.get("answer", "No documented process found for this event.")
+            else:
+                answer = str(response) if response else "No documented process found for this event."
+            lines.append(f"{icon}\n{answer}\n")
+    return {
+        "answer": "\n---\n".join(lines),
+        "type": "chief_response",
+        "roles_involved": roles
+    }
 
 # ─────────────────────────────────────────────
 # COLLECTION NAME NORMALIZATION — single source of truth
@@ -965,6 +1053,76 @@ async def generate_twin_response(
 
 
 @mcp.tool()
+async def chief_of_staff(
+    query: str,
+    tenantId: str,
+    personaId: Optional[str] = None,
+    messages: Optional[List[dict]] = None,
+    confirmed: bool = False
+) -> Any:
+    """Chief of Staff AI — Invisible Router with mandatory confirmation.
+
+    Flow:
+      - No workflow match  → route silently to Digital Brain (single role)
+      - Workflow match + confirmed=False → return confirmation card (no action)
+      - Workflow match + confirmed=True  → fan out to multiple roles in parallel
+    """
+    try:
+        # STEP 1: keyword match — no LLM involved
+        matched = match_workflow(query)
+
+        # STEP 2: No match → route silently to Digital Brain
+        if not matched:
+            print(f"🧠 [CHIEF] No workflow match — routing to Digital Brain (persona={personaId})")
+            return await generate_twin_response(
+                query=query,
+                tenantId=tenantId,
+                system_prompt=ACTIVE_SYSTEM_PROMPT,
+                personaId=personaId,
+                messages=messages
+            )
+
+        # STEP 3: Match found but NOT confirmed → return confirmation card (no execution)
+        if not confirmed:
+            print(f"🎯 [CHIEF] Workflow match: {matched['workflow_id']} — awaiting confirmation")
+            return {
+                "type":        "confirmation_required",
+                "workflow_id": matched["workflow_id"],
+                "label":       matched["label"],
+                "icon":        matched["icon"],
+                "roles":       matched["roles"],
+                "event":       query,
+                "message":     f"Organizational event detected: **{matched['label']}**"
+            }
+
+        # STEP 4: Confirmed → execute multi-role fan-out in parallel
+        roles = matched["roles"]
+        print(f"✅ [CHIEF] Confirmed — fanning out to roles: {roles}")
+
+        tasks = [
+            generate_twin_response(
+                query=query,        # verbatim original — always re-injected fresh
+                tenantId=tenantId,
+                system_prompt=ACTIVE_SYSTEM_PROMPT,
+                personaId=role,
+                messages=[]         # clean context per role — no cross-role contamination
+            )
+            for role in roles
+        ]
+        role_responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        result = format_chief_output(matched, roles, role_responses)
+        print(f"✅ [CHIEF] Completed coordination for {len(roles)} roles")
+        return result
+
+    except Exception as e:
+        print(f"❌ [CHIEF] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return f"Chief of Staff Error: {str(e)}"
+
+
+@mcp.tool()
 async def clear_tenant_knowledge(tenantId: str) -> str:
     """Wipe all knowledge for a specific tenant (all personas)."""
     try:
@@ -1263,6 +1421,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await clear_semantic_cache_for_tenant(**arguments)
         elif tool_name == "clear_tenant_knowledge":
             result = await clear_tenant_knowledge(**arguments)
+        elif tool_name == "chief_of_staff":
+            result = await chief_of_staff(**arguments)
         else:
             return JSONResponse({"error": f"Tool not found: {tool_name}"}, status_code=404)
 
