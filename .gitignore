@@ -63,9 +63,10 @@ logs/
 # Node modules (if any)
 node_modules/
 
-# Test files
+# Test files (root-level scripts only — tests/ directory is tracked)
 *.test.py
 test_*.py
+!tests/**
 
 # Temporary files
 *.tmp
