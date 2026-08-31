@@ -53,6 +53,11 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 
+# Feature Flags
+# Set CHIEF_OF_STAFF_ENABLED=true in .env to activate Phase 2 Chief of Staff routing.
+# Defaults to false so Phase 1 ships without it.
+CHIEF_OF_STAFF_ENABLED = os.getenv("CHIEF_OF_STAFF_ENABLED", "false").lower() == "true"
+
 # Vector sizes by provider
 VECTOR_SIZES = {
     "titan": 1024,  # amazon.titan-embed-text-v2:0
@@ -1068,6 +1073,17 @@ async def chief_of_staff(
       - Workflow match + confirmed=True  → fan out to multiple roles in parallel
     """
     try:
+        # Feature flag — disabled during Phase 1
+        if not CHIEF_OF_STAFF_ENABLED:
+            print(f"🔒 [CHIEF] Disabled (Phase 1) — routing directly to Digital Brain (persona={personaId})")
+            return await generate_twin_response(
+                query=query,
+                tenantId=tenantId,
+                system_prompt=ACTIVE_SYSTEM_PROMPT,
+                personaId=personaId,
+                messages=messages
+            )
+
         # STEP 1: keyword match — no LLM involved
         matched = match_workflow(query)
 
