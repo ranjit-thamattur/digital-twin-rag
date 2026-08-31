@@ -3,25 +3,27 @@ Digital Brain — Full Regression Test Suite
 ============================================
 Tenant: testcorp (dedicated regression tenant)
 
-Prerequisites (SSM tunnels — skip for --unit-only):
-
-  Terminal 1 - Tenant Service:
-    aws ssm start-session --target i-04de122dcff25503b \
-      --document-name AWS-StartPortForwardingSession \
-      --parameters '{"portNumber":["8000"],"localPortNumber":["8000"]}' \
-      --region us-east-1
-
-  Terminal 2 - MCP Server:
-    aws ssm start-session --target i-04de122dcff25503b \
-      --document-name AWS-StartPortForwardingSession \
-      --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}' \
-      --region us-east-1
-
 Usage:
-  python tests/test_regression.py              # full suite (needs server)
-  python tests/test_regression.py --unit-only  # keyword unit tests only (no server needed)
+  # Point at ECS ALB directly (simplest):
+  MCP_SERVICE=http://<alb-dns>:3000 TENANT_SERVICE=http://<alb-dns>:8000 \
+    python3 tests/test_regression.py
+
+  # Auto-resolve ALB from CloudFormation (needs AWS creds):
+  python3 tests/test_regression.py
+
+  # Unit tests only — no server needed:
+  python3 tests/test_regression.py --unit-only
+
+Environment variables:
+  MCP_SERVICE    MCP server base URL  (e.g. http://my-alb.elb.amazonaws.com:3000)
+  TENANT_SERVICE Tenant service URL   (e.g. http://my-alb.elb.amazonaws.com:8000)
+  AWS_REGION     AWS region           (default: us-east-1)
+  CFN_STACK      CloudFormation stack (default: CloneMindStack)
 """
 
+import os
+import subprocess
+import json
 import sys
 import requests
 
@@ -29,8 +31,27 @@ import requests
 # Config
 # ─────────────────────────────────────────────
 
-MCP_SERVICE    = "http://localhost:3000"
-TENANT_SERVICE = "http://localhost:8000"
+def _get_url_from_cfn(output_key: str) -> str:
+    """Resolve a URL from CloudFormation stack outputs."""
+    try:
+        region = os.getenv("AWS_REGION", "us-east-1")
+        stack  = os.getenv("CFN_STACK", "CloneMindStack")
+        cmd = ["aws", "cloudformation", "describe-stacks",
+               "--stack-name", stack, "--region", region]
+        res = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+        stacks = json.loads(res).get("Stacks", [])
+        if stacks:
+            for out in stacks[0].get("Outputs", []):
+                if out["OutputKey"] == output_key:
+                    return out["OutputValue"].rstrip("/")
+    except Exception:
+        pass
+    return ""
+
+_alb = _get_url_from_cfn("LoadBalancerDNS") if "--unit-only" not in sys.argv else ""
+
+MCP_SERVICE    = os.getenv("MCP_SERVICE")    or (f"http://{_alb}:3000" if _alb else "http://localhost:3000")
+TENANT_SERVICE = os.getenv("TENANT_SERVICE") or (f"http://{_alb}:8000" if _alb else "http://localhost:8000")
 TENANT_ID      = "testcorp"
 PERSONA_ID     = "ceo"
 TIMEOUT_SHORT  = 5
