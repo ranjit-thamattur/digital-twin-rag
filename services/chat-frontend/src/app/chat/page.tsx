@@ -722,7 +722,7 @@ export default function ChatPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid var(--border-light)', borderRadius: '8px', backgroundColor: 'rgba(255,255,255,0.02)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {/* Fake Google Drive Icon */}
+                        {/* Google Drive Icon */}
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M8.59003 4.23001L4.27002 11.75C4.05002 12.13 4.05002 12.6 4.27002 12.98L8.60004 20.48C8.82004 20.86 9.23004 21.1 9.67004 21.1H18.33C18.77 21.1 19.18 20.86 19.4 20.48L23.73 12.98C23.95 12.6 23.95 12.13 23.73 11.75L19.4 4.24C19.18 3.86 18.77 3.62001 18.33 3.62001H9.67004C9.23004 3.61001 8.81003 3.85001 8.59003 4.23001Z" fill="#FFC107"/>
                           <path d="M12.44 14.86H4.27002C4.05002 14.86 3.84 14.98 3.73 15.17C3.62 15.36 3.62 15.59 3.73 15.78L8.06 23.28C8.28 23.66 8.69001 23.9 9.13001 23.9H17.8L12.44 14.86Z" fill="#1976D2"/>
@@ -731,10 +731,10 @@ export default function ChatPage() {
                       </div>
                       <div>
                         <h4 style={{ fontSize: '1rem', fontWeight: 500, margin: 0, color: 'var(--text-primary)' }}>Google Drive</h4>
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Sync policies & documents real-time</p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Sync policies &amp; documents real-time</p>
                       </div>
                     </div>
-                    
+
                     {isGoogleDriveConnected ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981', fontSize: '0.85rem', fontWeight: 500 }}>
@@ -742,13 +742,13 @@ export default function ChatPage() {
                         </div>
                         <button
                           onClick={handleDisconnectDrive}
-                          style={{ padding: '6px 12px', borderRadius: '6px', backgroundColor: 'transparent', color: '#ff4d4f', border: '1px solid #ff4d4f', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '6px', backgroundColor: 'transparent', color: '#ff4d4f', border: '1px solid #ff4d4f', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}
                         >
-                          Disconnect
+                          <Trash2 size={13} /> Remove
                         </button>
                       </div>
                     ) : (
-                      <button 
+                      <button
                         onClick={handleConnectDrive}
                         disabled={isConnectingDrive}
                         style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--accent-primary)', color: 'white', border: 'none', cursor: isConnectingDrive ? 'not-allowed' : 'pointer', fontSize: '0.85rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -760,6 +760,8 @@ export default function ChatPage() {
                   </div>
                 </div>
               </div>
+
+
 
               {/* Danger Zone */}
               <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '24px' }}>
