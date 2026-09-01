@@ -90,10 +90,19 @@ export async function GET(req: NextRequest) {
       
       if (folderRes.data.files && folderRes.data.files.length > 0) {
         folderId = folderRes.data.files[0].id;
-        console.log(`Found sync folder ${folderId} for tenant ${tenantId}`);
+        console.log(`Found existing sync folder ${folderId} for tenant ${tenantId}`);
       } else {
-        console.warn(`Sync folder not found for tenant ${tenantId}. User must create it first.`);
-        return NextResponse.redirect(`${appUrl}/chat?gdrive_error=missing_sync_folder`);
+        // Auto-create the "Digital Brain Sync" folder — user doesn't need to do this manually
+        console.log(`Sync folder not found for tenant ${tenantId} — creating it automatically`);
+        const createRes = await drive.files.create({
+          requestBody: {
+            name: 'Digital Brain Sync',
+            mimeType: 'application/vnd.google-apps.folder',
+          },
+          fields: 'id',
+        });
+        folderId = createRes.data.id;
+        console.log(`Created sync folder ${folderId} for tenant ${tenantId}`);
       }
 
       // Get the start page token to track future changes
