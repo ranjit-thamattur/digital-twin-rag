@@ -1,641 +1,1243 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digital Brain - Tenant Admin Portal</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Brain — Admin Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+    :root {
+      --sidebar-bg: #0f172a;
+      --sidebar-hover: #1e293b;
+      --sidebar-active: #312e81;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-glow: rgba(99,102,241,0.15);
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --info: #3b82f6;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.05);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,.12);
+    }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+    html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
 
-        .header {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-        }
+    /* ── Layout ── */
+    .layout { display: flex; height: 100vh; overflow: hidden; }
 
-        h1 {
-            color: #667eea;
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 240px; min-width: 240px; background: var(--sidebar-bg);
+      display: flex; flex-direction: column; padding: 0;
+      border-right: 1px solid rgba(255,255,255,.05);
+    }
+    .sidebar-logo {
+      padding: 24px 20px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .sidebar-logo .brand { display: flex; align-items: center; gap: 10px; }
+    .sidebar-logo .brand-icon {
+      width: 36px; height: 36px; background: var(--accent);
+      border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    }
+    .sidebar-logo .brand-name { color: #fff; font-size: 1rem; font-weight: 700; }
+    .sidebar-logo .brand-sub { color: #64748b; font-size: 0.7rem; margin-top: 2px; }
 
-        .subtitle {
-            color: #666;
-            font-size: 1.1em;
-        }
+    .sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
+    .nav-section-label {
+      color: #475569; font-size: 0.65rem; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; padding: 12px 8px 4px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 10px; border-radius: 8px; cursor: pointer;
+      color: #94a3b8; font-size: 0.875rem; font-weight: 500;
+      transition: background .15s, color .15s;
+      text-decoration: none;
+    }
+    .nav-item:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+    .nav-item.active { background: var(--sidebar-active); color: #fff; }
+    .nav-item i { width: 16px; height: 16px; flex-shrink: 0; }
 
-        .actions {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-        }
+    .sidebar-footer {
+      padding: 16px; border-top: 1px solid rgba(255,255,255,.07);
+    }
+    .sidebar-footer .version { color: #334155; font-size: 0.72rem; }
 
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
+    /* ── Main ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
+    .topbar {
+      height: 60px; background: var(--card); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; flex-shrink: 0;
+    }
+    .topbar-title { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+    .topbar-actions { display: flex; align-items: center; gap: 12px; }
+    .topbar-badge {
+      background: var(--accent-glow); color: var(--accent);
+      padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+    }
 
-        .btn-secondary {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        }
+    .content { flex: 1; overflow-y: auto; padding: 28px; }
 
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
+    /* ── Stats cards ── */
+    .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--card); border-radius: var(--radius); padding: 20px 22px;
+      box-shadow: var(--shadow); border: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; }
+    .stat-value { font-size: 1.9rem; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-sub { font-size: 0.72rem; color: var(--text-light); }
+    .stat-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; margin-bottom: 8px;
+    }
 
-        .modal.active {
-            display: flex;
-        }
+    /* ── Section heading ── */
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+    }
+    .section-title { font-size: 1rem; font-weight: 700; }
 
-        .modal-content {
-            background: white;
-            padding: 35px;
-            border-radius: 15px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        }
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+      border: none; cursor: pointer; transition: all .15s; font-family: inherit;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg); color: var(--text); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-        .form-group {
-            margin-bottom: 20px;
-        }
+    /* ── Table ── */
+    .table-wrap { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: #f8fafc; }
+    th { padding: 11px 16px; text-align: left; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--border); }
+    td { padding: 13px 16px; font-size: 0.85rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 600;
-        }
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 600;
+    }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .badge-gray { background: #f1f5f9; color: #475569; }
 
-        input,
-        select,
-        textarea {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 15px;
-            transition: border-color 0.3s;
-        }
+    /* ── Persona pills ── */
+    .persona-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+    .persona-pill {
+      padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600;
+      background: var(--accent-glow); color: var(--accent);
+    }
 
-        input:focus,
-        select:focus,
-        textarea:focus {
-            outline: none;
-            border-color: #667eea;
-        }
+    /* ── Drawer (Tenant Detail) ── */
+    .drawer-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+      z-index: 100; backdrop-filter: blur(2px);
+    }
+    .drawer-overlay.open { display: block; }
+    .drawer {
+      position: fixed; top: 0; right: -700px; width: 680px; height: 100vh;
+      background: var(--card); z-index: 101; box-shadow: var(--shadow-lg);
+      display: flex; flex-direction: column;
+      transition: right .25s cubic-bezier(.4,0,.2,1);
+      overflow: hidden;
+    }
+    .drawer.open { right: 0; }
+    .drawer-header {
+      padding: 20px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    .drawer-title { font-size: 1.05rem; font-weight: 700; }
+    .drawer-body { flex: 1; overflow-y: auto; }
 
-        textarea {
-            min-height: 100px;
-            resize: vertical;
-        }
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); padding: 0 24px; }
+    .tab {
+      padding: 12px 16px; font-size: 0.85rem; font-weight: 500;
+      color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+      transition: all .15s; margin-bottom: -1px;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; }
 
-        .tenants-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
-        }
+    /* ── Forms ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-grid-full { grid-column: 1 / -1; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 0.8rem; font-weight: 600; color: var(--text); }
+    .field input, .field select, .field textarea {
+      padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 0.875rem; font-family: inherit; color: var(--text);
+      transition: border-color .15s, box-shadow .15s; background: var(--card);
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .field textarea { min-height: 80px; resize: vertical; }
+    .field-hint { font-size: 0.73rem; color: var(--text-light); }
 
-        .tenant-card {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
+    /* ── Checkbox pills for personas ── */
+    .persona-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .persona-check { display: none; }
+    .persona-label {
+      padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+      border: 1.5px solid var(--border); color: var(--text-muted); cursor: pointer;
+      transition: all .15s;
+    }
+    .persona-check:checked + .persona-label {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
 
-        .tenant-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        }
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 24px;
+      text-align: center; cursor: pointer; transition: all .2s;
+      background: #fafbff;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent); background: var(--accent-glow);
+    }
+    .upload-zone .upload-icon { color: var(--text-light); margin-bottom: 12px; }
+    .upload-zone h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 4px; }
+    .upload-zone p { font-size: 0.8rem; color: var(--text-muted); }
+    #fileInput { display: none; }
 
-        .tenant-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            margin-bottom: 15px;
-        }
+    .upload-progress {
+      display: none; margin-top: 16px;
+    }
+    .progress-bar-wrap {
+      background: var(--border); border-radius: 99px; height: 6px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: var(--accent); border-radius: 99px;
+      transition: width .2s;
+    }
+    .progress-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; }
 
-        .tenant-name {
-            font-size: 1.5em;
-            color: #333;
-            font-weight: 700;
-        }
+    /* ── Doc list ── */
+    .doc-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .doc-item:last-child { border-bottom: none; }
+    .doc-info { display: flex; align-items: center; gap: 10px; }
+    .doc-icon { color: var(--accent); }
+    .doc-name { font-size: 0.85rem; font-weight: 500; }
+    .doc-meta { font-size: 0.72rem; color: var(--text-muted); }
 
-        .tenant-status {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: 600;
-        }
+    /* ── Brain test panel ── */
+    .brain-query-wrap { display: flex; gap: 8px; margin-bottom: 16px; }
+    .brain-query-wrap input {
+      flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 0.875rem; font-family: inherit;
+    }
+    .brain-query-wrap input:focus {
+      outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .brain-response {
+      background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+      padding: 16px; font-size: 0.875rem; line-height: 1.7; min-height: 120px;
+      color: var(--text); white-space: pre-wrap;
+    }
+    .brain-thinking {
+      display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.85rem;
+    }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-        .status-active {
-            background: #4ade80;
-            color: white;
-        }
+    /* ── Toast ── */
+    .toast-wrap {
+      position: fixed; bottom: 24px; right: 24px; display: flex;
+      flex-direction: column; gap: 8px; z-index: 999;
+    }
+    .toast {
+      padding: 12px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 500;
+      box-shadow: var(--shadow-lg); min-width: 240px; animation: slideUp .2s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(16px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+    .toast-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .toast-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .toast-info    { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
 
-        .status-inactive {
-            background: #f87171;
-            color: white;
-        }
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 200; align-items: center; justify-content: center;
+      backdrop-filter: blur(2px);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--card); border-radius: 16px; padding: 28px;
+      max-width: 560px; width: 90%; max-height: 90vh; overflow-y: auto;
+      box-shadow: var(--shadow-lg); animation: popIn .2s ease;
+    }
+    @keyframes popIn { from { transform: scale(.96); opacity:0; } to { transform: scale(1); opacity:1; } }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
 
-        .tenant-info {
-            color: #666;
-            margin-bottom: 8px;
-        }
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center; padding: 48px 24px; color: var(--text-muted);
+    }
+    .empty-state i { width: 40px; height: 40px; margin-bottom: 12px; opacity: .4; }
+    .empty-state p { font-size: 0.875rem; }
 
-        .tenant-actions {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px;
-        }
+    /* ── Search ── */
+    .search-wrap { position: relative; }
+    .search-wrap input {
+      padding: 8px 12px 8px 36px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 0.85rem; width: 240px; font-family: inherit;
+    }
+    .search-wrap input:focus { outline: none; border-color: var(--accent); }
+    .search-icon {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--text-light);
+    }
 
-        .btn-small {
-            padding: 8px 16px;
-            font-size: 14px;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: white;
-            font-size: 1.2em;
-        }
-
-        .error {
-            background: #fee2e2;
-            border: 2px solid #ef4444;
-            color: #991b1b;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .success {
-            background: #d1fae5;
-            border: 2px solid #10b981;
-            color: #065f46;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-    </style>
+    .hidden { display: none !important; }
+  </style>
 </head>
-
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🏢 Tenant Management Portal</h1>
-            <p class="subtitle">Create and manage tenants for your Digital Brain RAG system</p>
-        </div>
+<div class="layout">
 
-        <div class="actions">
-            <button class="btn" onclick="openCreateTenantModal()">➕ Create New Tenant</button>
-            <button class="btn btn-secondary" onclick="loadTenants()">🔄 Refresh Tenants</button>
+  <!-- ─── Sidebar ─── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
         </div>
+        <div>
+          <div class="brand-name">Digital Brain</div>
+          <div class="brand-sub">Admin Portal</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+        <i data-lucide="layout-dashboard"></i> Dashboard
+      </a>
+      <a class="nav-item" data-page="tenants" onclick="showPage('tenants')">
+        <i data-lucide="building-2"></i> Tenants
+      </a>
+      <a class="nav-item" data-page="documents" onclick="showPage('documents')">
+        <i data-lucide="file-text"></i> Documents
+      </a>
+      <a class="nav-item" data-page="testbrain" onclick="showPage('testbrain')">
+        <i data-lucide="zap"></i> Test Brain
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="version">v2.0 · CloneMind Platform</div>
+    </div>
+  </aside>
 
-        <div id="message"></div>
-        <div id="tenantsContainer" class="loading">Loading tenants...</div>
+  <!-- ─── Main ─── -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-actions">
+        <span class="topbar-badge" id="topbarBadge">Loading...</span>
+        <button class="btn btn-primary btn-sm" onclick="openCreateTenantModal()">
+          <i data-lucide="plus" style="width:14px;height:14px"></i> New Tenant
+        </button>
+      </div>
     </div>
 
-    <!-- Create Tenant Modal -->
-    <div id="createTenantModal" class="modal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 25px;">Create New Tenant</h2>
-            <form id="createTenantForm" onsubmit="createTenant(event)">
-                <div class="form-group">
-                    <label>Tenant Name *</label>
-                    <input type="text" name="tenant_name" required placeholder="e.g., NewCompany">
-                </div>
+    <div class="content">
 
-                <div class="form-group">
-                    <label>Company Name *</label>
-                    <input type="text" name="company_name" required placeholder="e.g., NewCompany Inc">
-                </div>
-
-                <div class="form-group">
-                    <label>Industry *</label>
-                    <input type="text" name="industry" required placeholder="e.g., Technology, Healthcare">
-                </div>
-
-                <div class="form-group">
-                    <label>Tone</label>
-                    <select name="tone">
-                        <option value="Authoritative">Authoritative (Peak Default)</option>
-                        <option value="professional">Professional</option>
-                        <option value="professional and technical">Professional and Technical</option>
-                        <option value="strategic and executive-focused">Strategic and Executive</option>
-                        <option value="clear and demonstration-focused">Clear and Demo-friendly</option>
-                        <option value="formal and regulatory-compliant">Formal and Regulatory</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Special Instructions</label>
-                    <textarea name="special_instructions"
-                        placeholder="Custom instructions for this tenant's AI responses..."></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>Admin Email *</label>
-                    <input type="email" name="admin_email" required placeholder="admin@company.com">
-                </div>
-
-                <div class="form-group">
-                    <label>Admin Password *</label>
-                    <input type="password" name="admin_password" required placeholder="Secure password">
-                </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 25px;">
-                    <button type="submit" class="btn" style="flex: 1;">Create Tenant</button>
-                    <button type="button" class="btn btn-secondary" style="flex: 1;"
-                        onclick="closeCreateTenantModal()">Cancel</button>
-                </div>
-            </form>
+      <!-- ═══ Dashboard ═══ -->
+      <div id="page-dashboard" class="page">
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#ede9fe"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+            <div class="stat-label">Total Tenants</div>
+            <div class="stat-value" id="stat-tenants">—</div>
+            <div class="stat-sub">active companies</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#dbeafe"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+            <div class="stat-label">Total Users</div>
+            <div class="stat-value" id="stat-users">—</div>
+            <div class="stat-sub">across all tenants</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#d1fae5"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+            <div class="stat-label">Active Tenants</div>
+            <div class="stat-value" id="stat-active">—</div>
+            <div class="stat-sub">currently enabled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:#fef3c7"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div>
+            <div class="stat-label">Premium Plans</div>
+            <div class="stat-value" id="stat-premium">—</div>
+            <div class="stat-sub">premium + enterprise</div>
+          </div>
         </div>
-    </div>
 
-    <!-- Add User Modal -->
-    <div id="addUserModal" class="modal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 25px;">Add User to Tenant</h2>
-            <form id="addUserForm" onsubmit="addUser(event)">
-                <input type="hidden" id="selectedTenantId" name="tenant_id">
-
-                <div class="form-group">
-                    <label>First Name *</label>
-                    <input type="text" name="first_name" required placeholder="John">
-                </div>
-
-                <div class="form-group">
-                    <label>Last Name *</label>
-                    <input type="text" name="last_name" required placeholder="Doe">
-                </div>
-
-                <div class="form-group">
-                    <label>Email *</label>
-                    <input type="email" name="email" required placeholder="john.doe@company.com">
-                </div>
-
-                <div class="form-group">
-                    <label>Password *</label>
-                    <input type="password" name="password" required placeholder="Strong password (min 8 chars)">
-                </div>
-
-                <div class="form-group">
-                    <label>Persona *</label>
-                    <select name="persona" required>
-                        <option value="CEO">CEO - Strategic & Executive</option>
-                        <option value="manager" selected>Manager - Operational</option>
-                        <option value="analyst">Analyst - Technical & Data</option>
-                    </select>
-                </div>
-
-                <div style="background: #e0e7ff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                    <strong>👤 Persona Guide:</strong>
-                    <ul style="margin: 10px 0 0 20px; font-size: 14px;">
-                        <li><strong>CEO:</strong> Strategic decisions, executive summaries</li>
-                        <li><strong>Manager:</strong> Team metrics, operational details</li>
-                        <li><strong>Analyst:</strong> Technical data, detailed analytics</li>
-                    </ul>
-                </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 25px;">
-                    <button type="submit" class="btn" style="flex: 1;">Add User</button>
-                    <button type="button" class="btn btn-secondary" style="flex: 1;"
-                        onclick="closeAddUserModal()">Cancel</button>
-                </div>
-            </form>
+        <div class="section-header">
+          <div class="section-title">Recent Tenants</div>
+          <button class="btn btn-ghost btn-sm" onclick="showPage('tenants')">View all →</button>
         </div>
-    </div>
-
-    <!-- Edit Tenant Modal -->
-    <div id="editTenantModal" class="modal">
-        <div class="modal-content" style="max-width: 700px;">
-            <h2 id="editModalTitle" style="margin-bottom: 25px;">Edit Tenant Configuration</h2>
-            <form id="editTenantForm" onsubmit="editTenant(event)">
-                <input type="hidden" id="editTenantId" name="tenant_id">
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div class="form-group">
-                        <label>Company Name</label>
-                        <input type="text" id="editCompanyName" name="company_name" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Industry</label>
-                        <input type="text" id="editIndustry" name="industry" required>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>Tone (Voice of the AI)</label>
-                    <select id="editTone" name="tone">
-                        <option value="Authoritative">Authoritative (Peak Default)</option>
-                        <option value="Professional">Professional</option>
-                        <option value="Strategic and executive-focused">Strategic & Executive</option>
-                        <option value="Clear and demonstration-focused">Clear & Demo-friendly</option>
-                        <option value="Casual and friendly">Casual & Friendly</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Special Instructions (Detailed guidance for responses)</label>
-                    <textarea id="editSpecialInstructions" name="special_instructions" style="min-height: 150px;"
-                        placeholder="e.g., Focus on exploration stats, safety standards, and rig performance."></textarea>
-                </div>
-
-                <div style="display: flex; gap: 10px; margin-top: 25px;">
-                    <button type="submit" class="btn" style="flex: 2;">💾 Save Changes</button>
-                    <button type="button" class="btn btn-secondary" style="flex: 1;"
-                        onclick="closeEditTenantModal()">Cancel</button>
-                </div>
-            </form>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Company</th><th>Tenant ID</th><th>Plan</th><th>Users</th><th>Status</th><th></th>
+            </tr></thead>
+            <tbody id="dashboardTenantTable"><tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px">Loading...</td></tr></tbody>
+          </table>
         </div>
+      </div>
+
+      <!-- ═══ Tenants ═══ -->
+      <div id="page-tenants" class="page hidden">
+        <div class="section-header">
+          <div class="section-title">All Tenants</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <div class="search-wrap">
+              <span class="search-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
+              <input type="text" id="tenantSearch" placeholder="Search tenants..." oninput="filterTenants()" />
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openCreateTenantModal()">
+              <i data-lucide="plus" style="width:14px;height:14px"></i> New Tenant
+            </button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Company</th><th>Tenant ID</th><th>Industry</th><th>Plan</th><th>Personas</th><th>Users</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="tenantsTable"><tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ Documents ═══ -->
+      <div id="page-documents" class="page hidden">
+        <div class="section-header">
+          <div class="section-title">Document Upload</div>
+        </div>
+        <div style="display:grid;grid-template-columns:280px 1fr;gap:20px">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="field">
+              <label>Tenant</label>
+              <select id="docTenantSelect" onchange="loadDocPersonas()">
+                <option value="">— Select tenant —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Persona</label>
+              <select id="docPersonaSelect" onchange="loadDocList()">
+                <option value="">— Select persona —</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+              ondragover="event.preventDefault();this.classList.add('dragover')"
+              ondragleave="this.classList.remove('dragover')"
+              ondrop="handleDrop(event)">
+              <div class="upload-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <h4>Drop files here or click to browse</h4>
+              <p>PDF · DOCX · TXT · MD · XLSX · PPTX</p>
+              <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md,.xlsx,.csv,.pptx" onchange="handleFileSelect(this.files)" />
+            </div>
+            <div class="upload-progress" id="uploadProgress">
+              <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+              <div class="progress-label" id="progressLabel">Uploading...</div>
+            </div>
+            <div style="margin-top:24px">
+              <div class="section-header" style="margin-bottom:12px">
+                <div class="section-title" style="font-size:0.9rem">Uploaded Documents</div>
+                <button class="btn btn-ghost btn-sm" onclick="loadDocList()">Refresh</button>
+              </div>
+              <div id="docList"><div class="empty-state"><p>Select a tenant and persona to see documents.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ Test Brain ═══ -->
+      <div id="page-testbrain" class="page hidden">
+        <div class="section-header">
+          <div class="section-title">Test Brain</div>
+        </div>
+        <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="field">
+              <label>Tenant</label>
+              <select id="testTenantSelect">
+                <option value="">— Select tenant —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Persona</label>
+              <select id="testPersonaSelect">
+                <option value="">— Select persona —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Plan (token limit)</label>
+              <select id="testPlan">
+                <option value="basic">Basic (1,000 tokens)</option>
+                <option value="premium">Premium (4,000 tokens)</option>
+                <option value="enterprise">Enterprise (8,000 tokens)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="runBrainTest()" id="testBtn">
+              <i data-lucide="zap" style="width:14px;height:14px"></i> Ask Brain
+            </button>
+          </div>
+          <div>
+            <div class="brain-query-wrap">
+              <input type="text" id="brainQuery" placeholder="Ask anything the brain should know..." onkeydown="if(event.key==='Enter') runBrainTest()" />
+            </div>
+            <div class="brain-response" id="brainResponse">
+              Response will appear here after you submit a query.
+            </div>
+            <div style="margin-top:8px;font-size:0.73rem;color:var(--text-light)">
+              Tip: Try a specific question that should be answerable from uploaded documents.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<!-- ─── Tenant Detail Drawer ─── -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="tenantDrawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawerTenantName">Tenant Details</div>
+      <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px" id="drawerTenantId"></div>
     </div>
+    <button class="btn btn-ghost btn-sm" onclick="closeDrawer()">✕ Close</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="tab" onclick="switchTab('users')">Users</div>
+    <div class="tab" onclick="switchTab('docs')">Documents</div>
+    <div class="tab" onclick="switchTab('brain')">Test Brain</div>
+  </div>
+  <div class="drawer-body">
+    <!-- Overview tab -->
+    <div class="tab-panel active" id="tab-overview">
+      <form onsubmit="saveTenantEdits(event)">
+        <div class="form-grid" style="margin-bottom:16px">
+          <div class="field">
+            <label>Company Name</label>
+            <input type="text" id="edit-companyName" />
+          </div>
+          <div class="field">
+            <label>Industry</label>
+            <input type="text" id="edit-industry" />
+          </div>
+          <div class="field">
+            <label>Plan</label>
+            <select id="edit-plan">
+              <option value="basic">Basic</option>
+              <option value="premium">Premium</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select id="edit-isActive">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <div class="field form-grid-full">
+            <label>Default Persona</label>
+            <select id="edit-defaultPersona">
+              <option value="ceo">CEO</option>
+              <option value="hr">HR</option>
+              <option value="finance">Finance</option>
+              <option value="sales">Sales</option>
+              <option value="coach">Coach</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="field form-grid-full">
+            <label>Allowed Personas</label>
+            <div class="persona-grid" id="edit-personas">
+              <!-- generated by JS -->
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </form>
+    </div>
+    <!-- Users tab -->
+    <div class="tab-panel" id="tab-users">
+      <div class="section-header" style="margin-bottom:16px">
+        <div style="font-size:0.9rem;font-weight:600">Users</div>
+        <button class="btn btn-primary btn-sm" onclick="openAddUserModal()">+ Add User</button>
+      </div>
+      <div id="drawerUserList"></div>
+    </div>
+    <!-- Docs tab -->
+    <div class="tab-panel" id="tab-docs">
+      <div class="field" style="margin-bottom:16px">
+        <label>Persona</label>
+        <select id="drawerDocPersona" onchange="loadDrawerDocs()">
+          <option value="">All personas</option>
+        </select>
+      </div>
+      <div class="upload-zone" style="margin-bottom:16px" onclick="document.getElementById('drawerFileInput').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleDrawerDrop(event)">
+        <div class="upload-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <h4 style="font-size:0.85rem">Drop files or click to upload</h4>
+        <p>Uploads to selected persona above</p>
+        <input type="file" id="drawerFileInput" multiple accept=".pdf,.docx,.txt,.md,.xlsx,.csv,.pptx" onchange="handleDrawerFiles(this.files)" />
+      </div>
+      <div class="upload-progress" id="drawerUploadProgress">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="drawerProgressBar" style="width:0%"></div></div>
+        <div class="progress-label" id="drawerProgressLabel">Uploading...</div>
+      </div>
+      <div id="drawerDocList"><div class="empty-state"><p>Select a persona to see documents.</p></div></div>
+    </div>
+    <!-- Brain tab -->
+    <div class="tab-panel" id="tab-brain">
+      <div class="field" style="margin-bottom:12px">
+        <label>Persona</label>
+        <select id="drawerBrainPersona">
+          <option value="ceo">CEO</option>
+        </select>
+      </div>
+      <div class="brain-query-wrap">
+        <input type="text" id="drawerBrainQuery" placeholder="Ask a question..." onkeydown="if(event.key==='Enter') runDrawerBrainTest()" />
+        <button class="btn btn-primary" onclick="runDrawerBrainTest()" id="drawerTestBtn">Ask</button>
+      </div>
+      <div class="brain-response" id="drawerBrainResponse" style="margin-top:12px">
+        Response will appear here.
+      </div>
+    </div>
+  </div>
+</div>
 
-    <script>
-        const API_URL = '/api';
+<!-- ─── Create Tenant Modal ─── -->
+<div class="modal-overlay" id="createTenantModal">
+  <div class="modal-box">
+    <div class="modal-title">Create New Tenant</div>
+    <form id="createTenantForm" onsubmit="submitCreateTenant(event)">
+      <div class="form-grid">
+        <div class="field">
+          <label>Tenant Name * <span class="field-hint">(short key, no spaces)</span></label>
+          <input type="text" id="ct-tenantName" placeholder="e.g. acmecorp" required />
+        </div>
+        <div class="field">
+          <label>Company Full Name *</label>
+          <input type="text" id="ct-companyName" placeholder="ACME Corporation" required />
+        </div>
+        <div class="field">
+          <label>Industry *</label>
+          <input type="text" id="ct-industry" placeholder="Technology" required />
+        </div>
+        <div class="field">
+          <label>Plan</label>
+          <select id="ct-plan">
+            <option value="basic">Basic</option>
+            <option value="premium">Premium</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Admin Email *</label>
+          <input type="email" id="ct-adminEmail" placeholder="admin@company.com" required />
+        </div>
+        <div class="field">
+          <label>Temp Password *</label>
+          <input type="password" id="ct-adminPassword" placeholder="Min 8 chars + number + symbol" required />
+        </div>
+        <div class="field form-grid-full">
+          <label>Allowed Personas</label>
+          <div class="persona-grid">
+            <input type="checkbox" class="persona-check" id="p-ceo" value="ceo" checked /><label class="persona-label" for="p-ceo">CEO</label>
+            <input type="checkbox" class="persona-check" id="p-hr" value="hr" /><label class="persona-label" for="p-hr">HR</label>
+            <input type="checkbox" class="persona-check" id="p-finance" value="finance" /><label class="persona-label" for="p-finance">Finance</label>
+            <input type="checkbox" class="persona-check" id="p-sales" value="sales" /><label class="persona-label" for="p-sales">Sales</label>
+            <input type="checkbox" class="persona-check" id="p-coach" value="coach" /><label class="persona-label" for="p-coach">Coach</label>
+            <input type="checkbox" class="persona-check" id="p-admin" value="admin" /><label class="persona-label" for="p-admin">Admin</label>
+            <input type="checkbox" class="persona-check" id="p-manager" value="manager" /><label class="persona-label" for="p-manager">Manager</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeCreateTenantModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="createTenantBtn">Create Tenant</button>
+      </div>
+    </form>
+  </div>
+</div>
 
-        // Load tenants on page load
-        window.onload = function () {
-            loadTenants();
-        };
+<!-- ─── Add User Modal ─── -->
+<div class="modal-overlay" id="addUserModal">
+  <div class="modal-box">
+    <div class="modal-title">Add User</div>
+    <form onsubmit="submitAddUser(event)">
+      <div class="form-grid">
+        <div class="field">
+          <label>First Name *</label>
+          <input type="text" id="au-firstName" required />
+        </div>
+        <div class="field">
+          <label>Last Name *</label>
+          <input type="text" id="au-lastName" required />
+        </div>
+        <div class="field">
+          <label>Email *</label>
+          <input type="email" id="au-email" required />
+        </div>
+        <div class="field">
+          <label>Temp Password *</label>
+          <input type="password" id="au-password" required />
+        </div>
+        <div class="field form-grid-full">
+          <label>Persona</label>
+          <select id="au-persona"></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeAddUserModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add User</button>
+      </div>
+    </form>
+  </div>
+</div>
 
-        function openCreateTenantModal() {
-            document.getElementById('createTenantModal').classList.add('active');
-        }
+<div class="toast-wrap" id="toastWrap"></div>
 
-        function closeCreateTenantModal() {
-            document.getElementById('createTenantModal').classList.remove('active');
-            document.getElementById('createTenantForm').reset();
-        }
+<script>
+/* ═══════════════════════════════════════════════════════ STATE */
+let allTenants = [];
+let currentTenantId = null;
 
-        async function loadTenants() {
-            const container = document.getElementById('tenantsContainer');
-            container.innerHTML = '<div class="loading">Loading tenants...</div>';
+const ALL_PERSONAS = ['ceo','hr','finance','sales','coach','admin','manager','analyst'];
 
-            try {
-                const response = await fetch(`${API_URL}/tenants`);
-                const data = await response.json();
+/* ═══════════════════════════════════════════════════════ INIT */
+window.onload = async () => {
+  lucide.createIcons();
+  await loadAllTenants();
+  populateTenantSelects();
+};
 
-                if (data.tenants && data.tenants.length > 0) {
-                    container.innerHTML = '<div class="tenants-grid">' +
-                        data.tenants.map(tenant => createTenantCard(tenant)).join('') +
-                        '</div>';
-                } else {
-                    container.innerHTML = '<div class="loading">No tenants found. Create your first tenant!</div>';
-                }
-            } catch (error) {
-                container.innerHTML = `<div class="error">Error loading tenants: ${error.message}</div>`;
-            }
-        }
+/* ═══════════════════════════════════════════════════════ NAVIGATION */
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.getElementById('page-' + page).classList.remove('hidden');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.page === page);
+  });
+  const titles = { dashboard:'Dashboard', tenants:'Tenants', documents:'Documents', testbrain:'Test Brain' };
+  document.getElementById('topbarTitle').textContent = titles[page] || page;
+  lucide.createIcons();
+}
 
-        function createTenantCard(tenant) {
-            const statusClass = tenant.isActive ? 'status-active' : 'status-inactive';
-            const statusText = tenant.isActive ? 'Active' : 'Inactive';
-            const createdDate = new Date(tenant.createdAt).toLocaleDateString();
+/* ═══════════════════════════════════════════════════════ DATA */
+async function loadAllTenants() {
+  try {
+    const res = await fetch('/api/tenants');
+    const data = await res.json();
+    allTenants = data.tenants || data || [];
+    renderDashboard();
+    renderTenantsTable();
+    populateTenantSelects();
+    const total = allTenants.length;
+    document.getElementById('topbarBadge').textContent = `${total} tenant${total !== 1 ? 's' : ''}`;
+  } catch (e) {
+    toast('Failed to load tenants: ' + e.message, 'error');
+  }
+}
 
-            return `
-                <div class="tenant-card">
-                    <div class="tenant-header">
-                        <div class="tenant-name">${tenant.companyName}</div>
-                        <div class="tenant-status ${statusClass}">${statusText}</div>
-                    </div>
-                    <div class="tenant-info"><strong>ID:</strong> ${tenant.tenantId}</div>
-                    <div class="tenant-info"><strong>Industry:</strong> ${tenant.industry}</div>
-                    <div class="tenant-info"><strong>Tone:</strong> ${tenant.tone}</div>
-                    <div class="tenant-info"><strong>Created:</strong> ${createdDate}</div>
-                    <div class="tenant-actions">
-                        <button class="btn btn-small" onclick="viewTenantDetails('${tenant.tenantId}')">👁️ Details</button>
-                        <button class="btn btn-small" onclick="openEditTenantModal('${tenant.tenantId}')">✏️ Edit</button>
-                        <button class="btn btn-small btn-secondary" onclick="toggleTenantStatus('${tenant.tenantId}', ${!tenant.isActive})">${tenant.isActive ? '🔒 Disable' : '✅ Enable'}</button>
-                        <button class="btn btn-small" style="background:#4ade80" onclick="openAddUserModal('${tenant.tenantId}', '${tenant.companyName}')">👤 +User</button>
-                    </div>
-                </div>
-            `;
-        }
+function renderDashboard() {
+  const total = allTenants.length;
+  const users = allTenants.reduce((s, t) => s + (t.users || []).length, 0);
+  const active = allTenants.filter(t => t.isActive !== false).length;
+  const premium = allTenants.filter(t => t.plan === 'premium' || t.plan === 'enterprise').length;
+  document.getElementById('stat-tenants').textContent = total;
+  document.getElementById('stat-users').textContent = users;
+  document.getElementById('stat-active').textContent = active;
+  document.getElementById('stat-premium').textContent = premium;
 
-        async function createTenant(event) {
-            event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
+  const recent = [...allTenants].slice(0, 5);
+  const tbody = document.getElementById('dashboardTenantTable');
+  tbody.innerHTML = recent.length ? recent.map(tenantRow).join('') :
+    '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px">No tenants yet</td></tr>';
+  lucide.createIcons();
+}
 
-            try {
-                const response = await fetch(`${API_URL}/tenants`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+function renderTenantsTable(filter = '') {
+  const list = filter ? allTenants.filter(t =>
+    (t.companyName || '').toLowerCase().includes(filter) ||
+    (t.tenantId || '').toLowerCase().includes(filter)
+  ) : allTenants;
+  const tbody = document.getElementById('tenantsTable');
+  tbody.innerHTML = list.length ? list.map(tenantRowFull).join('') :
+    '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px">No tenants found</td></tr>';
+  lucide.createIcons();
+}
 
-                const result = await response.json();
+function tenantRow(t) {
+  const status = t.isActive !== false
+    ? '<span class="badge badge-green">Active</span>'
+    : '<span class="badge badge-red">Inactive</span>';
+  const plan = planBadge(t.plan);
+  return `<tr>
+    <td><strong>${t.companyName || '—'}</strong></td>
+    <td><code style="font-size:0.8rem;color:var(--text-muted)">${t.tenantId}</code></td>
+    <td>${plan}</td>
+    <td>${(t.users || []).length}</td>
+    <td>${status}</td>
+    <td><button class="btn btn-ghost btn-sm" onclick="openDrawer('${t.tenantId}')">Open →</button></td>
+  </tr>`;
+}
 
-                if (response.ok) {
-                    showMessage(`✅ Tenant created successfully! Admin can login at ${result.login_url}`, 'success');
-                    closeCreateTenantModal();
-                    loadTenants();
-                } else {
-                    showMessage(`❌ Error: ${result.detail}`, 'error');
-                }
-            } catch (error) {
-                showMessage(`❌ Error creating tenant: ${error.message}`, 'error');
-            }
-        }
+function tenantRowFull(t) {
+  const status = t.isActive !== false
+    ? '<span class="badge badge-green">Active</span>'
+    : '<span class="badge badge-red">Inactive</span>';
+  const plan = planBadge(t.plan);
+  const personas = (t.allowedPersonas || []).map(p =>
+    `<span class="persona-pill">${p}</span>`).join('');
+  return `<tr>
+    <td><strong>${t.companyName || '—'}</strong></td>
+    <td><code style="font-size:0.8rem;color:var(--text-muted)">${t.tenantId}</code></td>
+    <td style="color:var(--text-muted);font-size:0.82rem">${t.industry || '—'}</td>
+    <td>${plan}</td>
+    <td><div class="persona-pills">${personas}</div></td>
+    <td>${(t.users || []).length}</td>
+    <td>${status}</td>
+    <td>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-ghost btn-sm" onclick="openDrawer('${t.tenantId}')">Manage</button>
+      </div>
+    </td>
+  </tr>`;
+}
 
-        async function viewTenantDetails(tenantId) {
-            try {
-                const response = await fetch(`${API_URL}/tenants/${tenantId}`);
-                const tenant = await response.json();
+function planBadge(plan) {
+  const map = { premium: 'badge-purple', enterprise: 'badge-blue', basic: 'badge-gray' };
+  return `<span class="badge ${map[plan] || 'badge-gray'}">${plan || 'basic'}</span>`;
+}
 
-                let usersList = tenant.users.map(u =>
-                    `- ${u.email} [${u.persona}]`
-                ).join('\n');
+function filterTenants() {
+  renderTenantsTable(document.getElementById('tenantSearch').value.toLowerCase());
+}
 
-                alert(`🏢 Tenant: ${tenant.companyName}\n` +
-                    `----------------------------\n` +
-                    `🆔 ID: ${tenant.tenantId}\n` +
-                    `🏭 Industry: ${tenant.industry || 'N/A'}\n` +
-                    `🎭 Tone: ${tenant.tone}\n` +
-                    `📝 Instructions: ${tenant.specialInstructions || 'None'}\n\n` +
-                    `👥 Registered Users:\n${usersList || 'No users yet'}\n\n` +
-                    `🤖 Personas Available: CEO, manager, analyst`);
-            } catch (error) {
-                console.error(error);
-                alert('Error loading tenant details');
-            }
-        }
+/* ═══════════════════════════════════════════════════════ DRAWER */
+async function openDrawer(tenantId) {
+  currentTenantId = tenantId;
+  const tenant = allTenants.find(t => t.tenantId === tenantId);
+  if (!tenant) return;
 
-        function openAddUserModal(tenantId, companyName) {
-            document.getElementById('selectedTenantId').value = tenantId;
-            document.querySelector('#addUserModal h2').textContent = `Add User to ${companyName}`;
-            document.getElementById('addUserModal').classList.add('active');
-        }
+  document.getElementById('drawerTenantName').textContent = tenant.companyName || tenantId;
+  document.getElementById('drawerTenantId').textContent = tenantId;
 
-        function closeAddUserModal() {
-            document.getElementById('addUserModal').classList.remove('active');
-            document.getElementById('addUserForm').reset();
-        }
+  // Populate edit fields
+  document.getElementById('edit-companyName').value = tenant.companyName || '';
+  document.getElementById('edit-industry').value = tenant.industry || '';
+  document.getElementById('edit-plan').value = tenant.plan || 'basic';
+  document.getElementById('edit-isActive').value = String(tenant.isActive !== false);
+  document.getElementById('edit-defaultPersona').value = tenant.defaultPersona || 'ceo';
 
-        async function addUser(event) {
-            event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            const tenantId = formData.get('tenant_id');
+  // Persona checkboxes
+  const allowed = tenant.allowedPersonas || [];
+  document.getElementById('edit-personas').innerHTML = ALL_PERSONAS.map(p => `
+    <input type="checkbox" class="persona-check" id="ep-${p}" value="${p}" ${allowed.includes(p) ? 'checked' : ''} />
+    <label class="persona-label" for="ep-${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</label>
+  `).join('');
 
-            const data = {
-                email: formData.get('email'),
-                password: formData.get('password'),
-                first_name: formData.get('first_name'),
-                last_name: formData.get('last_name'),
-                persona: formData.get('persona')
-            };
+  // Populate persona selects in drawer
+  const personaOpts = allowed.map(p => `<option value="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('');
+  document.getElementById('drawerDocPersona').innerHTML = '<option value="">All personas</option>' + personaOpts;
+  document.getElementById('drawerBrainPersona').innerHTML = personaOpts;
+  document.getElementById('au-persona').innerHTML = personaOpts;
 
-            try {
-                const response = await fetch(`${API_URL}/tenants/${tenantId}/users`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+  renderDrawerUsers(tenant.users || []);
+  switchTab('overview');
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('tenantDrawer').classList.add('open');
+}
 
-                const result = await response.json();
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('tenantDrawer').classList.remove('open');
+  currentTenantId = null;
+}
 
-                if (response.ok) {
-                    showMessage(`✅ User ${data.email} created successfully! They can login at the WebUI URL (Port 8080)`, 'success');
-                    closeAddUserModal();
-                } else {
-                    showMessage(`❌ Error: ${result.detail}`, 'error');
-                }
-            } catch (error) {
-                showMessage(`❌ Error adding user: ${error.message}`, 'error');
-            }
-        }
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['overview','users','docs','brain'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
 
-        async function viewTenantDetails_old(tenantId) {
-            alert(`View details for ${tenantId}\n\nAPI: GET ${API_URL}/tenants/${tenantId}`);
-        }
+  if (name === 'docs') loadDrawerDocs();
+}
 
-        async function toggleTenantStatus(tenantId, activate) {
-            try {
-                const response = await fetch(`${API_URL}/tenants/${tenantId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ is_active: activate })
-                });
+function renderDrawerUsers(users) {
+  const el = document.getElementById('drawerUserList');
+  if (!users.length) {
+    el.innerHTML = '<div class="empty-state"><p>No users yet. Click "+ Add User" to create one.</p></div>';
+    return;
+  }
+  el.innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;padding:8px 0;font-size:0.72rem;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border)">Email</th>
+        <th style="text-align:left;padding:8px 0;font-size:0.72rem;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border)">Persona</th>
+      </tr></thead>
+      <tbody>${users.map(u => `
+        <tr>
+          <td style="padding:10px 0;font-size:0.85rem;border-bottom:1px solid var(--border)">${u.email}</td>
+          <td style="padding:10px 0;border-bottom:1px solid var(--border)"><span class="persona-pill">${u.persona || '—'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
 
-                if (response.ok) {
-                    showMessage(`✅ Tenant ${activate ? 'activated' : 'deactivated'}`, 'success');
-                    loadTenants();
-                } else {
-                    showMessage('❌ Failed to update tenant', 'error');
-                }
-            } catch (error) {
-                showMessage(`❌ Error: ${error.message}`, 'error');
-            }
-        }
+/* ═══════════════════════════════════════════════════════ EDIT TENANT */
+async function saveTenantEdits(e) {
+  e.preventDefault();
+  const personas = [...document.querySelectorAll('#edit-personas .persona-check:checked')].map(c => c.value);
+  const payload = {
+    company_name:     document.getElementById('edit-companyName').value,
+    industry:         document.getElementById('edit-industry').value,
+    plan:             document.getElementById('edit-plan').value,
+    is_active:        document.getElementById('edit-isActive').value === 'true',
+    default_persona:  document.getElementById('edit-defaultPersona').value,
+    allowed_personas: personas,
+  };
+  try {
+    const res = await fetch(`/api/tenants/${currentTenantId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) { toast('Tenant updated!', 'success'); await loadAllTenants(); }
+    else toast(data.detail || 'Update failed', 'error');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
 
-        async function openEditTenantModal(tenantId) {
-            try {
-                const response = await fetch(`${API_URL}/tenants/${tenantId}`);
-                const tenant = await response.json();
+/* ═══════════════════════════════════════════════════════ CREATE TENANT */
+function openCreateTenantModal() {
+  document.getElementById('createTenantForm').reset();
+  document.getElementById('p-ceo').checked = true;
+  document.getElementById('createTenantModal').classList.add('open');
+}
+function closeCreateTenantModal() {
+  document.getElementById('createTenantModal').classList.remove('open');
+}
 
-                document.getElementById('editTenantId').value = tenant.tenantId;
-                document.getElementById('editModalTitle').textContent = `Edit ${tenant.companyName}`;
-                document.getElementById('editCompanyName').value = tenant.companyName;
-                document.getElementById('editIndustry').value = tenant.industry || '';
-                document.getElementById('editTone').value = tenant.tone || 'Authoritative';
-                document.getElementById('editSpecialInstructions').value = tenant.specialInstructions || '';
+async function submitCreateTenant(e) {
+  e.preventDefault();
+  const btn = document.getElementById('createTenantBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
 
-                document.getElementById('editTenantModal').classList.add('active');
-            } catch (error) {
-                alert('Error fetching tenant details: ' + error.message);
-            }
-        }
+  const personas = [...document.querySelectorAll('.persona-check:checked')].map(c => c.value);
+  const payload = {
+    tenant_name:      document.getElementById('ct-tenantName').value.trim().toLowerCase().replace(/\s+/g,'-'),
+    company_name:     document.getElementById('ct-companyName').value.trim(),
+    industry:         document.getElementById('ct-industry').value.trim(),
+    plan:             document.getElementById('ct-plan').value,
+    admin_email:      document.getElementById('ct-adminEmail').value.trim(),
+    admin_password:   document.getElementById('ct-adminPassword').value,
+    allowed_personas: personas.length ? personas : ['ceo'],
+    default_persona:  personas[0] || 'ceo',
+  };
+  try {
+    const res = await fetch('/api/tenants', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`Tenant "${payload.company_name}" created!`, 'success');
+      closeCreateTenantModal();
+      await loadAllTenants();
+    } else toast(data.detail || 'Failed to create tenant', 'error');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Create Tenant'; }
+}
 
-        function closeEditTenantModal() {
-            document.getElementById('editTenantModal').classList.remove('active');
-            document.getElementById('editTenantForm').reset();
-        }
+/* ═══════════════════════════════════════════════════════ ADD USER */
+function openAddUserModal() {
+  document.getElementById('addUserModal').classList.add('open');
+}
+function closeAddUserModal() {
+  document.getElementById('addUserModal').classList.remove('open');
+}
 
-        async function editTenant(event) {
-            event.preventDefault();
-            const form = event.target;
-            const formData = new FormData(form);
-            const tenantId = formData.get('tenant_id');
-            const data = Object.fromEntries(formData.entries());
+async function submitAddUser(e) {
+  e.preventDefault();
+  const payload = {
+    email:      document.getElementById('au-email').value.trim(),
+    password:   document.getElementById('au-password').value,
+    first_name: document.getElementById('au-firstName').value.trim(),
+    last_name:  document.getElementById('au-lastName').value.trim(),
+    persona:    document.getElementById('au-persona').value,
+  };
+  try {
+    const res = await fetch(`/api/tenants/${currentTenantId}/users`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('User added!', 'success');
+      closeAddUserModal();
+      await loadAllTenants();
+      const tenant = allTenants.find(t => t.tenantId === currentTenantId);
+      if (tenant) renderDrawerUsers(tenant.users || []);
+    } else toast(data.detail || 'Failed to add user', 'error');
+  } catch(err) { toast('Error: ' + err.message, 'error'); }
+}
 
-            try {
-                const response = await fetch(`${API_URL}/tenants/${tenantId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+/* ═══════════════════════════════════════════════════════ DOCUMENTS */
+function populateTenantSelects() {
+  const opts = allTenants.map(t => `<option value="${t.tenantId}">${t.companyName} (${t.tenantId})</option>`).join('');
+  ['docTenantSelect','testTenantSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<option value="">— Select tenant —</option>' + opts;
+  });
+  document.getElementById('testTenantSelect').onchange = loadTestPersonas;
+}
 
-                if (response.ok) {
-                    showMessage(`✅ Tenant updated successfully!`, 'success');
-                    closeEditTenantModal();
-                    loadTenants();
-                } else {
-                    const error = await response.json();
-                    showMessage(`❌ Error: ${error.detail}`, 'error');
-                }
-            } catch (error) {
-                showMessage(`❌ Error updating tenant: ${error.message}`, 'error');
-            }
-        }
+function loadDocPersonas() {
+  const tenantId = document.getElementById('docTenantSelect').value;
+  const tenant = allTenants.find(t => t.tenantId === tenantId);
+  const personas = tenant ? (tenant.allowedPersonas || []) : [];
+  document.getElementById('docPersonaSelect').innerHTML =
+    '<option value="">— Select persona —</option>' +
+    personas.map(p => `<option value="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('');
+  document.getElementById('docList').innerHTML = '<div class="empty-state"><p>Select a persona to see documents.</p></div>';
+}
 
-        function showMessage(message, type) {
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
-            setTimeout(() => {
-                messageDiv.innerHTML = '';
-            }, 5000);
-        }
-    </script>
+function loadTestPersonas() {
+  const tenantId = document.getElementById('testTenantSelect').value;
+  const tenant = allTenants.find(t => t.tenantId === tenantId);
+  const personas = tenant ? (tenant.allowedPersonas || []) : [];
+  document.getElementById('testPersonaSelect').innerHTML =
+    '<option value="">— Select persona —</option>' +
+    personas.map(p => `<option value="${p}">${p.charAt(0).toUpperCase()+p.slice(1)}</option>`).join('');
+}
+
+async function loadDocList() {
+  const tenantId  = document.getElementById('docTenantSelect').value;
+  const personaId = document.getElementById('docPersonaSelect').value;
+  if (!tenantId || !personaId) return;
+  const el = document.getElementById('docList');
+  el.innerHTML = '<div class="empty-state"><p>Loading documents...</p></div>';
+  try {
+    const res  = await fetch(`/api/tenants/${tenantId}/documents?personaId=${personaId}`);
+    const data = await res.json();
+    renderDocList(data.documents || [], el);
+  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Error loading docs.</p></div>'; }
+}
+
+async function loadDrawerDocs() {
+  const personaId = document.getElementById('drawerDocPersona').value;
+  const el = document.getElementById('drawerDocList');
+  if (!currentTenantId) return;
+  el.innerHTML = '<div class="empty-state"><p>Loading...</p></div>';
+  try {
+    const url = personaId
+      ? `/api/tenants/${currentTenantId}/documents?personaId=${personaId}`
+      : `/api/tenants/${currentTenantId}/documents`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    renderDocList(data.documents || [], el);
+  } catch(e) { el.innerHTML = '<div class="empty-state"><p>Error loading docs.</p></div>'; }
+}
+
+function renderDocList(docs, container) {
+  if (!docs.length) {
+    container.innerHTML = '<div class="empty-state"><p>No documents uploaded yet.</p></div>';
+    return;
+  }
+  container.innerHTML = docs.map(d => `
+    <div class="doc-item">
+      <div class="doc-info">
+        <div class="doc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+        <div>
+          <div class="doc-name">${d.fileName}</div>
+          <div class="doc-meta">${d.personaId} · ${formatBytes(d.sizeBytes)} · ${formatDate(d.uploadedAt)}</div>
+        </div>
+      </div>
+      <span class="badge badge-green">Ingested</span>
+    </div>`).join('');
+}
+
+function handleFileSelect(files) { uploadFiles(files, false); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('dragover');
+  uploadFiles(e.dataTransfer.files, false);
+}
+function handleDrawerFiles(files) { uploadFiles(files, true); }
+function handleDrawerDrop(e) {
+  e.preventDefault();
+  uploadFiles(e.dataTransfer.files, true);
+}
+
+async function uploadFiles(files, isDrawer) {
+  const tenantId  = isDrawer ? currentTenantId : document.getElementById('docTenantSelect').value;
+  const personaId = isDrawer
+    ? document.getElementById('drawerDocPersona').value
+    : document.getElementById('docPersonaSelect').value;
+
+  if (!tenantId) { toast('Select a tenant first', 'error'); return; }
+  if (!personaId) { toast('Select a persona first', 'error'); return; }
+
+  const progressEl = document.getElementById(isDrawer ? 'drawerUploadProgress' : 'uploadProgress');
+  const barEl      = document.getElementById(isDrawer ? 'drawerProgressBar' : 'progressBar');
+  const labelEl    = document.getElementById(isDrawer ? 'drawerProgressLabel' : 'progressLabel');
+
+  progressEl.style.display = 'block';
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const pct  = Math.round((i / files.length) * 100);
+    barEl.style.width = pct + '%';
+    labelEl.textContent = `Uploading ${file.name}...`;
+
+    try {
+      // 1. Get presigned URL
+      const urlRes = await fetch(`/api/tenants/${tenantId}/upload-url`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ personaId, fileName: file.name, contentType: file.type || 'application/octet-stream' })
+      });
+      const urlData = await urlRes.json();
+      if (!urlData.uploadUrl) throw new Error('No upload URL returned');
+
+      // 2. Upload directly to S3
+      await fetch(urlData.uploadUrl, {
+        method: 'PUT', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' }
+      });
+
+      toast(`${file.name} uploaded ✓`, 'success');
+    } catch(err) {
+      toast(`Failed: ${file.name} — ${err.message}`, 'error');
+    }
+  }
+
+  barEl.style.width = '100%';
+  labelEl.textContent = 'Done! Ingestion may take ~60 seconds.';
+  setTimeout(() => { progressEl.style.display = 'none'; }, 3000);
+
+  // Refresh doc list
+  if (isDrawer) loadDrawerDocs(); else loadDocList();
+}
+
+/* ═══════════════════════════════════════════════════════ TEST BRAIN */
+async function runBrainTest() {
+  const tenantId  = document.getElementById('testTenantSelect').value;
+  const personaId = document.getElementById('testPersonaSelect').value;
+  const query     = document.getElementById('brainQuery').value.trim();
+  if (!tenantId || !personaId) { toast('Select tenant and persona', 'error'); return; }
+  if (!query) { toast('Enter a query', 'error'); return; }
+
+  const btn = document.getElementById('testBtn');
+  btn.disabled = true;
+  document.getElementById('brainResponse').innerHTML =
+    '<div class="brain-thinking"><div class="spinner"></div> Thinking...</div>';
+
+  try {
+    const res  = await fetch(`/api/tenants/${tenantId}/test-brain`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ personaId, query })
+    });
+    const data = await res.json();
+    document.getElementById('brainResponse').textContent = data.response || 'No response.';
+  } catch(e) {
+    document.getElementById('brainResponse').textContent = 'Error: ' + e.message;
+  } finally { btn.disabled = false; }
+}
+
+async function runDrawerBrainTest() {
+  const personaId = document.getElementById('drawerBrainPersona').value;
+  const query     = document.getElementById('drawerBrainQuery').value.trim();
+  if (!personaId || !query) { toast('Select persona and enter a query', 'error'); return; }
+
+  const btn = document.getElementById('drawerTestBtn');
+  btn.disabled = true;
+  document.getElementById('drawerBrainResponse').innerHTML =
+    '<div class="brain-thinking"><div class="spinner"></div> Thinking...</div>';
+
+  try {
+    const res  = await fetch(`/api/tenants/${currentTenantId}/test-brain`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ personaId, query })
+    });
+    const data = await res.json();
+    document.getElementById('drawerBrainResponse').textContent = data.response || 'No response.';
+  } catch(e) {
+    document.getElementById('drawerBrainResponse').textContent = 'Error: ' + e.message;
+  } finally { btn.disabled = false; }
+}
+
+/* ═══════════════════════════════════════════════════════ HELPERS */
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  document.getElementById('toastWrap').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+</script>
 </body>
-
 </html>

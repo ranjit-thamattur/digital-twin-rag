@@ -23,10 +23,13 @@ app.add_middleware(
 REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
 COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID")
 TENANT_TABLE = os.getenv("TENANT_TABLE", "clonemind-tenants")
+DOCUMENTS_BUCKET = os.getenv("DOCUMENTS_BUCKET_NAME", "clonemind-docs")
+MCP_URL = os.getenv("MCP_URL", "http://localhost:3000")
 
 # Initialize AWS Clients
 cognito = boto3.client("cognito-idp", region_name=REGION)
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
+s3 = boto3.client("s3", region_name=REGION)
 table = dynamodb.Table(TENANT_TABLE)
 
 # Pydantic Models
@@ -311,6 +314,97 @@ async def lookup_user(email: str):
         return {"found": False, "tenantId": "default", "personaId": "user"}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Document management endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class UploadUrlRequest(BaseModel):
+    personaId: str
+    fileName: str
+    contentType: str = "application/octet-stream"
+
+@app.post("/api/tenants/{tenant_id}/upload-url")
+async def get_upload_url(tenant_id: str, req: UploadUrlRequest):
+    """Generate a presigned S3 URL for direct browser upload."""
+    try:
+        persona = req.personaId.lower().strip()
+        s3_key  = f"{tenant_id}/{persona}/{req.fileName}"
+        url = s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket":      DOCUMENTS_BUCKET,
+                "Key":         s3_key,
+                "ContentType": req.contentType,
+            },
+            ExpiresIn=300,  # 5 minutes
+        )
+        return {"uploadUrl": url, "s3Key": s3_key, "bucket": DOCUMENTS_BUCKET}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tenants/{tenant_id}/documents")
+async def list_documents(tenant_id: str, personaId: Optional[str] = None):
+    """List documents uploaded to S3 for this tenant (optionally filtered by persona)."""
+    try:
+        prefix = f"{tenant_id}/"
+        if personaId:
+            prefix = f"{tenant_id}/{personaId.lower()}/"
+
+        resp    = s3.list_objects_v2(Bucket=DOCUMENTS_BUCKET, Prefix=prefix)
+        objects = resp.get("Contents", [])
+
+        docs = []
+        for obj in objects:
+            key   = obj["Key"]
+            parts = key.split("/")
+            docs.append({
+                "s3Key":       key,
+                "personaId":   parts[1] if len(parts) > 2 else "unknown",
+                "fileName":    parts[-1],
+                "sizeBytes":   obj["Size"],
+                "uploadedAt":  obj["LastModified"].isoformat(),
+            })
+
+        # Sort newest first
+        docs.sort(key=lambda x: x["uploadedAt"], reverse=True)
+        return {"documents": docs, "count": len(docs)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class BrainTestRequest(BaseModel):
+    personaId: str
+    query: str
+
+@app.post("/api/tenants/{tenant_id}/test-brain")
+async def test_brain(tenant_id: str, req: BrainTestRequest):
+    """Proxy a test query to the MCP server for this tenant."""
+    import httpx
+    try:
+        payload = {
+            "query":         req.query,
+            "tenantId":      tenant_id,
+            "personaId":     req.personaId.lower(),
+            "system_prompt": "",
+            "messages":      [],
+            "plan":          "basic",
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{MCP_URL}/call/generate_twin_response",
+                json=payload,
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            return {"success": True, "response": data.get("content", str(data))}
+        else:
+            return {"success": False, "response": f"MCP error {resp.status_code}: {resp.text[:300]}"}
+    except Exception as e:
+        return {"success": False, "response": f"Could not reach MCP server: {str(e)}"}
+
 
 if __name__ == "__main__":
     import uvicorn
