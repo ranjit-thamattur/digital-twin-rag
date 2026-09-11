@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon, Calendar, ShieldAlert, UserCheck, Lightbulb, CheckCircle2, AlertCircle, ArrowRight, Database, Cog } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type MemoryItem = {
@@ -964,10 +964,193 @@ export default function ChatPage() {
               <p>Loading conversation...</p>
             </div>
           ) : messages.length === 0 ? (
-            <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              <Brain size={48} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-              <h2>How can I help you today?</h2>
-              <p style={{ marginTop: '8px' }}>Ask me about documents, metrics, or company knowledge.</p>
+            <div className="brain-dashboard-container">
+              
+              {/* Main Center Column */}
+              <div className="brain-main-column">
+                
+                {/* Header / Hero */}
+                <div className="brain-header-section">
+                  <div className="brain-logo-title">
+                    <Brain size={28} color="var(--accent-primary)" /> My Digital Brain
+                  </div>
+                  <div className="brain-tagline">Think. Plan. Act. Grow.</div>
+                  
+                  <div className="brain-greeting">Good morning, Rishil!</div>
+                  <div className="brain-subgreeting">What would you like to do today?</div>
+                </div>
+
+                {/* 4 Action Cards Grid */}
+                <div className="action-cards-grid-4">
+                  
+                  {/* CARD 1 */}
+                  <div className="action-card-item" onClick={() => setInput("What should I do today?")}>
+                    <div className="card-icon-box green">
+                      <Calendar size={20} />
+                    </div>
+                    <div>
+                      <div className="action-card-title">Plan my day</div>
+                      <div className="action-card-desc">"What should I do today?"</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.6 }}>
+                      <ArrowRight size={16} />
+                    </div>
+                  </div>
+
+                  {/* CARD 2 */}
+                  <div className="action-card-item" onClick={() => setInput("Show me customer history")}>
+                    <div className="card-icon-box purple">
+                      <UserCheck size={20} />
+                    </div>
+                    <div>
+                      <div className="action-card-title">Check a customer</div>
+                      <div className="action-card-desc">"Show me customer history"</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.6 }}>
+                      <ArrowRight size={16} />
+                    </div>
+                  </div>
+
+                  {/* CARD 3 */}
+                  <div className="action-card-item" onClick={() => setInput("Any overdue payments?")}>
+                    <div className="card-icon-box red">
+                      <ShieldAlert size={20} />
+                    </div>
+                    <div>
+                      <div className="action-card-title">Find risks</div>
+                      <div className="action-card-desc">"Any overdue payments?"</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.6 }}>
+                      <ArrowRight size={16} />
+                    </div>
+                  </div>
+
+                  {/* CARD 4 */}
+                  <div className="action-card-item" onClick={() => setInput("What happens if I hire one more salesperson?")}>
+                    <div className="card-icon-box blue">
+                      <Lightbulb size={20} />
+                    </div>
+                    <div>
+                      <div className="action-card-title">Explore scenarios</div>
+                      <div className="action-card-desc">"What happens if I hire one more salesperson?"</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.6 }}>
+                      <ArrowRight size={16} />
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* Right Side Column */}
+              <div className="brain-side-column">
+                
+                {/* Your Business Brain Card */}
+                <div className="brain-side-card">
+                  <div className="side-card-header">Your Business Brain</div>
+                  <div className="side-card-subheader">Different systems. One mind.</div>
+
+                  <div className="brain-region-list">
+                    
+                    <div className="brain-region-item">
+                      <div className="region-icon-badge" style={{ backgroundColor: '#7c3aed' }}>
+                        <Database size={13} />
+                      </div>
+                      <div>
+                        <div className="region-title">Hippocampus · Memory</div>
+                        <div className="region-desc">Customer history, supplier promises, past quotations</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <div className="region-icon-badge" style={{ backgroundColor: '#16a34a' }}>
+                        <Calendar size={13} />
+                      </div>
+                      <div>
+                        <div className="region-title">Prefrontal Cortex · Planning</div>
+                        <div className="region-desc">"What should I do today?"</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <div className="region-icon-badge" style={{ backgroundColor: '#dc2626' }}>
+                        <ShieldAlert size={13} />
+                      </div>
+                      <div>
+                        <div className="region-title">Amygdala · Threat detection</div>
+                        <div className="region-desc">"This customer hasn't paid in 65 days."</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <div className="region-icon-badge" style={{ backgroundColor: '#ea580c' }}>
+                        <Cog size={13} />
+                      </div>
+                      <div>
+                        <div className="region-title">Cerebellum · Automatic habits</div>
+                        <div className="region-desc">GST reminders, payroll, purchase orders</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <div className="region-icon-badge" style={{ backgroundColor: '#2563eb' }}>
+                        <Brain size={13} />
+                      </div>
+                      <div>
+                        <div className="region-title">Neocortex · Reasoning</div>
+                        <div className="region-desc">"What happens if I hire one more salesperson?"</div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Today's Highlights Card */}
+                <div className="brain-side-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="side-card-header">Today's Highlights</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Tue, 12 Aug 2025</div>
+                  </div>
+                  <div style={{ margin: '10px 0 0' }}></div>
+
+                  <div className="brain-region-list">
+                    <div className="brain-region-item">
+                      <CheckCircle2 size={16} color="#4ade80" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div className="region-title">3 tasks completed</div>
+                        <div className="region-desc">Good progress!</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <AlertCircle size={16} color="#f87171" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div className="region-title">5 payments overdue</div>
+                        <div className="region-desc">Total ₹12,40,000</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <Paperclip size={16} color="#fbbf24" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div className="region-title">GST filing due in 3 days</div>
+                        <div className="region-desc">Prepare and file</div>
+                      </div>
+                    </div>
+
+                    <div className="brain-region-item">
+                      <User size={16} color="#60a5fa" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div className="region-title">2 new enquiries</div>
+                        <div className="region-desc">From website</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           ) : (
             messages.map((msg, i) => {
