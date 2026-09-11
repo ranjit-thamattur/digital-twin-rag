@@ -116,7 +116,8 @@ export default function ChatPage() {
 
   // Fetch recent sessions on load
   useEffect(() => {
-    fetchSessions();
+    fetchSessions(false);
+    startNewChat();
     fetchUser();
 
     // Load saved theme
