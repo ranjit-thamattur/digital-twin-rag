@@ -1159,20 +1159,6 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                {/* Bottom Quote Box */}
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px dashed var(--border-light)',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '24px', marginBottom: '4px' }}>🧠</div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4 }}>
-                    "More than memory.<br />A complete business mind."
-                  </div>
-                </div>
-
               </div>
 
             </div>
