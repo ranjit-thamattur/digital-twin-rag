@@ -874,7 +874,10 @@ export default function ChatPage() {
             <div className="brand-icon">
               <Brain size={20} />
             </div>
-            <span>Digital Brain</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text-primary)' }}>My Digital Brain</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--accent-primary)', fontWeight: 600 }}>Think. Plan. Act. Grow.</div>
+            </div>
           </div>
           <X
             size={24}
@@ -973,11 +976,17 @@ export default function ChatPage() {
                 {/* Header / Hero */}
                 <div className="brain-header-section">
                   <div className="brain-logo-title">
-                    <Brain size={28} color="var(--accent-primary)" /> My Digital Brain
+                    <Brain size={32} color="var(--accent-primary)" /> My Digital Brain
                   </div>
-                  <div className="brain-tagline">Think. Plan. Act. Grow.</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Your business. A sharper mind.
+                  </div>
                   
-                  <div className="brain-greeting">Good morning, Rishil!</div>
+                  <div className="brain-greeting">
+                    Good morning, {userEmail && userEmail.includes('@') && !userEmail.startsWith('Loading')
+                      ? (userEmail.split('@')[0].split('.')[0].replace(/[^a-zA-Z]/g, '') ? (userEmail.split('@')[0].split('.')[0].replace(/[^a-zA-Z]/g, '').charAt(0).toUpperCase() + userEmail.split('@')[0].split('.')[0].replace(/[^a-zA-Z]/g, '').slice(1)) : 'Rishil')
+                      : 'Rishil'}!
+                  </div>
                   <div className="brain-subgreeting">What would you like to do today?</div>
                 </div>
 
@@ -1147,6 +1156,20 @@ export default function ChatPage() {
                         <div className="region-desc">From website</div>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Bottom Quote Box */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px dashed var(--border-light)',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '24px', marginBottom: '4px' }}>🧠</div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                    "More than memory.<br />A complete business mind."
                   </div>
                 </div>
 
