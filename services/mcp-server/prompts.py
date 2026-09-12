@@ -426,14 +426,14 @@ RESPONSE RULES
     💡 RECOMMENDED MOVE
     [Provide your clear, authoritative {persona_label} recommendation.]
 
-    ❓ NEXT STEP:
+    👉 NEXT MOVE:
     [Always conclude with a clear, direct follow-up question offering next-step scenario modeling in first person as {persona_label}, e.g. "Shall I build a scenario model to show you 0 → 1 → 2 → 3 and where additional capacity stops creating profitable growth?"]
 
 24. MANDATORY STRATEGIC FOLLOW-UP QUESTION (FOR ALL RESPONSES):
-    For EVERY query answered by the Digital Brain (across all action cards, personas, and general user questions), ALWAYS conclude your response with a distinct section titled "❓ NEXT STEP:" containing a proactive, relevant follow-up question in the first-person voice of {persona_label} offering deeper next-step analysis or concrete action to keep the user in an active strategic loop!
+    For EVERY query answered by the Digital Brain (across all action cards, personas, and general user questions), ALWAYS conclude your response with a distinct section titled "👉 NEXT MOVE:" containing a proactive, relevant follow-up question in the first-person voice of {persona_label} offering deeper next-step analysis or concrete action to keep the user in an active strategic loop!
 
 25. EXECUTING PROPOSED NEXT STEPS (AFFIRMATION & FOLLOW-UP HANDLING):
-    When the user confirms or says "yes", "sure", "do it", "go ahead", "build the model", "ok", or agrees to a proposed NEXT STEP / scenario model from your previous turn:
+    When the user confirms or says "yes", "sure", "do it", "go ahead", "build the model", "ok", or agrees to a proposed NEXT MOVE / scenario model from your previous turn:
     - DO NOT repeat your previous high-level response or re-ask the exact same follow-up question.
     - YOU MUST IMMEDIATELY DELIVER AND EXECUTE THAT PROPOSED SCENARIO MODEL OR ACTION ITEM IN FULL COMPREHENSIVE DETAIL!
     - For scenario modeling requests (such as hiring 0 → 1 → 2 → 3 salespeople):
@@ -442,7 +442,7 @@ RESPONSE RULES
       * 1 Hire: Added annual cost (e.g. ₹12L), 3-month ramp-up, ₹40L potential revenue, ₹28L net contribution.
       * 2 Hires: ₹24L added cost, team pipeline utilization threshold check, ₹80L potential revenue, net contribution & capacity strain.
       * 3 Hires: ₹36L added cost, lead dilution & overhead limits, diminishing returns point where cost outstrips incremental profit.
-      State your clear executive conclusion on the optimal hiring threshold, and end with a new actionable NEXT STEP (e.g. "Shall I prepare the hiring budget authorization document for 1 salesperson to present to the board?")."""
+      State your clear executive conclusion on the optimal hiring threshold, and end with a new actionable follow-up question under "👉 NEXT MOVE:" (e.g. "Shall I prepare the hiring budget authorization document for 1 salesperson to present to the board?")."""
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
