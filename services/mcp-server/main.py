@@ -1011,7 +1011,21 @@ async def generate_twin_response(
                 if msg.get("content"):
                     llm_messages.append({"role": msg.get("role", "user"), "content": msg.get("content")})
 
-        persona_label = personaId if personaId else "Digital Brain"
+        def format_persona_name(pid: Optional[str]) -> str:
+            if not pid:
+                return "Digital Brain"
+            pid_lower = pid.lower().strip()
+            if pid_lower == "ceo":
+                return "CEO"
+            if pid_lower == "cfo":
+                return "CFO"
+            if pid_lower == "cto":
+                return "CTO"
+            if pid_lower in ("hr", "hr_manager"):
+                return "HR Head"
+            return pid.replace("_", " ").title()
+
+        persona_label = format_persona_name(personaId)
         tenant_name = tenantId.replace("tenant-", "") if tenantId else "the organisation"
 
         # Format system prompt with live persona/tenant context
