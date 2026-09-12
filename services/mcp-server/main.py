@@ -996,7 +996,7 @@ async def generate_twin_response(
             for idx, res in enumerate(final_hits, start=1):
                 src = res.payload.get("filename", "Unknown")
                 txt = res.payload.get("text", "")
-                formatted_blocks.append(f"DOCUMENT [{idx}]: {src}\nCONTENT: {txt}\n---")
+                formatted_blocks.append(f"RECORD: {src}\n{txt}\n---")
                 
                 if src not in seen_files:
                     seen_files.add(src)
