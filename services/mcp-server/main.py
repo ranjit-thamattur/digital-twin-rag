@@ -974,8 +974,18 @@ async def generate_twin_response(
 
         # 2. Advanced RAG Flow
         search_query = query
+        is_short_affirmation = len(query.strip().split()) <= 5 or any(
+            w in query.strip().lower() for w in ["yes", "sure", "ok", "go ahead", "do it", "build", "proceed"]
+        )
+
+        if messages and is_short_affirmation:
+            recent_context = " ".join([m.get("content", "") for m in messages[-2:] if m.get("content")])
+            if recent_context:
+                search_query = f"{recent_context} {query}"
+                print(f"🔗 [RAG CONTEXT ENRICHMENT] Extended search query: '{search_query[:120]}...'")
+
         if actual_plan == "premium":
-            search_query = await rewrite_query(query)
+            search_query = await rewrite_query(search_query)
 
         # search_knowledge_base normalizes internally via normalize_collection_name
         raw_hits = await search_knowledge_base(
