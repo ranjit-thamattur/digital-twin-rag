@@ -1056,6 +1056,11 @@ export default function ChatPage() {
               {/* Right Side Column */}
               <div className="brain-side-column">
                 
+                {/* Top Quote Tagline */}
+                <div style={{ textAlign: 'right', fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, paddingRight: '4px' }}>
+                  "More than memory.<br />A complete business mind."
+                </div>
+
                 {/* Your Business Brain Card */}
                 <div className="brain-side-card">
                   <div className="side-card-header">Your Business Brain</div>
