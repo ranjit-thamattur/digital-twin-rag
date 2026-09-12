@@ -1036,6 +1036,7 @@ async def generate_twin_response(
 
         rag_prompt = RAG_GENERATION_PROMPT.format(
             persona_label=persona_label,
+            tenant_name=tenant_name,
             rag_context_block=rag_context_block,
             query=query
         )
