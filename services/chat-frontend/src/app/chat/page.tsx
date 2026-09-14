@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon, Calendar, ShieldAlert, UserCheck, Lightbulb, CheckCircle2, AlertCircle, ArrowRight, Database, Cog, ChevronRight } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type MemoryItem = {
   id: number;
@@ -1228,7 +1230,13 @@ export default function ChatPage() {
                   )}
                   <div className="message-content" style={msg.role === 'system' ? { width: '100%', alignItems: 'center' } : undefined}>
                     <div className="bubble" style={msg.role === 'system' ? { backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '0.85rem', padding: '8px 16px' } : undefined}>
-                      {msg.content}
+                      {msg.role === 'assistant' ? (
+                        <div className="markdown-body">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                     {msg.role === 'assistant' && msg.memoryUsed && msg.memoryUsed.length > 0 && (
                       <div
