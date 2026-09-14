@@ -494,6 +494,97 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[st
     return chunks
 
 
+def chunk_csv_text(text: str, chunk_size: int = 2000) -> List[str]:
+    """Split pipe-delimited tabular text (from Excel/CSV ingestion) by row,
+    keeping the sheet marker + column header attached to every chunk.
+
+    chunk_text() is line-based and only keeps the header in the first
+    chunk (plus a 1-2 line overlap into the second) — every later chunk
+    of a wide, many-row sheet is headerless data, which is close to
+    unusable for both embedding search and the LLM reading it back. This
+    keeps every chunk self-describing at the cost of repeating the
+    header in each one.
+    """
+    lines = text.split('\n')
+    if not lines or not lines[0]:
+        return chunk_text(text, chunk_size=chunk_size)
+
+    idx = 0
+    prefix_lines = []
+    if lines[idx].startswith("SHEET: "):
+        prefix_lines.append(lines[idx])
+        idx += 1
+    if idx < len(lines):
+        prefix_lines.append(lines[idx])  # column header row
+        idx += 1
+
+    prefix = '\n'.join(prefix_lines)
+    data_lines = [l for l in lines[idx:] if l]
+
+    if not data_lines:
+        return [text]
+
+    chunks = []
+    current_rows: List[str] = []
+    current_length = len(prefix)
+
+    for line in data_lines:
+        if current_length + len(line) > chunk_size and current_rows:
+            chunks.append(prefix + '\n' + '\n'.join(current_rows))
+            current_rows = [line]
+            current_length = len(prefix) + len(line)
+        else:
+            current_rows.append(line)
+            current_length += len(line)
+
+    if current_rows:
+        chunks.append(prefix + '\n' + '\n'.join(current_rows))
+
+    return chunks if chunks else [text]
+
+
+def _looks_numeric(s: str) -> bool:
+    try:
+        float(s.replace(',', ''))
+        return True
+    except ValueError:
+        return False
+
+
+def detect_header_row(df_raw, max_scan: int = 6) -> int:
+    """Guess which of the first few rows of a raw (header=None) sheet is
+    the real column-header row.
+
+    Human-built Excel dashboards often have a merged title/banner row
+    above the actual headers (one long string in column A, blank
+    elsewhere). pandas' default header=0 grabs that banner as the
+    header — every other column becomes 'Unnamed: N' and the real
+    header row is buried as an ordinary, unlabeled data row further
+    down. Score each of the first few rows by how header-like it looks:
+    many populated cells, each a short, non-numeric label.
+    """
+    best_row, best_score = 0, -1.0
+    n_cols = df_raw.shape[1]
+    scan_rows = min(max_scan, len(df_raw))
+
+    for r in range(scan_rows):
+        row = df_raw.iloc[r]
+        non_null = row.dropna()
+        if len(non_null) == 0:
+            continue
+        label_like = sum(
+            1 for v in non_null
+            if str(v).strip() and not _looks_numeric(str(v)) and len(str(v).strip()) <= 40
+        )
+        fill_ratio = len(non_null) / max(n_cols, 1)
+        score = label_like * fill_ratio
+        if score > best_score:
+            best_score = score
+            best_row = r
+
+    return best_row
+
+
 def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1,
                           score_threshold: float = None, query_filter: Any = None):
     """Helper to perform search across different Qdrant client versions."""
@@ -1216,11 +1307,33 @@ async def ingest_knowledge(
                     xl = pd.ExcelFile(io.BytesIO(file_content))
 
                     for sheet_name in xl.sheet_names:
-                        df = pd.read_excel(xl, sheet_name=sheet_name)
+                        df_raw = pd.read_excel(xl, sheet_name=sheet_name, header=None)
+                        df_raw = df_raw.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
+                        if df_raw.empty:
+                            continue
+
+                        header_row = detect_header_row(df_raw)
+                        preamble_rows = df_raw.iloc[:header_row]
+                        header_values = df_raw.iloc[header_row].fillna('').astype(str).tolist()
+
+                        df = df_raw.iloc[header_row + 1:].copy()
+                        df.columns = header_values
                         df = df.dropna(how='all').dropna(axis=1, how='all')
+
+                        # Any rows above the detected header (title banners, usage
+                        # notes) are folded into the sheet label instead of being
+                        # dropped or mistaken for a data/header row.
+                        preamble = ' '.join(
+                            ' '.join(str(v) for v in row.dropna())
+                            for _, row in preamble_rows.iterrows()
+                        ).strip()
+
                         if not df.empty:
-                            sheet_text = f"SHEET: {sheet_name}\n{df.to_csv(index=False, sep='|')}"
-                            sheet_metadata = {**(metadata or {}), "sheet_name": sheet_name}
+                            sheet_label = f"SHEET: {sheet_name}"
+                            if preamble:
+                                sheet_label += f" — {preamble}"
+                            sheet_text = sheet_label + "\n" + df.to_csv(index=False, sep='|')
+                            sheet_metadata = {**(metadata or {}), "sheet_name": sheet_name, "_is_tabular": True}
                             sheet_res = await ingest_knowledge(
                                 text=sheet_text,
                                 tenantId=tenantId,
@@ -1234,6 +1347,7 @@ async def ingest_knowledge(
                     print(f"📄 Parsing CSV...")
                     df = pd.read_csv(io.BytesIO(file_content))
                     text = df.to_csv(index=False, sep='|')
+                    metadata = {**(metadata or {}), "_is_tabular": True}
 
                 elif ext == 'docx':
                     print(f"📝 Parsing Word Document...")
@@ -1308,7 +1422,10 @@ async def ingest_knowledge(
         print(f"📝 [INGEST] Ingesting for {tenantId} | Persona: {active_persona} | "
               f"Collection: {collection_name} | Text: {len(text):,} chars")
 
-        chunks = chunk_text(text, chunk_size=2000, overlap=300)
+        if metadata.get("_is_tabular"):
+            chunks = chunk_csv_text(text, chunk_size=2000)
+        else:
+            chunks = chunk_text(text, chunk_size=2000, overlap=300)
         print(f"🔪 [INGEST] Split into {len(chunks)} chunks — starting embedding...")
 
         try:
