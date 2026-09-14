@@ -172,7 +172,7 @@ body {
   display: flex;
   gap: 16px;
   max-width: 800px;
-  margin: 0 auto;
+  margin: 0 auto 0 0;
   width: 100%;
 }
 
@@ -234,7 +234,7 @@ body {
 
 .input-box {
   max-width: 800px;
-  margin: 0 auto;
+  margin: 0 auto 0 0;
   position: relative;
   display: flex;
   align-items: center;
@@ -760,13 +760,12 @@ body {
 /* ── Digital Brain Dashboard & Action Cards ── */
 .brain-dashboard-container {
   display: flex;
-  flex: 1;
+  align-items: stretch;
   gap: 24px;
   width: 100%;
   max-width: 1280px;
-  margin: 0 auto;
+  margin: 0 auto 0 0;
   padding: 10px 0;
-  overflow-y: auto;
 }
 
 .brain-main-column {
@@ -885,6 +884,10 @@ body {
   padding: 18px;
 }
 
+.brain-side-card:last-of-type {
+  flex: 1;
+}
+
 .side-card-header {
   font-weight: 700;
   font-size: 0.95rem;
@@ -931,6 +934,30 @@ body {
 .region-desc {
   font-size: 0.74rem;
   color: var(--text-secondary);
+}
+
+.region-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.brain-quote-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+
+.brain-quote-text {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.4;
 }
 
 @media (max-width: 1024px) {

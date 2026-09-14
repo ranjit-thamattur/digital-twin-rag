@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon, Calendar, ShieldAlert, UserCheck, Lightbulb, CheckCircle2, AlertCircle, ArrowRight, Database, Cog } from 'lucide-react';
+import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, Trash2, Menu, X, LogOut, Sun, Moon, Monitor, Download, AlertTriangle, Upload, Mic, Check, Link as LinkIcon, Calendar, ShieldAlert, UserCheck, Lightbulb, CheckCircle2, AlertCircle, ArrowRight, Database, Cog, ChevronRight } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 type MemoryItem = {
@@ -247,7 +247,9 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (messages.length > 0) {
+      scrollToBottom();
+    }
   }, [messages, isUploading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -957,7 +959,6 @@ export default function ChatPage() {
               onClick={() => setIsMobileSidebarOpen(true)}
               style={{ cursor: 'pointer' }}
             />
-            <div>Your Digital Twin</div>
           </div>
         </div>
 
@@ -1055,11 +1056,6 @@ export default function ChatPage() {
 
               {/* Right Side Column */}
               <div className="brain-side-column">
-                
-                {/* Top Quote Tagline */}
-                <div style={{ textAlign: 'right', fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.4, paddingRight: '4px' }}>
-                  "More than memory.<br />A complete business mind."
-                </div>
 
                 {/* Your Business Brain Card */}
                 <div className="brain-side-card">
@@ -1067,55 +1063,60 @@ export default function ChatPage() {
                   <div className="side-card-subheader">Different systems. One mind.</div>
 
                   <div className="brain-region-list">
-                    
+
                     <div className="brain-region-item">
                       <div className="region-icon-badge" style={{ backgroundColor: '#7c3aed' }}>
                         <Database size={13} />
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="region-title">Hippocampus · Memory</div>
                         <div className="region-desc">Customer history, supplier promises, past quotations</div>
                       </div>
+                      <ChevronRight size={16} className="region-chevron" />
                     </div>
 
                     <div className="brain-region-item">
                       <div className="region-icon-badge" style={{ backgroundColor: '#16a34a' }}>
                         <Calendar size={13} />
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="region-title">Prefrontal Cortex · Planning</div>
                         <div className="region-desc">"What should I do today?"</div>
                       </div>
+                      <ChevronRight size={16} className="region-chevron" />
                     </div>
 
                     <div className="brain-region-item">
                       <div className="region-icon-badge" style={{ backgroundColor: '#dc2626' }}>
                         <ShieldAlert size={13} />
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="region-title">Amygdala · Threat detection</div>
                         <div className="region-desc">"This customer hasn't paid in 65 days."</div>
                       </div>
+                      <ChevronRight size={16} className="region-chevron" />
                     </div>
 
                     <div className="brain-region-item">
                       <div className="region-icon-badge" style={{ backgroundColor: '#ea580c' }}>
                         <Cog size={13} />
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="region-title">Cerebellum · Automatic habits</div>
                         <div className="region-desc">GST reminders, payroll, purchase orders</div>
                       </div>
+                      <ChevronRight size={16} className="region-chevron" />
                     </div>
 
                     <div className="brain-region-item">
                       <div className="region-icon-badge" style={{ backgroundColor: '#2563eb' }}>
                         <Brain size={13} />
                       </div>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div className="region-title">Neocortex · Reasoning</div>
                         <div className="region-desc">"What happens if I hire one more salesperson?"</div>
                       </div>
+                      <ChevronRight size={16} className="region-chevron" />
                     </div>
 
                   </div>
@@ -1161,6 +1162,14 @@ export default function ChatPage() {
                         <div className="region-desc">From website</div>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Quote Tagline Card */}
+                <div className="brain-quote-card">
+                  <Brain size={20} color="var(--accent-primary)" style={{ flexShrink: 0 }} />
+                  <div className="brain-quote-text">
+                    "More than memory.<br />A complete business mind."
                   </div>
                 </div>
 
