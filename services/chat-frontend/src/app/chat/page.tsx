@@ -52,6 +52,7 @@ export default function ChatPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('Loading...');
+  const [knowledgeStats, setKnowledgeStats] = useState<{ document_count: number; last_updated: number | null } | null>(null);
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -121,12 +122,34 @@ export default function ChatPage() {
     fetchSessions(false);
     startNewChat();
     fetchUser();
+    fetchKnowledgeStats();
 
     // Load saved theme
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | 'system' || 'system';
     setTheme(savedTheme);
     applyTheme(savedTheme);
   }, []);
+
+  const fetchKnowledgeStats = async () => {
+    try {
+      const res = await fetch('/api/knowledge-stats');
+      const data = await res.json();
+      setKnowledgeStats(data);
+    } catch (e) {
+      console.error('Failed to fetch knowledge stats:', e);
+    }
+  };
+
+  const formatRelativeTime = (unixSeconds: number): string => {
+    const diffMs = Date.now() - unixSeconds * 1000;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   const applyTheme = (t: 'dark' | 'light' | 'system') => {
     if (t === 'dark') {
@@ -1072,7 +1095,11 @@ export default function ChatPage() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="region-title">Hippocampus · Memory</div>
-                        <div className="region-desc">Customer history, supplier promises, past quotations</div>
+                        <div className="region-desc">
+                          {knowledgeStats && knowledgeStats.document_count > 0
+                            ? `${knowledgeStats.document_count} document${knowledgeStats.document_count === 1 ? '' : 's'} indexed${knowledgeStats.last_updated ? ' · updated ' + formatRelativeTime(knowledgeStats.last_updated) : ''}`
+                            : 'Customer history, supplier promises, past quotations'}
+                        </div>
                       </div>
                       <ChevronRight size={16} className="region-chevron" />
                     </div>
