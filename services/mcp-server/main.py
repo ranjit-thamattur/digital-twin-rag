@@ -1333,7 +1333,13 @@ async def ingest_knowledge(
                             if preamble:
                                 sheet_label += f" — {preamble}"
                             sheet_text = sheet_label + "\n" + df.to_csv(index=False, sep='|')
-                            sheet_metadata = {**(metadata or {}), "sheet_name": sheet_name, "_is_tabular": True}
+                            sheet_metadata = {
+                                **(metadata or {}),
+                                "sheet_name": sheet_name,
+                                "_is_tabular": True,
+                                "filename": os.path.basename(s3_key),
+                                "s3_key": s3_key,
+                            }
                             sheet_res = await ingest_knowledge(
                                 text=sheet_text,
                                 tenantId=tenantId,
@@ -1347,7 +1353,12 @@ async def ingest_knowledge(
                     print(f"📄 Parsing CSV...")
                     df = pd.read_csv(io.BytesIO(file_content))
                     text = df.to_csv(index=False, sep='|')
-                    metadata = {**(metadata or {}), "_is_tabular": True}
+                    metadata = {
+                        **(metadata or {}),
+                        "_is_tabular": True,
+                        "filename": os.path.basename(s3_key),
+                        "s3_key": s3_key,
+                    }
 
                 elif ext == 'docx':
                     print(f"📝 Parsing Word Document...")
@@ -1405,12 +1416,17 @@ async def ingest_knowledge(
         if metadata is None:
             metadata = {}
 
-        # Capture filename if passed at top level
+        # Capture filename if passed at top level, falling back to the S3
+        # key's basename — docx/pdf/pptx ingested directly from S3 never
+        # pass fileName/filename explicitly otherwise.
         fname = (kwargs.get("fileName") or kwargs.get("filename")
-                 or metadata.get("fileName") or metadata.get("filename"))
+                 or metadata.get("fileName") or metadata.get("filename")
+                 or (os.path.basename(s3_key) if s3_key else None))
         if fname:
             metadata["filename"] = fname
             print(f"📎 Found filename in request: {fname}")
+        if s3_key and not metadata.get("s3_key"):
+            metadata["s3_key"] = s3_key
 
         tenantId = tenantId.strip().lower()
 
@@ -1450,7 +1466,8 @@ async def ingest_knowledge(
                     "personaId": active_persona,
                     "chunk_index": i,
                     "total_chunks": len(chunks),
-                    "full_text_hash": get_text_hash(text)[:16]
+                    "full_text_hash": get_text_hash(text)[:16],
+                    "ingested_at": metadata.get("ingested_at") or int(time.time()),
                 }
 
                 # Deterministic ID: hash of content + tenantId prevents duplicates
@@ -1481,6 +1498,51 @@ async def ingest_knowledge(
     except Exception as e:
         print(f"✗ Ingestion error: {str(e)}")
         return f"Error: {str(e)}"
+
+
+@mcp.tool()
+async def get_knowledge_stats(tenantId: str, personaId: Optional[str] = None) -> dict:
+    """Lightweight stats about a tenant/persona's knowledge base — distinct
+    document count and the most recent ingestion time. Powers the 'Your
+    Business Brain' dashboard panel with real numbers instead of static copy."""
+    try:
+        tenantId = tenantId.strip().lower()
+        active_persona = normalize_persona(personaId)
+        collection_name = normalize_collection_name(tenantId, active_persona)
+
+        if not qdrant.collection_exists(collection_name):
+            return {"document_count": 0, "last_updated": None}
+
+        filenames = set()
+        last_updated = 0
+        next_offset = None
+
+        while True:
+            points, next_offset = await asyncio.to_thread(
+                qdrant.scroll,
+                collection_name=collection_name,
+                limit=200,
+                offset=next_offset,
+                with_payload=["filename", "ingested_at"],
+                with_vectors=False,
+            )
+            for p in points:
+                fname = p.payload.get("filename")
+                if fname:
+                    filenames.add(fname)
+                ts = p.payload.get("ingested_at")
+                if isinstance(ts, (int, float)) and ts > last_updated:
+                    last_updated = ts
+            if not next_offset:
+                break
+
+        return {
+            "document_count": len(filenames),
+            "last_updated": last_updated or None,
+        }
+    except Exception as e:
+        print(f"❌ [STATS] get_knowledge_stats error: {e}")
+        return {"document_count": 0, "last_updated": None}
 
 
 @mcp.tool()
@@ -1571,6 +1633,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await search_knowledge_base(**arguments)
         elif tool_name == "ingest_knowledge":
             result = await ingest_knowledge(**arguments)
+        elif tool_name == "get_knowledge_stats":
+            result = await get_knowledge_stats(**arguments)
         elif tool_name == "get_cost_stats":
             result = await get_cost_stats()
         elif tool_name == "clear_embedding_cache":
