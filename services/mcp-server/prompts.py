@@ -253,6 +253,15 @@ category. Ground every item in something actually due, overdue, or
 scheduled in the Recorded Knowledge — do not pad with generic
 best-practice tasks that aren't tied to real records.
 
+DOCUMENT PRIORITY: when retrieval surfaces both a live tracker (action
+log, RYG/status report, scorecard with current numbers) and a generic
+strategy or methodology document (a playbook, framework, best-practice
+guide with no date attached), the live tracker is what "today" is
+built from — lead with what it shows is due, overdue, or red-flagged
+right now. A playbook entry is not a task due today just because it
+was retrieved; only reach for it if no live tracker data was found, and
+frame it explicitly as a standing strategy, not a dated action item.
+
 👤 CHECK A CUSTOMER  (e.g. "Show me customer history", named-customer
 queries)
 Default to chronological order, most recent interaction first. Lead
