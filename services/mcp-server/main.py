@@ -1405,13 +1405,58 @@ async def ingest_knowledge(
                     print(f"📝 Parsing Word Document...")
                     doc = docx.Document(io.BytesIO(file_content))
                     paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-                    table_text = []
-                    for table in doc.tables:
+                    doc_filename = os.path.basename(s3_key)
+
+                    # Tables get the same treatment as Excel sheets: each one
+                    # is ingested as its own tabular sub-document so its
+                    # header row is preserved in every chunk, rather than
+                    # being flattened into the surrounding prose where a
+                    # large table would lose its header after the first
+                    # ~2000 characters — the exact bug already fixed for
+                    # Excel, just in a different file type.
+                    for t_idx, table in enumerate(doc.tables, start=1):
+                        rows = []
                         for row in table.rows:
-                            row_data = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-                            if row_data:
-                                table_text.append(" | ".join(row_data))
-                    text = "\n".join(paragraphs + table_text)
+                            # Preserve empty cells as blanks so columns stay
+                            # aligned with the header — dropping them (the
+                            # old behavior) silently shifted every later
+                            # column out of position whenever an earlier
+                            # cell in that row was empty.
+                            row_data = [cell.text.strip() for cell in row.cells]
+                            if any(row_data):
+                                rows.append(" | ".join(row_data))
+                        if not rows:
+                            continue
+                        table_label = f"Table {t_idx}"
+                        table_text = f"SHEET: {table_label}\n" + "\n".join(rows)
+                        table_metadata = {
+                            **(metadata or {}),
+                            "filename": doc_filename,
+                            "s3_key": s3_key,
+                            "sheet_name": table_label,
+                            "_is_tabular": True,
+                        }
+                        table_res = await ingest_knowledge(
+                            text=table_text,
+                            tenantId=tenantId,
+                            metadata=table_metadata,
+                        )
+                        print(f"  - {table_label} result: {table_res}")
+
+                    if paragraphs:
+                        para_metadata = {
+                            **(metadata or {}),
+                            "filename": doc_filename,
+                            "s3_key": s3_key,
+                        }
+                        para_res = await ingest_knowledge(
+                            text="\n".join(paragraphs),
+                            tenantId=tenantId,
+                            metadata=para_metadata,
+                        )
+                        print(f"  - Paragraphs result: {para_res}")
+
+                    return f"Successfully ingested Word document ({len(doc.tables)} table(s), {len(paragraphs)} paragraph(s)): {s3_key}"
 
                 elif ext == 'pdf':
                     print(f"📄 [INGEST] Parsing PDF — {len(file_content):,} bytes")
