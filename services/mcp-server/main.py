@@ -1546,6 +1546,98 @@ async def get_knowledge_stats(tenantId: str, personaId: Optional[str] = None) ->
 
 
 @mcp.tool()
+async def get_top_risk(tenantId: str, personaId: Optional[str] = None) -> dict:
+    """Real-time, one-sentence summary of the tenant's single most urgent
+    risk, drawn straight from the knowledge base — no invented numbers.
+    Powers the Amygdala · Threat detection dashboard item. Cached briefly
+    so a dashboard load doesn't trigger a fresh search + LLM call every
+    time the page renders."""
+    try:
+        tenantId = tenantId.strip().lower()
+        active_persona = normalize_persona(personaId)
+        collection_name = normalize_collection_name(tenantId, active_persona)
+
+        cache_key = f"top_risk:{tenantId}:{active_persona}"
+        try:
+            cached = redis_client.get(cache_key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            print(f"⚠ Redis cache fetch failed for top_risk: {e}")
+
+        if not qdrant.collection_exists(collection_name):
+            return {"summary": None}
+
+        query = "urgent overdue red flagged risk problem that needs attention now"
+        vector = await get_embedding(query)
+
+        must_filters = [
+            models.FieldCondition(key="personaId", match=models.MatchAny(any=[active_persona, "common"]))
+        ]
+        search_result = await asyncio.to_thread(
+            robust_qdrant_search,
+            collection_name=collection_name,
+            vector=vector,
+            limit=3,
+            query_filter=models.Filter(must=must_filters),
+        )
+
+        if not search_result:
+            return {"summary": None}
+
+        context = "\n---\n".join(r.payload.get("text", "") for r in search_result)[:4000]
+
+        extraction_prompt = (
+            "Below is data from a business's own records. In ONE short "
+            "sentence (max 20 words), state the single most urgent or "
+            "severe risk — cite the specific metric/KPI name and the "
+            "actual numbers from the data. Prefer a live tracker/status row "
+            "over generic strategy text. Never invent a number that isn't "
+            "in the data below. If nothing urgent is present, reply with "
+            "exactly: No urgent risks detected.\n\n"
+            f"{context}"
+        )
+        extraction_system = (
+            "You extract one factual risk sentence from business data. "
+            "Be terse and specific. Never invent numbers not present in "
+            "the data."
+        )
+
+        if LLM_PROVIDER == "bedrock":
+            summary = await call_bedrock_claude(
+                system_prompt=extraction_system,
+                messages=[{"role": "user", "content": extraction_prompt}],
+                max_tokens=80,
+            )
+        else:
+            response = await asyncio.to_thread(
+                lambda: openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    max_tokens=80,
+                    messages=[
+                        {"role": "system", "content": extraction_system},
+                        {"role": "user", "content": extraction_prompt},
+                    ],
+                    temperature=0.1,
+                )
+            )
+            summary = response.choices[0].message.content
+
+        summary = (summary or "").strip()
+        result = {"summary": summary if summary and "no urgent risks" not in summary.lower() else None}
+
+        try:
+            redis_client.setex(cache_key, 900, json.dumps(result))
+        except Exception as e:
+            print(f"⚠ Failed to cache top_risk: {e}")
+
+        return result
+    except Exception as e:
+        print(f"❌ [RISK] get_top_risk error: {e}")
+        return {"summary": None}
+
+
+@mcp.tool()
 async def get_cost_stats() -> str:
     """Get cost statistics"""
     embedding_costs = {"voyage": 0.0001, "openai": 0.00002, "cohere": 0.001}
@@ -1635,6 +1727,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await ingest_knowledge(**arguments)
         elif tool_name == "get_knowledge_stats":
             result = await get_knowledge_stats(**arguments)
+        elif tool_name == "get_top_risk":
+            result = await get_top_risk(**arguments)
         elif tool_name == "get_cost_stats":
             result = await get_cost_stats()
         elif tool_name == "clear_embedding_cache":
