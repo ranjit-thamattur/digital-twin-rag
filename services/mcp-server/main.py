@@ -1313,6 +1313,36 @@ async def ingest_knowledge(
                 ext = s3_key.split('.')[-1].lower()
                 print(f"📂 [INGEST] Detected extension: {ext}")
 
+                # Re-uploading an updated version of a file (the normal
+                # lifecycle of any document — nothing here ever expires or
+                # gets replaced on its own) would otherwise just add new
+                # chunks alongside the old ones, with no signal to
+                # retrieval about which is current. Delete anything already
+                # indexed under this exact filename before ingesting the
+                # new version. Runs once per top-level S3-triggered call —
+                # the recursive per-sheet xlsx calls below pass text/
+                # metadata directly, never s3_bucket/s3_key, so they never
+                # re-enter this block and can't wipe out sibling sheets.
+                try:
+                    delete_persona = normalize_persona(metadata.get("personaId") if metadata else None)
+                    delete_collection = normalize_collection_name(tenantId, delete_persona)
+                    delete_filename = os.path.basename(s3_key)
+                    if qdrant.collection_exists(delete_collection):
+                        qdrant.delete(
+                            collection_name=delete_collection,
+                            points_selector=models.FilterSelector(
+                                filter=models.Filter(must=[
+                                    models.FieldCondition(
+                                        key="filename",
+                                        match=models.MatchValue(value=delete_filename)
+                                    )
+                                ])
+                            )
+                        )
+                        print(f"🗑 [INGEST] Cleared existing chunks for '{delete_filename}' in {delete_collection} before re-ingesting")
+                except Exception as cleanup_err:
+                    print(f"⚠ [INGEST] Cleanup-before-ingest failed (continuing anyway): {cleanup_err}")
+
                 if ext in ['xlsx', 'xls']:
                     print(f"📊 Parsing Excel with Multi-Sheet Isolation...")
                     xl = pd.ExcelFile(io.BytesIO(file_content))
