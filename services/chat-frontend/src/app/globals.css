@@ -923,14 +923,16 @@ body {
   justify-content: center;
 }
 
-/* Colors matched exactly to their paired Business Brain region badge:
+/* Solid fill, matching the bold sidebar-badge treatment (not a pale
+   tint) so the shared color with the paired Business Brain region is
+   obvious at a glance, not just technically the same hex:
    green=Prefrontal Cortex (Plan my day), red=Amygdala (Find risks),
    orange=Cerebellum (Run routine tasks), blue=Neocortex (Explore scenarios) */
-.card-icon-box.green { background: rgba(22, 163, 74, 0.15); color: #16a34a; }
-.card-icon-box.blue { background: rgba(37, 99, 235, 0.15); color: #2563eb; }
-.card-icon-box.red { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
-.card-icon-box.purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
-.card-icon-box.orange { background: rgba(234, 88, 12, 0.15); color: #ea580c; }
+.card-icon-box.green { background: #16a34a; color: #fff; }
+.card-icon-box.blue { background: #2563eb; color: #fff; }
+.card-icon-box.red { background: #dc2626; color: #fff; }
+.card-icon-box.purple { background: #7c3aed; color: #fff; }
+.card-icon-box.orange { background: #ea580c; color: #fff; }
 
 .action-card-title {
   font-weight: 700;
