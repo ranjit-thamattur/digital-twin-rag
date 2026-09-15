@@ -53,6 +53,7 @@ export default function ChatPage() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('Loading...');
   const [knowledgeStats, setKnowledgeStats] = useState<{ document_count: number; last_updated: number | null } | null>(null);
+  const [topRisk, setTopRisk] = useState<string | null>(null);
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -123,6 +124,7 @@ export default function ChatPage() {
     startNewChat();
     fetchUser();
     fetchKnowledgeStats();
+    fetchTopRisk();
 
     // Load saved theme
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | 'system' || 'system';
@@ -137,6 +139,16 @@ export default function ChatPage() {
       setKnowledgeStats(data);
     } catch (e) {
       console.error('Failed to fetch knowledge stats:', e);
+    }
+  };
+
+  const fetchTopRisk = async () => {
+    try {
+      const res = await fetch('/api/top-risk');
+      const data = await res.json();
+      setTopRisk(data.summary || null);
+    } catch (e) {
+      console.error('Failed to fetch top risk:', e);
     }
   };
 
@@ -1121,7 +1133,9 @@ export default function ChatPage() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="region-title">Amygdala · Threat detection</div>
-                        <div className="region-desc">"This customer hasn't paid in 65 days."</div>
+                        <div className="region-desc">
+                          {topRisk || '"This customer hasn\'t paid in 65 days."'}
+                        </div>
                       </div>
                       <ChevronRight size={16} className="region-chevron" />
                     </div>
