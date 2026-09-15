@@ -49,6 +49,16 @@ PRIMARY_MODEL = os.getenv("PRIMARY_MODEL", "amazon.nova-pro-v1:0")
 REWRITE_MODEL = os.getenv("REWRITE_MODEL", "mistral.ministral-3-14b-instruct")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cohere.rerank-v3-5:0")
 
+# Minimum vector-search relevance score to treat a chunk as real context
+# rather than noise. Calibrated empirically against tenant-11xcompany's
+# titan-embed-text-v2 collection: known-relevant queries scored 0.26-0.46,
+# genuinely irrelevant queries scored 0.07-0.15 — 0.20 sits in the gap with
+# margin on both sides. Without this, retrieval always returns its top-K
+# regardless of how weak the match is, and the LLM has no way to tell a
+# strong match from a desperate one — both get framed identically as
+# "recorded knowledge."
+MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "0.20"))
+
 # API Keys for embedding providers
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY")
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
@@ -865,7 +875,8 @@ async def search_knowledge_base(
             collection_name=collection_name,
             vector=vector,
             limit=limit,
-            query_filter=query_filter
+            query_filter=query_filter,
+            score_threshold=MIN_RELEVANCE_SCORE
         )
 
         formatted_results = []
@@ -1580,6 +1591,7 @@ async def get_top_risk(tenantId: str, personaId: Optional[str] = None) -> dict:
             vector=vector,
             limit=3,
             query_filter=models.Filter(must=must_filters),
+            score_threshold=MIN_RELEVANCE_SCORE,
         )
 
         if not search_result:
