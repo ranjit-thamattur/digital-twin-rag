@@ -1029,8 +1029,8 @@ export default function ChatPage() {
                 </div>
 
                 {/* 4 Action Cards Grid */}
-                <div className="action-cards-grid-4">
-                  
+                <div className="action-cards-grid">
+
                   {/* CARD 1 */}
                   <div className="action-card-item" onClick={() => setInput("What should I do today?")}>
                     <div className="card-icon-box green">
@@ -1074,6 +1074,20 @@ export default function ChatPage() {
                   </div>
 
                   {/* CARD 4 */}
+                  <div className="action-card-item" onClick={() => setInput("Send GST reminders")}>
+                    <div className="card-icon-box orange">
+                      <Cog size={20} />
+                    </div>
+                    <div>
+                      <div className="action-card-title">Run routine tasks</div>
+                      <div className="action-card-desc">"Send GST reminders"</div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.6 }}>
+                      <ArrowRight size={16} />
+                    </div>
+                  </div>
+
+                  {/* CARD 5 */}
                   <div className="action-card-item" onClick={() => setInput("What happens if I hire one more salesperson?")}>
                     <div className="card-icon-box blue">
                       <Lightbulb size={20} />
@@ -1122,7 +1136,7 @@ export default function ChatPage() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="region-title">Prefrontal Cortex · Planning</div>
-                        <div className="region-desc">"What should I do today?"</div>
+                        <div className="region-desc">"What should I prioritize this week?"</div>
                       </div>
                       <ChevronRight size={16} className="region-chevron" />
                     </div>
@@ -1157,7 +1171,7 @@ export default function ChatPage() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="region-title">Neocortex · Reasoning</div>
-                        <div className="region-desc">"What happens if I hire one more salesperson?"</div>
+                        <div className="region-desc">"What if we lose our top customer?"</div>
                       </div>
                       <ChevronRight size={16} className="region-chevron" />
                     </div>
