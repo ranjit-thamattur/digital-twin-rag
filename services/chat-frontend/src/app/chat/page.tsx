@@ -5,6 +5,7 @@ import { Send, Brain, User, Plus, Settings, MessageSquare, Paperclip, Loader2, T
 import { v4 as uuidv4 } from 'uuid';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { getNextComplianceDeadline } from '@/lib/complianceCalendar';
 
 type MemoryItem = {
   id: number;
@@ -54,6 +55,7 @@ export default function ChatPage() {
   const [userEmail, setUserEmail] = useState<string>('Loading...');
   const [knowledgeStats, setKnowledgeStats] = useState<{ document_count: number; last_updated: number | null } | null>(null);
   const [topRisk, setTopRisk] = useState<string | null>(null);
+  const nextGstDeadline = getNextComplianceDeadline();
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1160,7 +1162,7 @@ export default function ChatPage() {
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="region-title">Cerebellum · Automatic habits</div>
-                        <div className="region-desc">GST reminders, payroll, purchase orders</div>
+                        <div className="region-desc">Next: {nextGstDeadline.title} ({nextGstDeadline.formattedDate})</div>
                       </div>
                       <ChevronRight size={16} className="region-chevron" />
                     </div>
@@ -1207,8 +1209,8 @@ export default function ChatPage() {
                     <div className="brain-region-item">
                       <Paperclip size={16} color="#fbbf24" style={{ flexShrink: 0, marginTop: '2px' }} />
                       <div>
-                        <div className="region-title">GST filing due in 3 days</div>
-                        <div className="region-desc">Prepare and file</div>
+                        <div className="region-title">{nextGstDeadline.title}</div>
+                        <div className="region-desc">{nextGstDeadline.obligation.description} · {nextGstDeadline.formattedDate}</div>
                       </div>
                     </div>
 
