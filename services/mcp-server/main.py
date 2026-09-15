@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import hashlib
+import re
 from typing import Optional, List, Any
 from mcp.server.fastmcp import FastMCP
 import qdrant_client
@@ -595,6 +596,59 @@ def detect_header_row(df_raw, max_scan: int = 6) -> int:
     return best_row
 
 
+def sheets_look_like_duplicates(name_a: str, name_b: str) -> bool:
+    """Deterministic (not fuzzy) check for 'these two sheet names are the
+    same sheet under Excel's own duplicate-naming conventions' — e.g. a
+    "Copy of X" prefix, a "(2)" suffix, or stray whitespace. Confirmed to
+    actually happen in real tenant data: "11X Profit Multiplier Tracker"
+    and "Copy of 11X Profit Multiplier T" both exist in the same workbook
+    with different values for the same metric.
+
+    Deliberately exact-match-after-normalization rather than fuzzy
+    similarity: sequential/period-labeled sheets (Q1 vs Q2, Week 1 vs
+    Week 2) are extremely common in business trackers and are genuinely
+    different data, not duplicates — a similarity-ratio approach would
+    misflag them (tested: 'GPS Q1' vs 'GPS Q2' scores ~90% similar by
+    character overlap despite being unrelated data). This only catches
+    actual copy-marker patterns, so it will miss more creative duplicate
+    names, but it won't cast false doubt on legitimately distinct sheets.
+    """
+    def strip_copy_marker(name: str) -> tuple:
+        n = name.strip().lower()
+        had_marker = False
+        if n.startswith("copy of "):
+            n = n[len("copy of "):]
+            had_marker = True
+        without_suffix = re.sub(r"\s*\(\d+\)$", "", n)       # "X (2)" -> "X"
+        if without_suffix != n:
+            had_marker, n = True, without_suffix
+        without_suffix = re.sub(r"\s*-?\s*copy\s*\d*$", "", n)  # "X copy", "X - copy 2" -> "X"
+        if without_suffix != n:
+            had_marker, n = True, without_suffix
+        return n.strip(), had_marker
+
+    if name_a == name_b:
+        return False
+
+    a, a_marked = strip_copy_marker(name_a)
+    b, b_marked = strip_copy_marker(name_b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+
+    # Excel truncates sheet names to 31 characters, so "Copy of <long name>"
+    # often gets cut off mid-word (confirmed in real data: "Copy of 11X
+    # Profit Multiplier T" is a truncated copy of "11X Profit Multiplier
+    # Tracker"). Only treat a prefix match as a duplicate signal when at
+    # least one side had an explicit copy marker to begin with, so two
+    # unrelated names that happen to share a prefix aren't misflagged.
+    if (a_marked or b_marked) and (a.startswith(b) or b.startswith(a)):
+        return True
+
+    return False
+
+
 def robust_qdrant_search(collection_name: str, vector: list, limit: int = 1,
                           score_threshold: float = None, query_filter: Any = None):
     """Helper to perform search across different Qdrant client versions."""
@@ -1105,16 +1159,41 @@ async def generate_twin_response(
         else:
             formatted_blocks = []
             seen_files = set()
+            sheets_by_file = {}
             for idx, res in enumerate(final_hits, start=1):
                 src = res.payload.get("filename", "Unknown")
                 txt = res.payload.get("text", "")
                 formatted_blocks.append(f"RECORD: {src}\n{txt}\n---")
-                
+
                 if src not in seen_files:
                     seen_files.add(src)
                     memory_used.append({"id": idx, "filename": src, "snippet": txt[:200] + "..."})
-                    
+
+                sheet = res.payload.get("sheet_name")
+                if sheet:
+                    sheets_by_file.setdefault(src, set()).add(sheet)
+
+            # Deterministic (not LLM-guessed) check: do any two retrieved
+            # sheets from the same file look like duplicate/variant copies
+            # of each other? If so, flag it explicitly rather than relying
+            # on the model to notice two conflicting numbers buried in a
+            # wall of retrieved text on its own.
+            duplicate_warnings = []
+            for src, sheets in sheets_by_file.items():
+                sheet_list = sorted(sheets)
+                for i in range(len(sheet_list)):
+                    for j in range(i + 1, len(sheet_list)):
+                        if sheets_look_like_duplicates(sheet_list[i], sheet_list[j]):
+                            duplicate_warnings.append(
+                                f"⚠ '{sheet_list[i]}' and '{sheet_list[j]}' in {src} look like "
+                                f"duplicate/variant copies of the same sheet. If they show "
+                                f"different values for what appears to be the same metric, "
+                                f"say so explicitly — do not silently pick one."
+                            )
+
             rag_context_block = "\n".join(formatted_blocks)
+            if duplicate_warnings:
+                rag_context_block = "\n".join(duplicate_warnings) + "\n\n" + rag_context_block
 
         # 3. LLM Generation
         llm_messages = []
