@@ -55,6 +55,7 @@ export default function ChatPage() {
   const [userEmail, setUserEmail] = useState<string>('Loading...');
   const [knowledgeStats, setKnowledgeStats] = useState<{ document_count: number; last_updated: number | null } | null>(null);
   const [topRisk, setTopRisk] = useState<string | null>(null);
+  const [tenantPlan, setTenantPlan] = useState<'basic' | 'premium' | null>(null);
   const nextGstDeadline = getNextComplianceDeadline();
 
   // Settings State
@@ -127,6 +128,7 @@ export default function ChatPage() {
     fetchUser();
     fetchKnowledgeStats();
     fetchTopRisk();
+    fetchTenantPlan();
 
     // Load saved theme
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | 'system' || 'system';
@@ -151,6 +153,16 @@ export default function ChatPage() {
       setTopRisk(data.summary || null);
     } catch (e) {
       console.error('Failed to fetch top risk:', e);
+    }
+  };
+
+  const fetchTenantPlan = async () => {
+    try {
+      const res = await fetch('/api/tenant-plan');
+      const data = await res.json();
+      setTenantPlan(data.plan === 'premium' ? 'premium' : 'basic');
+    } catch (e) {
+      console.error('Failed to fetch tenant plan:', e);
     }
   };
 
@@ -967,6 +979,25 @@ export default function ChatPage() {
               {userEmail}
             </div>
           </div>
+
+          {tenantPlan && (
+            <div
+              style={{
+                alignSelf: 'flex-start',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                letterSpacing: '0.03em',
+                textTransform: 'uppercase',
+                padding: '3px 10px',
+                borderRadius: '999px',
+                color: tenantPlan === 'premium' ? '#a855f7' : 'var(--text-secondary)',
+                backgroundColor: tenantPlan === 'premium' ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.06)',
+                border: `1px solid ${tenantPlan === 'premium' ? 'rgba(168, 85, 247, 0.3)' : 'var(--border-light)'}`,
+              }}
+            >
+              {tenantPlan} plan
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div
