@@ -1666,6 +1666,20 @@ async def ingest_knowledge(
 
 
 @mcp.tool()
+async def get_tenant_plan(tenantId: str) -> dict:
+    """Which plan a tenant is on (basic/premium) — powers a small UI badge
+    so it's visible whether a tenant is getting query rewriting + Cohere
+    reranking (premium) or the baseline path (basic), same default logic
+    generate_twin_response already uses."""
+    try:
+        metadata = await get_tenant_metadata(tenantId.strip().lower())
+        return {"plan": metadata.get("plan", "basic")}
+    except Exception as e:
+        print(f"❌ [PLAN] get_tenant_plan error: {e}")
+        return {"plan": "basic"}
+
+
+@mcp.tool()
 async def get_knowledge_stats(tenantId: str, personaId: Optional[str] = None) -> dict:
     """Lightweight stats about a tenant/persona's knowledge base — distinct
     document count and the most recent ingestion time. Powers the 'Your
@@ -1891,6 +1905,8 @@ async def call_tool_bridge(tool_name: str, request: Request):
             result = await search_knowledge_base(**arguments)
         elif tool_name == "ingest_knowledge":
             result = await ingest_knowledge(**arguments)
+        elif tool_name == "get_tenant_plan":
+            result = await get_tenant_plan(**arguments)
         elif tool_name == "get_knowledge_stats":
             result = await get_knowledge_stats(**arguments)
         elif tool_name == "get_top_risk":
